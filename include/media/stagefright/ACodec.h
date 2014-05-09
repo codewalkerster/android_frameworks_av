@@ -215,6 +215,9 @@ private:
     status_t submitOutputMetaDataBuffer();
     void signalSubmitOutputMetaDataBufferIfEOS_workaround();
     status_t allocateOutputBuffersFromNativeWindow();
+#ifdef NATIVE_COLOR_FORMAT_PATCH
+    void setNativeWindowColorFormat(OMX_COLOR_FORMATTYPE &eNativeColorFormat);
+#endif
     status_t cancelBufferToNativeWindow(BufferInfo *info);
     status_t freeOutputBuffersNotOwnedByComponent();
     BufferInfo *dequeueBufferFromNativeWindow();
