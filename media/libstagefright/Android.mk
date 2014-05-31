@@ -2,6 +2,12 @@ LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
 include frameworks/av/media/libstagefright/codecs/common/Config.mk
+ifeq ($(BOARD_USES_FFMPEG), true)
+LOCAL_CFLAGS += -DUSE_FFMPEG
+endif
+ifeq ($(TARGET_BOARD_PLATFORM),exynos4)
+LOCAL_CFLAGS += -DSAMSUNG_EXYNOS4x12
+endif
 
 LOCAL_SRC_FILES:=                         \
         ACodec.cpp                        \
@@ -54,6 +60,12 @@ LOCAL_SRC_FILES:=                         \
         XINGSeeker.cpp                    \
         avc_utils.cpp                     \
 
+ifeq ($(BOARD_USES_FFMPEG), true)
+LOCAL_SRC_FILES += \
+        FfmpegExtractor.cpp               \
+        codecs/ffmpegcodec/dec/FfmpegAudioDecoder.cpp   \
+        codecs/ffmpegcodec/dec/FfmpegVideoDecoder.cpp   
+endif	
 LOCAL_C_INCLUDES:= \
         $(TOP)/frameworks/av/include/media/stagefright/timedtext \
         $(TOP)/frameworks/native/include/media/hardware \
@@ -63,6 +75,10 @@ LOCAL_C_INCLUDES:= \
         $(TOP)/external/tremolo \
         $(TOP)/external/openssl/include \
 
+ifeq ($(BOARD_USES_FFMPEG), true)	
+LOCAL_C_INCLUDES += \
+        $(TOP)/external/ffmpeg
+endif
 LOCAL_SHARED_LIBRARIES := \
         libbinder \
         libcamera_client \
@@ -84,7 +100,12 @@ LOCAL_SHARED_LIBRARIES := \
         libui \
         libutils \
         libvorbisidec \
-        libz \
+        libz 
+        
+ifeq ($(BOARD_USES_FFMPEG), true)	
+LOCAL_SHARED_LIBRARIES += \
+        libffmpeg
+endif	
 
 LOCAL_STATIC_LIBRARIES := \
         libstagefright_color_conversion \
@@ -116,6 +137,23 @@ LOCAL_SHARED_LIBRARIES += \
 
 LOCAL_CFLAGS += -Wno-multichar
 
+ifeq ($(BOARD_USES_FFMPEG), true)
+LOCAL_CFLAGS += -D__STDC_CONSTANT_MACROS
+LOCAL_CFLAGS += -DFFMPEG_USER_NATIVEWINDOW_RENDER
+endif
+
+ifeq ($(BOARD_USE_ALP_AUDIO), true)
+LOCAL_CFLAGS += -DUSE_ALP_AUDIO
+endif
+
+#yyd- 120806
+ifeq ($(BOARD_USE_SAMSUNG_COLORFORMAT), true)
+LOCAL_CFLAGS += -DUSE_SAMSUNG_COLORFORMAT
+endif
+
+ifeq ($(BOARD_USES_HDMI),true)
+	LOCAL_CFLAGS += -DBOARD_USES_HDMI
+endif
 LOCAL_MODULE:= libstagefright
 
 include $(BUILD_SHARED_LIBRARY)

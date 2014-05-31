@@ -35,7 +35,26 @@
 #include <OMX_Component.h>
 
 namespace android {
-
+#if defined(USE_SAMSUNG_COLORFORMAT)
+static const int OMX_SEC_COLOR_FormatNV12TPhysicalAddress = 0x7F000001;
+static const int OMX_SEC_COLOR_FormatNV12LPhysicalAddress = 0x7F000002;
+static const int OMX_SEC_COLOR_FormatNV12LVirtualAddress = 0x7F000003;
+static const int OMX_SEC_COLOR_FormatNV12Tiled = 0x7FC00002;
+#ifdef S3D_SUPPORT
+static const int OMX_SEC_COLOR_FormatNV12Tiled_SBS_LR = 0x7FC00003;
+static const int OMX_SEC_COLOR_FormatNV12Tiled_SBS_RL = 0x7FC00004;
+static const int OMX_SEC_COLOR_FormatNV12Tiled_TB_LR = 0x7FC00005;
+static const int OMX_SEC_COLOR_FormatNV12Tiled_TB_RL = 0x7FC00006;
+static const int OMX_SEC_COLOR_FormatYUV420SemiPlanar_SBS_LR = 0x7FC00007;
+static const int OMX_SEC_COLOR_FormatYUV420SemiPlanar_SBS_RL = 0x7FC00008;
+static const int OMX_SEC_COLOR_FormatYUV420SemiPlanar_TB_LR = 0x7FC00009;
+static const int OMX_SEC_COLOR_FormatYUV420SemiPlanar_TB_RL = 0x7FC0000A;
+static const int OMX_SEC_COLOR_FormatYUV420Planar_SBS_LR = 0x7FC0000B;
+static const int OMX_SEC_COLOR_FormatYUV420Planar_SBS_RL = 0x7FC0000C;
+static const int OMX_SEC_COLOR_FormatYUV420Planar_TB_LR = 0x7FC0000D;
+static const int OMX_SEC_COLOR_FormatYUV420Planar_TB_RL = 0x7FC0000E;
+#endif
+#endif
 template<class T>
 static void InitOMXParams(T *params) {
     params->nSize = sizeof(T);
@@ -499,11 +518,53 @@ status_t ACodec::allocateOutputBuffersFromNativeWindow() {
         return err;
     }
 
+#ifndef USE_SAMSUNG_COLORFORMAT
     err = native_window_set_buffers_geometry(
             mNativeWindow.get(),
             def.format.video.nFrameWidth,
             def.format.video.nFrameHeight,
             def.format.video.eColorFormat);
+#else
+#include "../../../device/samsung/exynos4/include/sec_format.h"
+    OMX_COLOR_FORMATTYPE eColorFormat;
+
+    switch (def.format.video.eColorFormat) {
+    case OMX_SEC_COLOR_FormatNV12TPhysicalAddress:
+#ifdef S3D_SUPPORT
+    case OMX_SEC_COLOR_FormatNV12Tiled_SBS_LR:
+    case OMX_SEC_COLOR_FormatNV12Tiled_SBS_RL:
+    case OMX_SEC_COLOR_FormatNV12Tiled_TB_LR:
+    case OMX_SEC_COLOR_FormatNV12Tiled_TB_RL:
+#endif
+        eColorFormat = (OMX_COLOR_FORMATTYPE)HAL_PIXEL_FORMAT_CUSTOM_YCbCr_420_SP_TILED;
+        break;
+    case OMX_COLOR_FormatYUV420SemiPlanar:
+#ifdef S3D_SUPPORT
+    case OMX_SEC_COLOR_FormatYUV420SemiPlanar_SBS_LR:
+    case OMX_SEC_COLOR_FormatYUV420SemiPlanar_SBS_RL:
+    case OMX_SEC_COLOR_FormatYUV420SemiPlanar_TB_LR:
+    case OMX_SEC_COLOR_FormatYUV420SemiPlanar_TB_RL:
+#endif
+        eColorFormat = (OMX_COLOR_FORMATTYPE)HAL_PIXEL_FORMAT_YCbCr_420_SP;
+        break;
+#ifdef S3D_SUPPORT
+    case OMX_SEC_COLOR_FormatYUV420Planar_SBS_LR:
+    case OMX_SEC_COLOR_FormatYUV420Planar_SBS_RL:
+    case OMX_SEC_COLOR_FormatYUV420Planar_TB_LR:
+    case OMX_SEC_COLOR_FormatYUV420Planar_TB_RL:
+#endif
+    case OMX_COLOR_FormatYUV420Planar:
+    default:
+        eColorFormat = (OMX_COLOR_FORMATTYPE)HAL_PIXEL_FORMAT_YCbCr_420_P;
+        break;
+    }
+
+    err = native_window_set_buffers_geometry(
+            mNativeWindow.get(),
+            def.format.video.nFrameWidth,
+            def.format.video.nFrameHeight,
+            eColorFormat);
+#endif
 
     if (err != 0) {
         ALOGE("native_window_set_buffers_geometry failed: %s (%d)",

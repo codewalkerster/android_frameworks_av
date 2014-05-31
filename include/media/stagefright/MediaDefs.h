@@ -29,6 +29,11 @@ extern const char *MEDIA_MIMETYPE_VIDEO_H263;
 extern const char *MEDIA_MIMETYPE_VIDEO_MPEG2;
 extern const char *MEDIA_MIMETYPE_VIDEO_RAW;
 
+#if defined(USE_FFMPEG)
+extern const char *MEDIA_MIMETYPE_VIDEO_VC1;
+extern const char *MEDIA_MIMETYPE_VIDEO_FFMPEG;
+#endif
+
 extern const char *MEDIA_MIMETYPE_AUDIO_AMR_NB;
 extern const char *MEDIA_MIMETYPE_AUDIO_AMR_WB;
 extern const char *MEDIA_MIMETYPE_AUDIO_MPEG;           // layer III
@@ -43,6 +48,10 @@ extern const char *MEDIA_MIMETYPE_AUDIO_RAW;
 extern const char *MEDIA_MIMETYPE_AUDIO_FLAC;
 extern const char *MEDIA_MIMETYPE_AUDIO_AAC_ADTS;
 
+#if defined(USE_FFMPEG)
+extern const char *MEDIA_MIMETYPE_AUDIO_FFMPEG;
+#endif
+
 extern const char *MEDIA_MIMETYPE_CONTAINER_MPEG4;
 extern const char *MEDIA_MIMETYPE_CONTAINER_WAV;
 extern const char *MEDIA_MIMETYPE_CONTAINER_OGG;
@@ -50,6 +59,12 @@ extern const char *MEDIA_MIMETYPE_CONTAINER_MATROSKA;
 extern const char *MEDIA_MIMETYPE_CONTAINER_MPEG2TS;
 extern const char *MEDIA_MIMETYPE_CONTAINER_AVI;
 extern const char *MEDIA_MIMETYPE_CONTAINER_MPEG2PS;
+
+#if defined(USE_FFMPEG)
+extern const char *MEDIA_MIMETYPE_CONTAINER_FFMPEG;
+extern const char *MEDIA_MIMETYPE_CONTAINER_RMVB;
+extern const char *MEDIA_MIMETYPE_CONTAINER_ASF;
+#endif
 
 extern const char *MEDIA_MIMETYPE_CONTAINER_WVM;
 

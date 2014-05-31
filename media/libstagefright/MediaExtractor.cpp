@@ -29,7 +29,9 @@
 #include "include/WVMExtractor.h"
 #include "include/FLACExtractor.h"
 #include "include/AACExtractor.h"
-
+#if defined(USE_FFMPEG)
+#include "include/FfmpegExtractor.h"
+#endif
 #include "matroska/MatroskaExtractor.h"
 
 #include <media/stagefright/foundation/AMessage.h>
@@ -116,6 +118,11 @@ sp<MediaExtractor> MediaExtractor::Create(
         ret = new AACExtractor(source, meta);
     } else if (!strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MPEG2PS)) {
         ret = new MPEG2PSExtractor(source);
+#if defined(USE_FFMPEG)		
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_FFMPEG)) {
+    	ALOGI("bbk new FfmpegExtractor");
+        ret = new FfmpegExtractor(source);
+#endif				
     }
 
     if (ret != NULL) {

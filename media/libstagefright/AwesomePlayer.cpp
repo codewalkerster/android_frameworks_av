@@ -55,6 +55,12 @@
 
 #include <cutils/properties.h>
 
+#if defined(USE_FFMPEG)
+extern "C"
+{
+#include "libavformat/avformat.h"
+}
+#endif
 #define USE_SURFACE_ALLOC 1
 #define FRAME_DROP_FREQ 0
 
@@ -195,6 +201,9 @@ AwesomePlayer::AwesomePlayer()
       mLastVideoTimeUs(-1),
       mTextDriver(NULL) {
     CHECK_EQ(mClient.connect(), (status_t)OK);
+#if defined(USE_FFMPEG)
+    av_register_all();
+#endif	
 
     DataSource::RegisterDefaultSniffers();
 
@@ -1098,8 +1107,17 @@ void AwesomePlayer::initRenderer_l() {
     // before creating a new one.
     IPCThreadState::self()->flushCommands();
 
+
     // Even if set scaling mode fails, we will continue anyway
     setVideoScalingMode_l(mVideoScalingMode);
+#if defined(USE_FFMPEG)
+#ifdef FFMPEG_USER_NATIVEWINDOW_RENDER
+    if (!strcmp(component, "FfmpegVideoDecoder")) {
+        mVideoRenderer =
+            new AwesomeNativeWindowRenderer(mNativeWindow, rotationDegrees);
+    } else
+#endif
+#endif
     if (USE_SURFACE_ALLOC
             && !strncmp(component, "OMX.", 4)
             && strncmp(component, "OMX.google.", 11)

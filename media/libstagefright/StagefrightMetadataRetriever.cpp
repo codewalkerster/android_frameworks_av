@@ -29,6 +29,12 @@
 #include <media/stagefright/OMXCodec.h>
 #include <media/stagefright/MediaDefs.h>
 
+#if defined(USE_FFMPEG)
+extern "C"
+{
+#include "libavformat/avformat.h"
+}
+#endif
 namespace android {
 
 StagefrightMetadataRetriever::StagefrightMetadataRetriever()
@@ -36,6 +42,9 @@ StagefrightMetadataRetriever::StagefrightMetadataRetriever()
       mAlbumArt(NULL) {
     ALOGV("StagefrightMetadataRetriever()");
 
+#if defined(USE_FFMPEG)
+    av_register_all();
+#endif
     DataSource::RegisterDefaultSniffers();
     CHECK_EQ(mClient.connect(), (status_t)OK);
 }

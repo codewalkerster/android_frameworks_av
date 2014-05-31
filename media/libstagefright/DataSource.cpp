@@ -33,6 +33,10 @@
 #include "include/AACExtractor.h"
 #include "include/WVMExtractor.h"
 
+#if defined(USE_FFMPEG)
+#include "include/FfmpegExtractor.h"
+#endif
+
 #include "matroska/MatroskaExtractor.h"
 
 #include <media/stagefright/foundation/AMessage.h>
@@ -120,6 +124,9 @@ void DataSource::RegisterDefaultSniffers() {
     RegisterSniffer(SniffAAC);
     RegisterSniffer(SniffMPEG2PS);
     RegisterSniffer(SniffWVM);
+#if defined(USE_FFMPEG)	
+    RegisterSniffer(SniffFfmpeg);
+#endif
 
     char value[PROPERTY_VALUE_MAX];
     if (property_get("drm.service.enabled", value, NULL)

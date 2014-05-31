@@ -56,6 +56,10 @@ AudioPlayer::AudioPlayer(
       mAllowDeepBuffering(allowDeepBuffering),
       mObserver(observer),
       mPinnedTimeUs(-1ll) {
+#ifdef USE_ALP_AUDIO
+    mSeekTimeUs = 0;
+    mIsALPAudio = false;
+#endif
 }
 
 AudioPlayer::~AudioPlayer() {
@@ -125,6 +129,16 @@ status_t AudioPlayer::start(bool sourceAlreadyStarted) {
                 "source format didn't specify channel mask, using (%d) channel order", numChannels);
         channelMask = CHANNEL_MASK_USE_CHANNEL_ORDER;
     }
+
+#ifdef USE_ALP_AUDIO
+    const char *componentName;
+    if (format->findCString(kKeyDecoderComponent, &componentName) == true) {
+	ALOGE("[wenpin] componentName %s", componentName);
+        if (strcmp(componentName, "OMX.SEC.MP3.Decoder") == 0) {
+            mIsALPAudio = true;
+        }
+    }
+#endif
 
     if (mAudioSink.get() != NULL) {
 
@@ -274,6 +288,9 @@ void AudioPlayer::reset() {
     mReachedEOS = false;
     mFinalStatus = OK;
     mStarted = false;
+#ifdef USE_ALP_AUDIO
+    mSeekTimeUs = 0;
+#endif
 }
 
 // static
@@ -554,7 +571,14 @@ int64_t AudioPlayer::getMediaTimeUs() {
         realTimeOffset = 0;
     }
 
+#ifdef USE_ALP_AUDIO
+    if (mIsALPAudio)
+        return mSeekTimeUs + mPositionTimeRealUs + realTimeOffset;
+    else
+        return mPositionTimeMediaUs + realTimeOffset;
+#else
     return mPositionTimeMediaUs + realTimeOffset;
+#endif
 }
 
 bool AudioPlayer::getMediaTimeMapping(
