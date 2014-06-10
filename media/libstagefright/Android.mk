@@ -122,6 +122,8 @@ ifeq ($(BOARD_USE_SAMSUNG_COLORFORMAT), true)
 LOCAL_CFLAGS += -DUSE_SAMSUNG_COLORFORMAT
 endif
 ifeq ($(BOARD_FIX_NATIVE_COLOR_FORMAT), true)
+# Add native color format patch definition
+LOCAL_CFLAGS += -DNATIVE_COLOR_FORMAT_PATCH
 # Include native color format header path
 ifeq ($(TARGET_SOC),exynos4x12)
 LOCAL_C_INCLUDES += \
@@ -131,9 +133,6 @@ endif # ifeq ($(BOARD_FIX_NATIVE_COLOR_FORMAT), true)
 ifeq ($(TARGET_SOC),exynos4x12)
 	LOCAL_CFLAGS += -DSAMSUNG_EXYNOS4x12
 endif
-# Add native color format patch definition
-LOCAL_CFLAGS += -DNATIVE_COLOR_FORMAT_PATCH
-
 LOCAL_MODULE:= libstagefright
 
 LOCAL_MODULE_TAGS := optional
