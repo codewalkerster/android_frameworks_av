@@ -1388,6 +1388,20 @@ status_t AwesomePlayer::initAudioDecoder() {
 
     if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_RAW)) {
         mAudioSource = mAudioTrack;
+#ifdef USE_ALP_AUDIO
+     } else if (mVideoTrack == NULL && !strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_MPEG)) {
+        mAudioSource = OMXCodec::Create(
+            mClient.interface(), mAudioTrack->getFormat(),
+            false,  // createEncoder
+            mAudioTrack,
+            "OMX.Exynos.MP3.Decoder");
+        if (mAudioSource == NULL) {
+            mAudioSource = OMXCodec::Create(
+                    mClient.interface(), mAudioTrack->getFormat(),
+                    false,  // createEncoder
+                    mAudioTrack);
+        }
+#endif
     } else {
         mAudioSource = OMXCodec::Create(
                 mClient.interface(), mAudioTrack->getFormat(),
@@ -1878,6 +1892,18 @@ void AwesomePlayer::postCheckAudioStatusEvent(int64_t delayUs) {
         return;
     }
     mAudioStatusEventPending = true;
+
+#ifdef SAMSUNG_AV_SYNC
+    /*
+     * Do not honor delay when audio reached EOS
+     * in order to change immediately time source from AudioPlayer to SystemTime
+     */
+    status_t finalStatus;
+    if (mWatchForAudioEOS && mAudioPlayer->reachedEOS(&finalStatus)) {
+        delayUs = 0;
+    }
+#endif
+
     // Do not honor delay when looping in order to limit audio gap
     if (mFlags & (LOOPING | AUTO_LOOPING)) {
         delayUs = 0;

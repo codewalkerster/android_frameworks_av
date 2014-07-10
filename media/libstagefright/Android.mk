@@ -104,6 +104,21 @@ LOCAL_SRC_FILES += \
         chromium_http_stub.cpp
 LOCAL_CPPFLAGS += -DCHROMIUM_AVAILABLE=1
 
+ifeq ($(BOARD_USE_S3D_SUPPORT), true)
+ifeq ($(BOARD_USES_HWC_SERVICES), true)
+LOCAL_CFLAGS += -DUSE_S3D_SUPPORT -DHWC_SERVICES
+LOCAL_C_INCLUDES += $(TOP)/hardware/samsung_slsi/openmax/include/exynos
+LOCAL_C_INCLUDES += $(TOP)/hardware/samsung_slsi/$(TARGET_BOARD_PLATFORM)/libhwcService
+LOCAL_C_INCLUDES += $(TOP)/hardware/samsung_slsi/$(TARGET_BOARD_PLATFORM)/libhwc
+LOCAL_C_INCLUDES += $(TOP)/hardware/samsung_slsi/$(TARGET_BOARD_PLATFORM)/include
+LOCAL_C_INCLUDES += $(TOP)/hardware/samsung_slsi/$(TARGET_SOC)/libhwcmodule
+LOCAL_C_INCLUDES += $(TOP)/hardware/samsung_slsi/$(TARGET_SOC)/include
+LOCAL_C_INCLUDES += $(TOP)/hardware/samsung_slsi/exynos/libexynosutils
+LOCAL_C_INCLUDES += $(TOP)/hardware/samsung_slsi/exynos/include
+LOCAL_SHARED_LIBRARIES += libExynosHWCService
+endif
+endif
+
 LOCAL_SHARED_LIBRARIES += libstlport
 include external/stlport/libstlport.mk
 
@@ -114,6 +129,12 @@ LOCAL_SHARED_LIBRARIES += \
         libdl
 
 LOCAL_CFLAGS += -Wno-multichar
+
+ifeq ($(BOARD_USE_ALP_AUDIO),  true)
+LOCAL_CFLAGS += -DUSE_ALP_AUDIO
+endif
+
+LOCAL_CFLAGS += -DSAMSUNG_AV_SYNC
 
 LOCAL_MODULE:= libstagefright
 

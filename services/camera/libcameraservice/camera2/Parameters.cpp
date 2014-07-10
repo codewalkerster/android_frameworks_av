@@ -499,6 +499,14 @@ status_t Parameters::initialize(const CameraMetadata *info) {
                     supportedSceneModes +=
                         CameraParameters::SCENE_MODE_SUNSET;
                     break;
+                case ANDROID_CONTROL_SCENE_MODE_DAWN:
+                    supportedSceneModes +=
+                        CameraParameters::SCENE_MODE_DAWN;
+                    break;
+                case ANDROID_CONTROL_SCENE_MODE_FALL:
+                    supportedSceneModes +=
+                        CameraParameters::SCENE_MODE_FALL;
+                    break;
                 case ANDROID_CONTROL_SCENE_MODE_STEADYPHOTO:
                     supportedSceneModes +=
                         CameraParameters::SCENE_MODE_STEADYPHOTO;
@@ -518,6 +526,10 @@ status_t Parameters::initialize(const CameraMetadata *info) {
                 case ANDROID_CONTROL_SCENE_MODE_CANDLELIGHT:
                     supportedSceneModes +=
                         CameraParameters::SCENE_MODE_CANDLELIGHT;
+                    break;
+                case ANDROID_CONTROL_SCENE_MODE_TEXT:
+                    supportedSceneModes +=
+                        CameraParameters::SCENE_MODE_TEXT;
                     break;
                 case ANDROID_CONTROL_SCENE_MODE_BARCODE:
                     supportedSceneModes +=
@@ -1997,6 +2009,10 @@ int Parameters::sceneModeStringToEnum(const char *sceneMode) {
             ANDROID_CONTROL_SCENE_MODE_SNOW :
         !strcmp(sceneMode, CameraParameters::SCENE_MODE_SUNSET) ?
             ANDROID_CONTROL_SCENE_MODE_SUNSET :
+        !strcmp(sceneMode, CameraParameters::SCENE_MODE_DAWN) ?
+            ANDROID_CONTROL_SCENE_MODE_DAWN :
+        !strcmp(sceneMode, CameraParameters::SCENE_MODE_FALL) ?
+            ANDROID_CONTROL_SCENE_MODE_FALL :
         !strcmp(sceneMode, CameraParameters::SCENE_MODE_STEADYPHOTO) ?
             ANDROID_CONTROL_SCENE_MODE_STEADYPHOTO :
         !strcmp(sceneMode, CameraParameters::SCENE_MODE_FIREWORKS) ?
@@ -2007,6 +2023,8 @@ int Parameters::sceneModeStringToEnum(const char *sceneMode) {
             ANDROID_CONTROL_SCENE_MODE_PARTY :
         !strcmp(sceneMode, CameraParameters::SCENE_MODE_CANDLELIGHT) ?
             ANDROID_CONTROL_SCENE_MODE_CANDLELIGHT :
+        !strcmp(sceneMode, CameraParameters::SCENE_MODE_TEXT) ?
+            ANDROID_CONTROL_SCENE_MODE_TEXT :
         !strcmp(sceneMode, CameraParameters::SCENE_MODE_BARCODE) ?
             ANDROID_CONTROL_SCENE_MODE_BARCODE:
         -1;

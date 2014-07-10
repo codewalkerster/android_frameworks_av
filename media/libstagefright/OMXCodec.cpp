@@ -44,6 +44,11 @@
 
 #include "include/avc_utils.h"
 
+#ifdef USE_S3D_SUPPORT
+#include "Exynos_OMX_Def.h"
+#include "ExynosHWCService.h"
+#endif
+
 namespace android {
 
 // Treat time out as an error if we have not received any output
@@ -248,6 +253,20 @@ uint32_t OMXCodec::getComponentQuirks(
                 index, "output-buffers-are-unreadable")) {
         quirks |= kOutputBuffersAreUnreadable;
     }
+#ifdef USE_ALP_AUDIO
+    /*
+     * Exynos Mp3 decoder needs the following quirks.
+     *
+     * kSupportsMultipleFramesPerInputBuffer :
+     *         To coalesce as much as SRP's input buffer size
+     * kNeedsFlushBeforeDisable :
+     *         Flush is necessary before port is disabled.
+     */
+    if (!strcmp("OMX.Exynos.MP3.Decoder", list->getCodecName(index))) {
+        quirks |= kSupportsMultipleFramesPerInputBuffer;
+        quirks |= kNeedsFlushBeforeDisable;
+    }
+#endif
 
     return quirks;
 }
@@ -1736,6 +1755,8 @@ status_t OMXCodec::allocateOutputBuffersFromNativeWindow() {
     }
     if (mFlags & kEnableGrallocUsageProtected) {
         usage |= GRALLOC_USAGE_PROTECTED;
+        if (!(mFlags & kUseSecureInputBuffers))
+            usage |= GRALLOC_USAGE_PRIVATE_NONSECURE;
     }
 
     // Make sure to check whether either Stagefright or the video decoder
@@ -2392,6 +2413,7 @@ void OMXCodec::onEvent(OMX_EVENTTYPE event, OMX_U32 data1, OMX_U32 data2) {
                 // when the OMX_EventPortSettingsChanged is not meant for reallocating
                 // the output buffers.
                 if (data1 == kPortIndexOutput) {
+                    mFilledBuffers.clear();  // to support the Dynamic Resolution Change.
                     CHECK(mFilledBuffers.empty());
                 }
                 onPortSettingsChanged(data1);
@@ -2455,7 +2477,40 @@ void OMXCodec::onEvent(OMX_EVENTTYPE event, OMX_U32 data1, OMX_U32 data2) {
             break;
         }
 #endif
+#ifdef USE_S3D_SUPPORT
+        case (OMX_EVENTTYPE)OMX_EventS3DInformation:
+        {
+            if (mFlags & kClientNeedsFramebuffer)
+                break;
 
+            sp<IServiceManager> sm = defaultServiceManager();
+            sp<android::IExynosHWCService> hwc = interface_cast<android::IExynosHWCService>(sm->getService(String16("Exynos.HWCService")));
+            if (hwc != NULL) {
+                if (data1 == OMX_TRUE) {
+                    int eS3DMode;
+                    switch (data2) {
+                    case OMX_SEC_FPARGMT_SIDE_BY_SIDE:
+                        eS3DMode = S3D_SBS;
+                        break;
+                    case OMX_SEC_FPARGMT_TOP_BOTTOM:
+                        eS3DMode = S3D_TB;
+                        break;
+                    case OMX_SEC_FPARGMT_CHECKERBRD_INTERL: // unsupport format at HDMI
+                    case OMX_SEC_FPARGMT_COLUMN_INTERL:
+                    case OMX_SEC_FPARGMT_ROW_INTERL:
+                    case OMX_SEC_FPARGMT_TEMPORAL_INTERL:
+                    default:
+                        eS3DMode = S3D_NONE;
+                    }
+
+                    hwc->setHdmiResolution(0, eS3DMode);
+                }
+            } else {
+                ALOGE("Exynos.HWCService is unavailable");
+            }
+            break;
+        }
+#endif
         default:
         {
             CODEC_LOGV("EVENT(%d, %ld, %ld)", event, data1, data2);
@@ -2580,6 +2635,16 @@ void OMXCodec::onCmdComplete(OMX_COMMANDTYPE cmd, OMX_U32 data) {
 
                     // We implicitly resume pulling on our upstream source.
                     mPaused = false;
+
+#ifdef USE_ALP_AUDIO
+                    /*
+                     * This value has to be initialized when playing repeatedly
+                     * a very short file in Music application by repeat settings.
+                     * The file is short enough to gather all input frames
+                     * to one input buffer at once.
+                     */
+                    mNoMoreOutputData = false;
+#endif
 
                     drainInputBuffers();
                     fillOutputBuffers();
@@ -2871,10 +2936,18 @@ void OMXCodec::fillOutputBuffers() {
                 == mPortBuffers[kPortIndexInput].size()
             && countBuffersWeOwn(mPortBuffers[kPortIndexOutput])
                 == mPortBuffers[kPortIndexOutput].size()) {
+#ifdef USE_ALP_AUDIO
+        /* Exynos mp3 decoder should be finished by EOS flag in output buffer. */
+        /* Do not apply this workaround */
+        if (strcmp(mComponentName, "OMX.Exynos.MP3.Decoder") != 0) {
+#endif
         mNoMoreOutputData = true;
         mBufferFilled.signal();
 
         return;
+#ifdef USE_ALP_AUDIO
+        }
+#endif
     }
 
     Vector<BufferInfo> *buffers = &mPortBuffers[kPortIndexOutput];
@@ -3147,12 +3220,22 @@ bool OMXCodec::drainInputBuffer(BufferInfo *info) {
             break;
         }
 
+#ifdef USE_ALP_AUDIO
+        /*
+         * In ALP mode, 250ms restriction is not required.
+         * SRP driver must have enough frames for the size of its input buffer.
+         */
+        if (strcmp(mComponentName, "OMX.Exynos.MP3.Decoder") != 0) {
+#endif
         int64_t coalescedDurationUs = lastBufferTimeUs - timestampUs;
 
         if (coalescedDurationUs > 250000ll) {
             // Don't coalesce more than 250ms worth of encoded data at once.
             break;
         }
+#ifdef USE_ALP_AUDIO
+        }
+#endif
     }
 
     if (n > 1) {

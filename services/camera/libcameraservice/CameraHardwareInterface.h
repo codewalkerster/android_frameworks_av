@@ -26,6 +26,9 @@
 #include <camera/CameraParameters.h>
 #include <system/window.h>
 #include <hardware/camera.h>
+#ifdef USE_MHB_ION
+#include <binder/MemoryHeapIon.h>
+#endif
 
 namespace android {
 
@@ -494,7 +497,11 @@ private:
                          mBufSize(buf_size),
                          mNumBufs(num_buffers)
         {
+#ifdef USE_MHB_ION
+            mHeap = new MemoryHeapIon(fd, buf_size * num_buffers);
+#else
             mHeap = new MemoryHeapBase(fd, buf_size * num_buffers);
+#endif
             commonInitialization();
         }
 
@@ -502,7 +509,11 @@ private:
                          mBufSize(buf_size),
                          mNumBufs(num_buffers)
         {
+#ifdef USE_MHB_ION
+            mHeap = new MemoryHeapIon(buf_size * num_buffers);
+#else
             mHeap = new MemoryHeapBase(buf_size * num_buffers);
+#endif
             commonInitialization();
         }
 
@@ -533,15 +544,23 @@ private:
 
         camera_memory_t handle;
     };
-
+#ifdef USE_MHB_ION
+    static camera_memory_t* __get_memory(int fd, size_t buf_size, uint_t num_bufs,
+                                         void *ion_fd)
+#else
     static camera_memory_t* __get_memory(int fd, size_t buf_size, uint_t num_bufs,
                                          void *user __attribute__((unused)))
+#endif
     {
         CameraHeapMemory *mem;
         if (fd < 0)
             mem = new CameraHeapMemory(buf_size, num_bufs);
         else
             mem = new CameraHeapMemory(fd, buf_size, num_bufs);
+#ifdef USE_MHB_ION
+        if (ion_fd)
+            *((int *)ion_fd) = mem->mHeap->getHeapID();
+#endif
         mem->incStrong(mem);
         return &mem->handle;
     }

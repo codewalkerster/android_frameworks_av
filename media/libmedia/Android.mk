@@ -12,6 +12,7 @@ include $(BUILD_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:= \
+    AudioParameter.cpp \
     AudioTrack.cpp \
     IAudioFlinger.cpp \
     IAudioFlingerClient.cpp \
