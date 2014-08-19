@@ -56,6 +56,11 @@
 
 #include <cutils/properties.h>
 
+#ifdef USES_WFD_SERVICE
+#include "IWFDService.h"
+#include "WFDService.h"
+#endif
+
 #define USE_SURFACE_ALLOC 1
 #define FRAME_DROP_FREQ 0
 
@@ -201,6 +206,9 @@ AwesomePlayer::AwesomePlayer()
       mExtractorFlags(0),
       mVideoBuffer(NULL),
       mDecryptHandle(NULL),
+#ifdef USES_WFD_SERVICE
+      IsDrmSource(false),
+#endif
       mLastVideoTimeUs(-1),
       mTextDriver(NULL),
       mOffloadAudio(false),
@@ -1315,6 +1323,21 @@ void AwesomePlayer::shutdownVideoDecoder_l() {
     }
     IPCThreadState::self()->flushCommands();
     ALOGV("video decoder shutdown completed");
+
+#ifdef USES_WFD_SERVICE
+    if (IsDrmSource) {
+        sp<IServiceManager> sm = defaultServiceManager();
+        sp<IWFDService> wfdService =
+            interface_cast<android::IWFDService>(sm->getService(String16("media.wifi_display")));
+        if (wfdService == NULL) {
+            ALOGE("Unable to get WFD service");
+        } else {
+            wfdService->sendCommand(WFD_ENCODER_CMD, WFD_ENCODER_EXT1_UNLOAD, 0);
+            wfdService->sendCommand(WFD_ENCODER_CMD, WFD_ENCODER_EXT1_LOAD_NORMAL, 0);
+            IsDrmSource = false;
+        }
+    }
+#endif
 }
 
 status_t AwesomePlayer::setNativeWindow_l(const sp<ANativeWindow> &native) {
@@ -1510,6 +1533,46 @@ status_t AwesomePlayer::initAudioDecoder() {
     if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_RAW)) {
         ALOGV("createAudioPlayer: bypass OMX (raw)");
         mAudioSource = mAudioTrack;
+#ifdef USE_ALP_AUDIO
+     } else if (mVideoTrack == NULL && !strncasecmp(mime, MEDIA_MIMETYPE_AUDIO_MPEG, 10)) {
+        mAudioSource = OMXCodec::Create(
+            mClient.interface(), mAudioTrack->getFormat(),
+            false,  // createEncoder
+            mAudioTrack,
+            "OMX.Exynos.MP3.Decoder");
+        if (mAudioSource == NULL) {
+            mAudioSource = OMXCodec::Create(
+                    mClient.interface(), mAudioTrack->getFormat(),
+                    false,  // createEncoder
+                    mAudioTrack);
+        }
+#endif
+#ifdef USE_SEIREN_AUDIO
+     } else if (mVideoTrack == NULL && !strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AAC)) {
+        mAudioSource = OMXCodec::Create(
+            mClient.interface(), mAudioTrack->getFormat(),
+            false,  // createEncoder
+            mAudioTrack,
+            "OMX.Exynos.AAC.Decoder");
+        if (mAudioSource == NULL) {
+            mAudioSource = OMXCodec::Create(
+                    mClient.interface(), mAudioTrack->getFormat(),
+                    false,  // createEncoder
+                    mAudioTrack);
+        }
+     } else if (mVideoTrack == NULL && !strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_FLAC)) {
+        mAudioSource = OMXCodec::Create(
+            mClient.interface(), mAudioTrack->getFormat(),
+            false,  // createEncoder
+            mAudioTrack,
+            "OMX.Exynos.FLAC.Decoder");
+        if (mAudioSource == NULL) {
+            mAudioSource = OMXCodec::Create(
+                    mClient.interface(), mAudioTrack->getFormat(),
+                    false,  // createEncoder
+                    mAudioTrack);
+        }
+#endif
     } else {
         // If offloading we still create a OMX decoder as a fall-back
         // but we don't start it
@@ -1618,6 +1681,34 @@ status_t AwesomePlayer::initVideoDecoder(uint32_t flags) {
     }
 #endif
     ALOGV("initVideoDecoder flags=0x%x", flags);
+
+#ifdef USES_WFD_SERVICE
+    sp<IServiceManager> sm;
+    sp<IWFDService> wfdService;
+    if (mDecryptHandle != NULL) {
+        sm = defaultServiceManager();
+        wfdService = interface_cast<android::IWFDService>(sm->getService(String16("media.wifi_display")));
+        if (wfdService == NULL)
+            ALOGE("Unable to get WFD service");
+        else
+            wfdService->sendCommand(WFD_ENCODER_CMD, WFD_ENCODER_EXT1_UNLOAD, 0);
+    }
+
+    int32_t requiresSecureBuffers = 0;
+    int32_t drmType = 0;
+    mVideoTrack->getFormat()->findInt32(
+                kKeyRequiresSecureBuffers,
+                &requiresSecureBuffers);
+    if ((flags & OMXCodec::kEnableGrallocUsageProtected) &&
+        requiresSecureBuffers == 0) {
+        drmType = NORMAL_DRM;
+    } else if (flags & OMXCodec::kEnableGrallocUsageProtected) {
+        drmType = SECURE_DRM;
+    } else {
+        drmType = NO_DRM;
+    }
+#endif
+
     mVideoSource = OMXCodec::Create(
             mClient.interface(), mVideoTrack->getFormat(),
             false, // createEncoder
@@ -1667,6 +1758,21 @@ status_t AwesomePlayer::initVideoDecoder(uint32_t flags) {
             modifyFlags(SLOW_DECODER_HACK, SET);
         }
     }
+
+#ifdef USES_WFD_SERVICE
+    if (wfdService != NULL && mDecryptHandle != NULL) {
+        if (drmType == NORMAL_DRM) {
+            wfdService->sendCommand(WFD_ENCODER_CMD, WFD_ENCODER_EXT1_LOAD_NORMAL, 0);
+            IsDrmSource = true;
+        } else if (drmType == SECURE_DRM) {
+            wfdService->sendCommand(WFD_ENCODER_CMD, WFD_ENCODER_EXT1_LOAD_SECURE, 0);
+            IsDrmSource = true;
+        }
+    } else if (wfdService != NULL) {
+        wfdService->sendCommand(WFD_ENCODER_CMD, WFD_ENCODER_EXT1_LOAD_NORMAL, 0);
+        IsDrmSource = false;
+    }
+#endif
 
     return mVideoSource != NULL ? OK : UNKNOWN_ERROR;
 }
@@ -2058,6 +2164,18 @@ void AwesomePlayer::postCheckAudioStatusEvent(int64_t delayUs) {
         return;
     }
     mAudioStatusEventPending = true;
+
+#ifdef SAMSUNG_AV_SYNC
+    /*
+     * Do not honor delay when audio reached EOS
+     * in order to change immediately time source from AudioPlayer to SystemTime
+     */
+    status_t finalStatus;
+    if (mWatchForAudioEOS && mAudioPlayer->reachedEOS(&finalStatus)) {
+        delayUs = 0;
+    }
+#endif
+
     // Do not honor delay when looping in order to limit audio gap
     if (mFlags & (LOOPING | AUTO_LOOPING)) {
         delayUs = 0;

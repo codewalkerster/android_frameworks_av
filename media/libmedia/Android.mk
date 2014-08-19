@@ -12,6 +12,7 @@ include $(BUILD_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:= \
+    AudioParameter.cpp \
     AudioTrack.cpp \
     AudioTrackShared.cpp \
     IAudioFlinger.cpp \
@@ -57,6 +58,13 @@ LOCAL_SRC_FILES:= \
     StringArray.cpp
 
 LOCAL_SRC_FILES += ../libnbaio/roundup.c
+
+ifeq ($(BOARD_USES_WFD_SERVICE),true)
+LOCAL_SRC_FILES += \
+    IWFDService.cpp \
+    WFDService.cpp \
+    WFDServiceListener.cpp
+endif
 
 # for <cutils/atomic-inline.h>
 LOCAL_CFLAGS += -DANDROID_SMP=$(if $(findstring true,$(TARGET_CPU_SMP)),1,0)

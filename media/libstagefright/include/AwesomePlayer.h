@@ -239,6 +239,15 @@ private:
 
     DrmManagerClient *mDrmManagerClient;
     sp<DecryptHandle> mDecryptHandle;
+#ifdef USES_WFD_SERVICE
+    enum {
+        NO_DRM = 0,
+        NORMAL_DRM,
+        SECURE_DRM,
+    };
+
+    bool IsDrmSource;
+#endif
 
     int64_t mLastVideoTimeUs;
     TimedTextDriver *mTextDriver;

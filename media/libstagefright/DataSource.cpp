@@ -35,6 +35,10 @@
 
 #include "matroska/MatroskaExtractor.h"
 
+#ifdef USE_SEIREN_AUDIO
+#include "ittiamextractors/flac/plugin/IttiamFLACExtractor.h"
+#endif
+
 #include <media/stagefright/foundation/AMessage.h>
 #include <media/stagefright/DataSource.h>
 #include <media/stagefright/FileSource.h>
@@ -162,7 +166,11 @@ void DataSource::RegisterDefaultSniffers() {
     RegisterSniffer_l(SniffMatroska);
     RegisterSniffer_l(SniffOgg);
     RegisterSniffer_l(SniffWAV);
+#ifdef USE_SEIREN_AUDIO
+    RegisterSniffer_l(SniffIttiamFLAC);
+#else
     RegisterSniffer_l(SniffFLAC);
+#endif
     RegisterSniffer_l(SniffAMR);
     RegisterSniffer_l(SniffMPEG2TS);
     RegisterSniffer_l(SniffMP3);

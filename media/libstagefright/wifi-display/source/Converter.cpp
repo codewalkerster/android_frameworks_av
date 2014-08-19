@@ -38,6 +38,17 @@
 
 #include <OMX_Video.h>
 
+#ifdef USES_WFD_SERVICE
+#include <media/WFDService.h>
+#include <media/WFDServiceListener.h>
+#endif
+
+#ifdef USES_WIFI_DISPLAY
+#include <media/stagefright/MetaData.h>
+#endif
+
+#define MAX_WAIT_TIME_US        100000
+
 namespace android {
 
 Converter::Converter(
@@ -48,6 +59,12 @@ Converter::Converter(
     : mNotify(notify),
       mCodecLooper(codecLooper),
       mOutputFormat(outputFormat),
+#ifdef USES_WFD_SERVICE
+      mState(INTERNAL_STATE_UNINITIALIZED),
+      mPenddingOutputBufferCount(0),
+      mIsSecure(false),
+      mWfdServiceListener(NULL),
+#endif
       mFlags(flags),
       mIsVideo(false),
       mIsH264(false),
@@ -72,6 +89,14 @@ Converter::Converter(
     } else if (!strcasecmp(MEDIA_MIMETYPE_AUDIO_RAW, mime.c_str())) {
         mIsPCMAudio = true;
     }
+#ifdef USES_WFD_SERVICE
+    if (mIsVideo) {
+        status_t err = makeWFDServiceListener();
+        if (err != OK)
+            ALOGE("makeWFDServiceListener FAIL");
+    }
+    mInputFormat = outputFormat->dup();
+#endif
 }
 
 static void ReleaseMediaBufferReference(const sp<ABuffer> &accessUnit) {
@@ -113,6 +138,14 @@ void Converter::releaseEncoder() {
 
 Converter::~Converter() {
     CHECK(mEncoder == NULL);
+#ifdef USES_WFD_SERVICE
+    if (mWfdServiceListener != NULL) {
+        sp<IServiceManager> sm = defaultServiceManager();
+        sp<IBinder> binder = sm->getService(String16("media.wifi_display"));
+        sp<IWFDService> wfdService = interface_cast<IWFDService>(binder);
+        wfdService->removeWFDServiceListener(mWfdServiceListener);
+    }
+#endif
 }
 
 void Converter::shutdownAsync() {
@@ -121,6 +154,11 @@ void Converter::shutdownAsync() {
 }
 
 status_t Converter::init() {
+#ifdef USES_WFD_SERVICE
+    mPenddingOutputBufferCount = 0;
+    mIsSecure = false;
+    mState = INTERNAL_STATE_INITIALIZED;
+#endif
     status_t err = initEncoder();
 
     if (err != OK) {
@@ -129,6 +167,72 @@ status_t Converter::init() {
 
     return err;
 }
+
+#ifdef USES_WFD_SERVICE
+void Converter::init(bool IsSecure)
+{
+    ALOGV("init secure %d", IsSecure);
+    mPenddingOutputBufferCount = 0;
+    mState = INTERNAL_STATE_UNINITIALIZED;
+    mIsSecure = IsSecure;
+    mOutputFormat = mInputFormat->dup();
+    status_t err = initEncoder();
+    if (err == OK) {
+        mState = INTERNAL_STATE_INITIALIZED;
+    } else {
+        ALOGE("initEncoder failed");
+        releaseEncoder();
+    }
+}
+
+void Converter::internalStop() {
+    ALOGV("internalStop mState %d", mState);
+    if (mState == INTERNAL_STATE_INITIALIZED) {
+        mState = INTERNAL_STATE_STOPPING;
+        if (mPenddingOutputBufferCount == 0) {
+            mState = INTERNAL_STATE_STOPPED;
+        } else {
+            unsigned int waitTimeUs = 0;
+            while ((waitTimeUs < MAX_WAIT_TIME_US) &&
+                    mState == INTERNAL_STATE_STOPPING) {
+                usleep(10000);
+                waitTimeUs += 10000;
+            }
+        }
+    } else {
+        ALOGE("internalStop() called on wrong state");
+    }
+}
+
+void Converter::internalShutdown() {
+    ALOGV("internalShutdown mState %d", mState);
+    while (mAvailEncoderInputIndices.size()) {
+        size_t bufferIndex = *mAvailEncoderInputIndices.begin();
+        mAvailEncoderInputIndices.erase(mAvailEncoderInputIndices.begin());
+        ALOGE("internalShutdown(), erase bufferIndex %d, mAvailEncoderInputIndices size %d",
+            bufferIndex, mAvailEncoderInputIndices.size());
+    }
+    while (mInputBufferQueue.size()) {
+        sp<ABuffer> buffer = *mInputBufferQueue.begin();
+        mInputBufferQueue.erase(mInputBufferQueue.begin());
+        ALOGE("internalShutdown(), erase buffer %p, mInputBufferQueue size %d",
+                    buffer.get(), mInputBufferQueue.size());
+    }
+    sp<ABuffer> csdBuffer = NULL;
+#if 0
+    /* Todo: add CSD buffer handling code for secure playback */
+    if (mOutputFormat->findBuffer("csd-0", &csdBuffer) &&
+        csdBuffer != NULL) {
+        ion_unmap(csdBuffer->data(), csdBuffer->size());
+    }
+#endif
+    sp<AMessage> msg, response;
+    msg = new AMessage(kWhatInternalShutdown, id());
+    msg->postAndAwaitResponse(&response);
+
+    mDoMoreWorkPending = false;
+}
+#endif
 
 sp<IGraphicBufferProducer> Converter::getGraphicBufferProducer() {
     CHECK(mFlags & FLAG_USE_SURFACE_INPUT);
@@ -170,9 +274,23 @@ status_t Converter::initEncoder() {
     bool isAudio = !strncasecmp(outputMIME.c_str(), "audio/", 6);
 
     if (!mIsPCMAudio) {
+#ifdef USES_WFD_SERVICE
+        if (isAudio) {
+            mEncoder = MediaCodec::CreateByType(
+                    mCodecLooper, outputMIME.c_str(), true /* encoder */);
+        } else {
+            if (mIsSecure) {
+                mEncoder = MediaCodec::CreateByComponentName(
+                        mCodecLooper, "OMX.Exynos.AVC.Encoder.secure");
+            } else {
+                mEncoder = MediaCodec::CreateByComponentName(
+                        mCodecLooper, "OMX.Exynos.AVC.Encoder");
+            }
+        }
+#else
         mEncoder = MediaCodec::CreateByType(
                 mCodecLooper, outputMIME.c_str(), true /* encoder */);
-
+#endif
         if (mEncoder == NULL) {
             return ERROR_UNSUPPORTED;
         }
@@ -319,8 +437,35 @@ void Converter::onMessageReceived(const sp<AMessage> &msg) {
         {
             int32_t what;
             CHECK(msg->findInt32("what", &what));
+#ifdef USES_WIFI_DISPLAY
+            bool modeChange = false;
 
+            /* Todo: add buffer handling code for secure playback */
+            if (what == MediaPuller::kWhatAccessUnit) {
+                int32_t usage = 0;
+                void *mbuf;
+                sp<ABuffer> accessUnitForUsage;
+                CHECK(msg->findBuffer("accessUnit", &accessUnitForUsage));
+
+                if (accessUnitForUsage->meta()->findPointer("mediaBuffer", &mbuf)
+                        && mbuf != NULL) {
+                    if (((MediaBuffer *)(mbuf))->meta_data()->findInt32(kKeyIsDRM, &usage)) {
+                        if (mIsSecure != !!(usage & GRALLOC_USAGE_PROTECTED)) {
+                            modeChange = true;
+                            ALOGV("encoder's input buffer changed. modeChange: %s",
+                                    modeChange == true ? "TRUE" : "FALSE");
+                        }
+                    }
+                }
+            }
+
+            if ((!mIsPCMAudio && mEncoder == NULL) ||
+                mState == INTERNAL_STATE_STOPPING ||
+                mState == INTERNAL_STATE_STOPPED ||
+                modeChange) {
+#else
             if (!mIsPCMAudio && mEncoder == NULL) {
+#endif
                 ALOGV("got msg '%s' after encoder shutdown.",
                       msg->debugString().c_str());
 
@@ -354,7 +499,6 @@ void Converter::onMessageReceived(const sp<AMessage> &msg) {
                     ReleaseMediaBufferReference(accessUnit);
                     break;
                 }
-
 #if 0
                 void *mbuf;
                 if (accessUnit->meta()->findPointer("mediaBuffer", &mbuf)
@@ -453,7 +597,24 @@ void Converter::onMessageReceived(const sp<AMessage> &msg) {
             notify->post();
             break;
         }
+#ifdef USES_WFD_SERVICE
+        case kWhatInternalShutdown:
+        {
+            uint32_t replyID;
+            CHECK(msg->senderAwaitsResponse(&replyID));
 
+            releaseEncoder();
+
+            AString mime;
+            CHECK(mOutputFormat->findString("mime", &mime));
+            ALOGV("encoder (%s) shut down.", mime.c_str());
+
+            sp<AMessage> response = new AMessage;
+            response->setInt32("err", OK);
+            response->postReply(replyID);
+            break;
+        }
+#endif
         case kWhatDropAFrame:
         {
             ++mNumFramesToDrop;
@@ -463,6 +624,11 @@ void Converter::onMessageReceived(const sp<AMessage> &msg) {
         case kWhatReleaseOutputBuffer:
         {
             if (mEncoder != NULL) {
+#ifdef USES_WFD_SERVICE
+                mPenddingOutputBufferCount--;
+                if ((mState == INTERNAL_STATE_STOPPING) && (mPenddingOutputBufferCount == 0))
+                    mState = INTERNAL_STATE_STOPPED;
+#endif
                 size_t bufferIndex;
                 CHECK(msg->findInt32("bufferIndex", (int32_t*)&bufferIndex));
                 CHECK(bufferIndex < mEncoderOutputBuffers.size());
@@ -758,6 +924,9 @@ status_t Converter::doMoreWork() {
                         kWhatReleaseOutputBuffer, id()));
                 notify->setInt32("bufferIndex", bufferIndex);
 
+#ifdef USES_WFD_SERVICE
+                mPenddingOutputBufferCount++;
+#endif
                 buffer = new ABuffer(
                         rangeLength > (int32_t)size ? rangeLength : size);
                 buffer->meta()->setPointer("handle", handle);
@@ -776,12 +945,24 @@ status_t Converter::doMoreWork() {
             memcpy(buffer->data(), outbuf->base() + offset, size);
 
             if (flags & MediaCodec::BUFFER_FLAG_CODECCONFIG) {
+#ifdef USES_WFD_SERVICE
+                if (handle != NULL) {
+                    void *addr = (void *)handle->data[1];
+                    int size = handle->data[3];
+                    sp<ABuffer> tempBuffer = new ABuffer(size);
+                    memcpy(tempBuffer->data(), addr, size);
+                    mOutputFormat->setBuffer("csd-0", tempBuffer);
+                    mPenddingOutputBufferCount--;
+                    mEncoder->releaseOutputBuffer(bufferIndex);
+                }
+#else
                 if (!handle) {
                     if (mIsH264) {
                         mCSD0 = buffer;
                     }
                     mOutputFormat->setBuffer("csd-0", buffer);
                 }
+#endif
             } else {
                 if (mNeedToManuallyPrependSPSPPS
                         && mIsH264
@@ -840,5 +1021,97 @@ void Converter::setVideoBitrate(int32_t bitRate) {
         mPrevVideoBitrate = bitRate;
     }
 }
+
+#ifdef USES_WFD_SERVICE
+status_t Converter::makeWFDServiceListener()
+{
+    sp<IServiceManager> sm = defaultServiceManager();
+    sp<IBinder> binder = sm->getService(String16("media.wifi_display"));
+    sp<IWFDService> wfdService = interface_cast<IWFDService>(binder);
+    mWfdServiceListener = new WFDServiceListener(
+        (void *)this, &callbackWFDService, WFD_ENCODER_CMD);
+    return wfdService->addWFDServiceListener(mWfdServiceListener);
+}
+
+static unsigned int MeasureTime(struct timeval *start, struct timeval *stop)
+{
+    unsigned long sec, usec, time;
+
+    sec = stop->tv_sec - start->tv_sec;
+    if (stop->tv_usec >= start->tv_usec) {
+        usec = stop->tv_usec - start->tv_usec;
+    } else {
+        usec = stop->tv_usec + 1000000 - start->tv_usec;
+        sec--;
+    }
+
+    time = sec * 1000000 + (usec);
+
+    return time;
+}
+
+void Converter::callbackWFDService(void *me, int commandType, int ext1, int ext2)
+{
+    Converter *converter = (Converter *)me;
+    ALOGE("callbackWFDService(), commandType 0x%x, ext1 0x%x, ext2 0x%x", commandType, ext1, ext2);
+
+    switch(commandType) {
+    case WFD_ENCODER_CMD:
+    {
+        switch(ext1) {
+        case WFD_ENCODER_EXT1_UNLOAD:
+        {
+            ALOGE("callbackWFDService() WFD_ENCODER_EXT1_UNLOAD, ext1 0x%x, ext2 0x%x", ext1, ext2);
+
+            struct timeval start, stop;
+            gettimeofday(&start, NULL);
+
+            converter->internalStop();
+            converter->internalShutdown();
+
+            gettimeofday(&stop, NULL);
+
+            ALOGE("callbackWFDService() WFD_ENCODER_EXT1_UNLOAD, elapsed time %d", MeasureTime(&start, &stop));
+
+            break;
+        }
+
+        case WFD_ENCODER_EXT1_LOAD_NORMAL:
+        {
+            ALOGE("callbackWFDService(), WFD_ENCODER_EXT1_LOAD_NORMAL, ext1 0x%x, ext2 0x%x", ext1, ext2);
+
+            converter->init(false);
+            converter->requestIDRFrame();
+
+            break;
+        }
+
+        case WFD_ENCODER_EXT1_LOAD_SECURE:
+        {
+            ALOGE("callbackWFDService(), WFD_ENCODER_EXT1_LOAD_SECURE, ext1 0x%x, ext2 0x%x", ext1, ext2);
+
+            /* Todo: enable matic key setting
+            if (MFCDRM_set_magic_key_hdcp() != MFCDRM_SUCCESS)
+                ALOGE("MFCDRM_set_magic_key_hdcp FAIL");
+            */
+
+            converter->init(true);
+            converter->requestIDRFrame();
+
+            break;
+        }
+
+        default:
+            ALOGE("Unknown ext1 in wfdServiceNotify");
+        }
+        break;
+    }
+
+    default:
+        ALOGE("Unknown command in wfdServiceNotify");
+        break;
+    }
+}
+#endif
 
 }  // namespace android

@@ -20,6 +20,10 @@
 
 #include <media/stagefright/foundation/AHandler.h>
 
+#ifdef USES_WFD_SERVICE
+#include <media/IWFDService.h>
+#endif
+
 namespace android {
 
 struct ABuffer;
@@ -87,6 +91,9 @@ private:
         kWhatRequestIDRFrame,
         kWhatSuspendEncoding,
         kWhatShutdown,
+#ifdef USES_WFD_SERVICE
+        kWhatInternalShutdown,
+#endif
         kWhatEncoderActivity,
         kWhatDropAFrame,
         kWhatReleaseOutputBuffer,
@@ -95,6 +102,28 @@ private:
     sp<AMessage> mNotify;
     sp<ALooper> mCodecLooper;
     sp<AMessage> mOutputFormat;
+
+#ifdef USES_WFD_SERVICE
+    enum InternalState {
+        INTERNAL_STATE_UNINITIALIZED,
+        INTERNAL_STATE_INITIALIZED,
+        INTERNAL_STATE_STOPPING,
+        INTERNAL_STATE_STOPPED
+    };
+
+    InternalState mState;
+    int mPenddingOutputBufferCount;
+    bool mIsSecure;
+    sp<IWFDServiceListener> mWfdServiceListener;
+    sp<AMessage> mInputFormat;
+    void init(bool IsSecure);
+    void internalStop();
+    void internalShutdown();
+
+    static void callbackWFDService(void* me, int commandType, int ext1, int ext2);
+    status_t makeWFDServiceListener();
+#endif
+
     uint32_t mFlags;
     bool mIsVideo;
     bool mIsH264;

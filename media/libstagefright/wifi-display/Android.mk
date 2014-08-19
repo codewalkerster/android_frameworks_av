@@ -30,6 +30,19 @@ LOCAL_SHARED_LIBRARIES:= \
         libui                           \
         libutils                        \
 
+ifeq ($(BOARD_USES_WFD_SERVICE),true)
+LOCAL_CFLAGS += -DUSES_WFD_SERVICE
+endif
+
+ifeq ($(BOARD_USES_WIFI_DISPLAY),true)
+LOCAL_CFLAGS += -DUSES_WIFI_DISPLAY
+endif
+ifeq ($(BOARD_USES_ARGB8888), true)
+LOCAL_CFLAGS += -DUSES_ARGB8888
+LOCAL_C_INCLUDES += \
+        $(TOP)/hardware/samsung_slsi/exynos/include
+endif
+
 LOCAL_MODULE:= libstagefright_wfd
 
 LOCAL_MODULE_TAGS:= optional

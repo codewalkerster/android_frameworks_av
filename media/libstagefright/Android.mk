@@ -18,7 +18,6 @@ LOCAL_SRC_FILES:=                         \
         DRMExtractor.cpp                  \
         ESDS.cpp                          \
         FileSource.cpp                    \
-        FLACExtractor.cpp                 \
         HTTPBase.cpp                      \
         JPEGSource.cpp                    \
         MP3Extractor.cpp                  \
@@ -107,6 +106,36 @@ LOCAL_SRC_FILES += \
         chromium_http_stub.cpp
 LOCAL_CPPFLAGS += -DCHROMIUM_AVAILABLE=1
 
+ifeq ($(BOARD_USES_WIFI_DISPLAY),true)
+LOCAL_CFLAGS += -DUSES_WIFI_DISPLAY
+LOCAL_C_INCLUDES += $(TOP)/hardware/samsung_slsi/openmax/include/exynos
+endif
+
+ifeq ($(BOARD_USES_WFD_SERVICE),true)
+LOCAL_CFLAGS += -DUSES_WFD_SERVICE
+LOCAL_C_INCLUDES += $(TOP)/frameworks/av/include/media
+endif
+
+ifeq ($(BOARD_USES_GSC_OTF), true)
+LOCAL_CFLAGS += -DUSES_GSC_OTF
+endif
+
+ifeq ($(BOARD_USE_S3D_SUPPORT), true)
+ifeq ($(BOARD_USES_HWC_SERVICES), true)
+LOCAL_CFLAGS += -DUSE_S3D_SUPPORT -DHWC_SERVICES
+LOCAL_C_INCLUDES += $(TOP)/hardware/samsung_slsi/openmax/include/exynos
+LOCAL_C_INCLUDES += $(TOP)/hardware/samsung_slsi/$(TARGET_BOARD_PLATFORM)/libhwcService
+LOCAL_C_INCLUDES += $(TOP)/hardware/samsung_slsi/$(TARGET_BOARD_PLATFORM)/include
+LOCAL_C_INCLUDES += $(TOP)/hardware/samsung_slsi/$(TARGET_SOC)/libhwcmodule
+LOCAL_C_INCLUDES += $(TOP)/hardware/samsung_slsi/$(TARGET_SOC)/include
+LOCAL_C_INCLUDES += $(TOP)/hardware/samsung_slsi/exynos/libexynosutils
+LOCAL_C_INCLUDES += $(TOP)/hardware/samsung_slsi/exynos/include
+LOCAL_C_INCLUDES += $(TOP)/hardware/samsung_slsi/exynos/libhwc
+LOCAL_C_INCLUDES += $(TOP)/hardware/samsung_slsi/exynos/libhwcutils
+LOCAL_SHARED_LIBRARIES += libExynosHWCService
+endif
+endif
+
 LOCAL_SHARED_LIBRARIES += libstlport
 include external/stlport/libstlport.mk
 
@@ -117,6 +146,28 @@ LOCAL_SHARED_LIBRARIES += \
         libdl
 
 LOCAL_CFLAGS += -Wno-multichar
+
+ifeq ($(BOARD_USE_ALP_AUDIO),  true)
+LOCAL_CFLAGS += -DUSE_ALP_AUDIO
+endif
+
+ifeq ($(BOARD_USE_SEIREN_AUDIO), true)
+LOCAL_CFLAGS += -DUSE_SEIREN_AUDIO
+LOCAL_C_INCLUDES += \
+        $(TOP)/frameworks/av/media/libstagefright/ittiamextractors/flac/component/inc
+LOCAL_STATIC_LIBRARIES += \
+        libIttiamFLACExtractor \
+        libittiam_flacparser
+else
+LOCAL_SRC_FILES += \
+        FLACExtractor.cpp
+endif
+
+ifeq ($(BOARD_USES_WIFI_DISPLAY),  true)
+LOCAL_CFLAGS += -DUSES_WIFI_DISPLAY
+endif
+
+LOCAL_CFLAGS += -DSAMSUNG_AV_SYNC
 
 LOCAL_MODULE:= libstagefright
 

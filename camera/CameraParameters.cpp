@@ -141,11 +141,14 @@ const char CameraParameters::SCENE_MODE_THEATRE[] = "theatre";
 const char CameraParameters::SCENE_MODE_BEACH[] = "beach";
 const char CameraParameters::SCENE_MODE_SNOW[] = "snow";
 const char CameraParameters::SCENE_MODE_SUNSET[] = "sunset";
+const char CameraParameters::SCENE_MODE_DAWN[] = "dawn";
+const char CameraParameters::SCENE_MODE_FALL[] = "fall";
 const char CameraParameters::SCENE_MODE_STEADYPHOTO[] = "steadyphoto";
 const char CameraParameters::SCENE_MODE_FIREWORKS[] = "fireworks";
 const char CameraParameters::SCENE_MODE_SPORTS[] = "sports";
 const char CameraParameters::SCENE_MODE_PARTY[] = "party";
 const char CameraParameters::SCENE_MODE_CANDLELIGHT[] = "candlelight";
+const char CameraParameters::SCENE_MODE_TEXT[] = "text";
 const char CameraParameters::SCENE_MODE_BARCODE[] = "barcode";
 const char CameraParameters::SCENE_MODE_HDR[] = "hdr";
 

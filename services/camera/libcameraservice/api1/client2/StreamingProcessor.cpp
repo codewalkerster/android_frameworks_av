@@ -439,6 +439,32 @@ status_t StreamingProcessor::startStream(StreamType type,
             __FUNCTION__, mId, (type == PREVIEW) ? "preview" : "recording",
             mRecordingHeapFree, mRecordingHeapCount);
 
+#ifdef FIX_WRONG_RECBUF_FOR_CAMERA
+    /*
+     * HACK: restore mRecordingBuffers
+     * if there are no released buffers in mRecordingBuffers due to problem of releasing buffer
+     * restore mRecordingBuffers and mRecordingHeapFree to initial state.
+     */
+    if (mRecordingHeapFree < mRecordingHeapCount) {
+        int releasedIdx = 0;
+
+        /* searching for no released buffer slot */
+        for (releasedIdx = 0; releasedIdx < mRecordingBuffers.size(); releasedIdx++) {
+            const BufferItemConsumer::BufferItem item =
+                    mRecordingBuffers[releasedIdx];
+            if (item.mBuf != BufferItemConsumer::INVALID_BUFFER_SLOT) {
+                mRecordingConsumer->releaseBuffer(mRecordingBuffers[releasedIdx]);
+                mRecordingHeapFree++;
+                ALOGW("%s: Camera %d: there are no released buffer(%d). So, release this buffer mRecordingHeapFree(%d)",
+                    __FUNCTION__, client->getCameraId(), item.mBuf, mRecordingHeapFree);
+                mRecordingBuffers.replaceAt(releasedIdx);
+            }
+        }
+
+        if (mRecordingHeapFree > mRecordingHeapCount)
+            mRecordingHeapFree = mRecordingHeapCount;
+    }
+#endif
     CameraMetadata &request = (type == PREVIEW) ?
             mPreviewRequest : mRecordingRequest;
 
@@ -696,6 +722,37 @@ status_t StreamingProcessor::processRecordingFrame() {
         mRecordingHeapHead = (mRecordingHeapHead + 1) % mRecordingHeapCount;
         mRecordingHeapFree--;
 
+#ifdef FIX_WRONG_RECBUF_FOR_CAMERA
+        /*
+         * HACK: prevent situation that overwrite not released buffer slot
+         * if SERVICE moves buffer(from HAL) to not released buffer slot in mRecordingBuffers,
+         * this HACK prevents these situations. Because on next onFrameAvailable,
+         * mRecordingBuffers value can be incorrect.
+         */
+        if (mRecordingBuffers[heapIdx].mBuf > BufferItemConsumer::INVALID_BUFFER_SLOT) {
+            ALOGW("%s: Camera %d: Not exist valid buffer slot", __FUNCTION__, client->getCameraId());
+
+            bool finded = false;
+            int releasedIdx = 0;
+
+            /* searching for released buffer slot */
+            for (releasedIdx = 0; releasedIdx < mRecordingBuffers.size(); releasedIdx++) {
+                const BufferItemConsumer::BufferItem item =
+                        mRecordingBuffers[releasedIdx];
+                if (item.mBuf == BufferItemConsumer::INVALID_BUFFER_SLOT) {
+                    ALOGW("%s: Camera %d: Found valid buffer slot. chaged (%d)->(%d)",
+                        __FUNCTION__, client->getCameraId(), heapIdx, releasedIdx);
+                    finded = true;
+                    break;
+                }
+            }
+
+            if (finded) {
+                heapIdx = releasedIdx;
+                mRecordingHeapHead = (heapIdx + 1) % mRecordingHeapCount;
+            }
+        }
+#endif
         ALOGVV("%s: Camera %d: Timestamp %lld",
                 __FUNCTION__, mId, timestamp);
 

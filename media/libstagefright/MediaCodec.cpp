@@ -1784,9 +1784,26 @@ status_t MediaCodec::amendOutputFormatWithCodecSpecificData(
 
         unsigned csdIndex = 0;
 
+#ifdef USES_WIFI_DISPLAY
+        native_handle_t* handle;
+        const uint8_t *data;
+        size_t size;
+        if (buffer->meta()->findPointer("handle", (void**)&handle) && handle != NULL) {
+            int fd = handle->data[0];
+            int *addr = (int *)handle->data[1];
+            unsigned int bufferSize = handle->data[2];
+            unsigned int dataLeng = handle->data[3];
+
+            data = (const uint8_t *)addr;
+            size = dataLeng;
+        } else {
+            data = buffer->data();
+            size = buffer->size();
+        }
+#else
         const uint8_t *data = buffer->data();
         size_t size = buffer->size();
-
+#endif
         const uint8_t *nalStart;
         size_t nalSize;
         while (getNextNALUnit(&data, &size, &nalStart, &nalSize, true) == OK) {
