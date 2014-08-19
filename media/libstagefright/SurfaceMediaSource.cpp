@@ -357,6 +357,11 @@ status_t SurfaceMediaSource::read( MediaBuffer **buffer,
 
     passMetadataBuffer(buffer, mSlots[mCurrentSlot].mGraphicBuffer->handle);
 
+#ifdef USES_WIFI_DISPLAY
+    int usage = mSlots[mCurrentSlot].mGraphicBuffer->getUsage();
+    (*buffer)->meta_data()->setInt32(kKeyIsDRM, usage);
+#endif
+
     (*buffer)->setObserver(this);
     (*buffer)->add_ref();
     (*buffer)->meta_data()->setInt64(kKeyTime, mCurrentTimestamp / 1000);

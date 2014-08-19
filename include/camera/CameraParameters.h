@@ -589,11 +589,14 @@ public:
     static const char SCENE_MODE_BEACH[];
     static const char SCENE_MODE_SNOW[];
     static const char SCENE_MODE_SUNSET[];
+    static const char SCENE_MODE_DAWN[];
+    static const char SCENE_MODE_FALL[];
     static const char SCENE_MODE_STEADYPHOTO[];
     static const char SCENE_MODE_FIREWORKS[];
     static const char SCENE_MODE_SPORTS[];
     static const char SCENE_MODE_PARTY[];
     static const char SCENE_MODE_CANDLELIGHT[];
+    static const char SCENE_MODE_TEXT[];
     // Applications are looking for a barcode. Camera driver will be optimized
     // for barcode reading.
     static const char SCENE_MODE_BARCODE[];

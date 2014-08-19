@@ -46,6 +46,9 @@
 
 #include <OMX_IVCommon.h>
 
+#ifdef USES_ARGB8888
+#include "exynos_format.h"
+#endif
 namespace android {
 
 struct WifiDisplaySource::PlaybackSession::Track : public AHandler {
@@ -941,6 +944,8 @@ status_t WifiDisplaySource::PlaybackSession::addSource(
         format->setInt32("store-metadata-in-buffers", true);
         format->setInt32("store-metadata-in-buffers-output", (mHDCP != NULL)
                 && (mHDCP->getCaps() & HDCPModule::HDCP_CAPS_ENCRYPT_NATIVE));
+        format->setInt32("NeedContigMemory", (mHDCP != NULL)
+                && (mHDCP->getCaps() & HDCPModule::HDCP_CAPS_ENCRYPT_NATIVE));
         format->setInt32(
                 "color-format", OMX_COLOR_FormatAndroidOpaque);
         format->setInt32("profile-idc", profileIdc);
@@ -1034,6 +1039,11 @@ status_t WifiDisplaySource::PlaybackSession::addVideoSource(
                 &constraintSet));
 
     sp<SurfaceMediaSource> source = new SurfaceMediaSource(width, height);
+
+#ifdef USES_ARGB8888
+    sp<BufferQueue> smsBq = source->getBufferQueue();
+    smsBq->setDefaultBufferFormat(HAL_PIXEL_FORMAT_EXYNOS_ARGB_8888);
+#endif
 
     source->setUseAbsoluteTimestamps();
 

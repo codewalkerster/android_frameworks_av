@@ -36,6 +36,9 @@
 #include <media/hardware/HardwareAPI.h>
 
 #include <OMX_Component.h>
+#ifdef USES_WIFI_DISPLAY
+#include "Exynos_OMX_Def.h"
+#endif
 
 #include "include/avc_utils.h"
 
@@ -1101,6 +1104,27 @@ status_t ACodec::configureCodec(
             mUseMetadataOnEncoderOutput = 0;
         } else {
             mUseMetadataOnEncoderOutput = enable;
+#ifdef USES_WIFI_DISPLAY
+            int32_t NeedContigMemory = 0;
+            if (msg->findInt32("NeedContigMemory", &NeedContigMemory)
+                && NeedContigMemory != 0) {
+                OMX_INDEXTYPE index;
+                err = mOMX->getExtensionIndex(
+                        mNode,
+                        "OMX.SEC.index.NeedContigMemory",
+                        &index);
+                if (err == OK) {
+                    EXYNOS_OMX_VIDEO_PARAM_PORTMEMTYPE params;
+                    InitOMXParams(&params);
+                    params.nPortIndex = kPortIndexOutput;
+                    params.bNeedContigMem = OMX_TRUE;
+                    err = mOMX->setParameter(
+                            mNode, index, &params, sizeof(params));
+                    if (err != OK)
+                        ALOGE("Encoder can't be configured NeedContigMemory (err %d)", err);
+                }
+            }
+#endif
         }
 
         if (!msg->findInt64(
