@@ -53,6 +53,8 @@ void MediaScannerClient::setLocale(const char* locale)
             // assume traditional for non-mainland Chinese locales (Taiwan, Hong Kong, Singapore)
             mLocaleEncoding = kEncodingBig5;
         }
+    } else {
+        mLocaleEncoding = kEncodingGBK;
     }
 }
 

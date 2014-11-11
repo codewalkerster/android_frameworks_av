@@ -50,6 +50,12 @@ enum player_type {
     // The shared library with the test player is passed passed as an
     // argument to the 'test:' url in the setDataSource call.
     TEST_PLAYER = 5,
+
+    AAH_RX_PLAYER = 100,
+    AAH_TX_PLAYER = 101,
+
+    AMLOGIC_PLAYER = 110,
+    AMSUPER_PLAYER = 111,
 };
 
 
@@ -196,7 +202,7 @@ public:
         return INVALID_OPERATION;
     };
 
-    void        setNotifyCallback(
+    virtual void        setNotifyCallback(
             void* cookie, notify_callback_f notifyFunc) {
         Mutex::Autolock autoLock(mNotifyLock);
         mCookie = cookie; mNotify = notifyFunc;
@@ -216,6 +222,17 @@ public:
             const char *host, int32_t port, const char *exclusionList) {
         return INVALID_OPERATION;
     }
+
+
+    /***   hack for hevc/h.265 mp4/ts etc. support, avoid cts fail    ***/
+    virtual status_t setHEVCFlag(bool flag) {
+        return INVALID_OPERATION;
+    }
+
+    virtual bool getHEVCFlag() {
+        return false;
+    }
+    /*******************************/
 
 private:
     friend class MediaPlayerService;

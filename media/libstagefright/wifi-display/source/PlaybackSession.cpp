@@ -24,6 +24,7 @@
 #include "MediaPuller.h"
 #include "RepeaterSource.h"
 #include "include/avc_utils.h"
+#include "VdinMediaSource.h"
 #include "WifiDisplaySource.h"
 
 #include <binder/IServiceManager.h>
@@ -35,6 +36,10 @@
 #include <media/stagefright/foundation/AMessage.h>
 #include <media/stagefright/foundation/hexdump.h>
 #include <media/stagefright/AudioSource.h>
+//  include frameworks/av/include/media/AudioRecord.h
+//      include frameworks/av/include/media/AudioSystem.h
+//          system/core/include/system/audio.h
+
 #include <media/stagefright/DataSource.h>
 #include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MediaErrors.h>
@@ -45,6 +50,8 @@
 #include <media/stagefright/Utils.h>
 
 #include <OMX_IVCommon.h>
+
+#include <media/AudioSystem.h>   //for audio policy
 
 namespace android {
 
@@ -189,7 +196,7 @@ void WifiDisplaySource::PlaybackSession::Track::setMediaSenderTrackIndex(
 }
 
 status_t WifiDisplaySource::PlaybackSession::Track::start() {
-    ALOGV("Track::start isAudio=%d", mIsAudio);
+    ALOGI("Track::start isAudio=%d", mIsAudio);
 
     CHECK(!mStarted);
 
@@ -207,7 +214,7 @@ status_t WifiDisplaySource::PlaybackSession::Track::start() {
 }
 
 void WifiDisplaySource::PlaybackSession::Track::stopAsync() {
-    ALOGV("Track::stopAsync isAudio=%d", mIsAudio);
+    ALOGI("Track::stopAsync isAudio=%d", mIsAudio);
 
     if (mConverter != NULL) {
         mConverter->shutdownAsync();
@@ -342,7 +349,17 @@ bool WifiDisplaySource::PlaybackSession::Track::isSuspended() const {
 #endif
 
 ////////////////////////////////////////////////////////////////////////////////
+char* freadline(FILE *stream)
+{
+    static char a_line[500];
+    int count = 0;
 
+    while((count < 500) && ((a_line[count++] = getc(stream)) != '\n'));
+
+    a_line[count - 1] = '\0';
+
+    return a_line;
+}
 WifiDisplaySource::PlaybackSession::PlaybackSession(
         const sp<ANetworkSession> &netSession,
         const sp<AMessage> &notify,
@@ -359,14 +376,78 @@ WifiDisplaySource::PlaybackSession::PlaybackSession(
       mLastLifesignUs(),
       mVideoTrackIndex(-1),
       mPrevTimeUs(-1ll),
-      mPullExtractorPending(false),
-      mPullExtractorGeneration(0),
-      mFirstSampleTimeRealUs(-1ll),
-      mFirstSampleTimeUs(-1ll) {
-    if (path != NULL) {
-        mMediaPath.setTo(path);
+      mAllTracksHavePacketizerIndex(false),
+      mDebug(0l),
+      mDebugFileName("") {
+    
+
+    FILE* dataFile;
+    char *str,*strData;
+  
+    dataFile=fopen("/system/etc/wfd_source.conf","rb");
+    if(NULL==dataFile)
+    {
+        ALOGI("========we cant open file wfd_source.conf===========");
+        return ;
     }
+    while(!feof(dataFile)){
+    str=freadline(dataFile);
+    strData=strchr(str,'=');
+    if(strData) {
+        *strData='\0';
+        strData++;
+    }
+    else break;
+    if(strcmp(str,"debug")==0){
+	mDebug=strtoul(strData,NULL,0);
+        ALOGI("%s : %d",str,mDebug);
+    }
+    if(strcmp(str,"source")==0){
+	mDebugFileName.setTo(strData);
+	ALOGI("source file:%s",mDebugFileName.c_str());	
+    } 
+    }
+    fclose(dataFile);
 }
+
+#if 0
+status_t WifiDisplaySource::PlaybackSession::init(
+        const char *clientIP, int32_t clientRtp, int32_t clientRtcp,
+        Sender::TransportMode transportMode,
+        bool usePCMAudio) {
+    ALOGI("%s %d", __FUNCTION__, __LINE__);
+    status_t err = setupPacketizer(usePCMAudio);
+    if (err != OK) {
+        ALOGI("%s %d, err = %d", __FUNCTION__, __LINE__, err);
+        return err;
+    }
+    ALOGI("%s %d", __FUNCTION__, __LINE__);
+    sp<AMessage> notify = new AMessage(kWhatSenderNotify, id());
+    mSender = new Sender(mNetSession, notify);
+
+    mSenderLooper = new ALooper;
+    mSenderLooper->setName("sender_looper");
+
+    mSenderLooper->start(
+            false /* runOnCallingThread */,
+            false /* canCallJava */,
+            PRIORITY_AUDIO);
+
+    mSenderLooper->registerHandler(mSender);
+
+    ALOGI("mSender->init >>>");
+    err = mSender->init(clientIP, clientRtp, clientRtcp, transportMode);
+    ALOGI("mSender->init <<<");
+    if (err != OK) {
+        ALOGI("%s %d, err = %d", __FUNCTION__, __LINE__, err);
+        return err;
+    }
+
+    updateLiveness();
+
+    return OK;
+}
+#endif
 
 status_t WifiDisplaySource::PlaybackSession::init(
         const char *clientIP,
@@ -387,6 +468,9 @@ status_t WifiDisplaySource::PlaybackSession::init(
 
     mMediaSender->setHDCP(mHDCP);
 
+	AudioSystem::setDeviceConnectionState(AUDIO_DEVICE_IN_REMOTE_SUBMIX, AUDIO_POLICY_DEVICE_STATE_AVAILABLE, 0);
+	AudioSystem::setDeviceConnectionState(AUDIO_DEVICE_OUT_REMOTE_SUBMIX, AUDIO_POLICY_DEVICE_STATE_AVAILABLE, 0);
+
     status_t err = setupPacketizer(
             enableAudio,
             usePCMAudio,
@@ -398,7 +482,7 @@ status_t WifiDisplaySource::PlaybackSession::init(
 
     if (err == OK) {
         err = mMediaSender->initAsync(
-                -1 /* trackIndex */,
+                -1 ,//trackIndex
                 clientIP,
                 clientRtp,
                 rtpMode,
@@ -412,7 +496,6 @@ status_t WifiDisplaySource::PlaybackSession::init(
 
         looper()->unregisterHandler(mMediaSender->id());
         mMediaSender.clear();
-
         return err;
     }
 
@@ -421,6 +504,7 @@ status_t WifiDisplaySource::PlaybackSession::init(
     return OK;
 }
 
+	
 WifiDisplaySource::PlaybackSession::~PlaybackSession() {
 }
 
@@ -444,6 +528,95 @@ status_t WifiDisplaySource::PlaybackSession::play() {
     return OK;
 }
 
+status_t WifiDisplaySource::PlaybackSession::finishPlay() {
+    // XXX Give the dongle a second to bind its sockets.
+    //(new AMessage(kWhatFinishPlay, id()))->post(1000000ll);
+    return OK;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+#if 0
+struct OutputThread : public Thread {
+    OutputThread(uint32_t notifyID,ALooper::handler_id id,AString &fileName,sp<Sender>);
+
+protected:
+    virtual ~OutputThread();
+
+    virtual bool threadLoop();
+
+private:
+
+
+    ALooper::handler_id mCallerID;
+    AString mFileName;
+    uint32_t mNotifyID;
+    bool mSelfOutput;
+    sp<Sender> mSender; 
+
+    OutputThread(const OutputThread &);
+    OutputThread &operator=(const OutputThread &);
+};
+
+OutputThread::OutputThread(uint32_t notifyID,
+       ALooper::handler_id id,AString &filename,sp<Sender> sender)
+    : mCallerID(id),
+      mFileName(filename),
+      mNotifyID(notifyID),
+      mSelfOutput(true),
+      mSender(sender) 
+{
+	
+}
+
+OutputThread::~OutputThread() {
+   
+}
+//do our seperate work here.
+bool OutputThread::threadLoop() {
+    	status_t err;
+    	size_t  bufferSize=188*10;
+    	FILE* mDataFile;
+    	//we open file first.
+	if(strcmp(mFileName.c_str(),"")==0 ) return false;
+    	mDataFile=fopen(mFileName.c_str(),"rb"); 
+	if(NULL==mDataFile) 
+	{
+		ALOGI("========we cant open source TS file %s===========",mFileName.c_str());
+		return false;
+	}
+	ALOGI("========MM start read source TS file===========");
+	while(mSelfOutput) {
+        size_t bufferIndex;
+        size_t offset;
+        size_t size;
+        int64_t timeUs;
+        uint32_t flags;
+
+
+        
+        sp<ABuffer> buffer = new ABuffer(bufferSize);
+	timeUs=ALooper::GetNowUs();
+        buffer->meta()->setInt64("timeUs", timeUs);
+       // ALOGI("[%s] time %lld us (%.2f secs)",
+       //           "video", timeUs, timeUs / 1E6);
+	//we input file and buffer here.
+	fread(buffer->data(),1,bufferSize,mDataFile); 
+	if(feof(mDataFile)) fseek(mDataFile,0,SEEK_SET);
+	
+	mSender->queuePackets(timeUs, buffer);
+	//sp<AMessage> notify; 
+	//notify = new AMessage(mNotifyID,mCallerID);
+ 	//notify->setInt32("what", Converter::kWhatAccessUnit);
+    	//notify->setBuffer("accessUnit", buffer);
+	//notify->setSize("trackIndex",0);
+    	//notify->post();
+	}
+	fclose(mDataFile);
+    
+    return true;
+}
+#endif
+
 status_t WifiDisplaySource::PlaybackSession::onMediaSenderInitialized() {
     for (size_t i = 0; i < mTracks.size(); ++i) {
         CHECK_EQ((status_t)OK, mTracks.editValueAt(i)->start());
@@ -452,7 +625,18 @@ status_t WifiDisplaySource::PlaybackSession::onMediaSenderInitialized() {
     sp<AMessage> notify = mNotify->dup();
     notify->setInt32("what", kWhatSessionEstablished);
     notify->post();
-
+   
+    ALOGI("========receive connecttion info===========");
+    static sp<Thread> threadOutput;
+    if(mDebug)
+    { 
+	if(threadOutput != NULL) 
+	{	
+	   threadOutput->requestExitAndWait();
+	}
+    	//threadOutput=new OutputThread(kWhatConverterNotify,id(),mDebugFileName,mSender);
+    	//threadOutput->run("wfd auto output thread");
+    }
     return OK;
 }
 
@@ -467,6 +651,9 @@ status_t WifiDisplaySource::PlaybackSession::pause() {
 void WifiDisplaySource::PlaybackSession::destroyAsync() {
     ALOGI("destroyAsync");
 
+	AudioSystem::setDeviceConnectionState(AUDIO_DEVICE_IN_REMOTE_SUBMIX, AUDIO_POLICY_DEVICE_STATE_UNAVAILABLE, 0);
+	AudioSystem::setDeviceConnectionState(AUDIO_DEVICE_OUT_REMOTE_SUBMIX, AUDIO_POLICY_DEVICE_STATE_UNAVAILABLE, 0);
+
     for (size_t i = 0; i < mTracks.size(); ++i) {
         mTracks.valueAt(i)->stopAsync();
     }
@@ -478,7 +665,7 @@ void WifiDisplaySource::PlaybackSession::onMessageReceived(
         case kWhatConverterNotify:
         {
             if (mWeAreDead) {
-                ALOGV("dropping msg '%s' because we're dead",
+                ALOGI("dropping msg '%s' because we're dead",
                       msg->debugString().c_str());
 
                 break;
@@ -497,7 +684,8 @@ void WifiDisplaySource::PlaybackSession::onMessageReceived(
                 const sp<Track> &track = mTracks.valueFor(trackIndex);
 
                 status_t err = mMediaSender->queueAccessUnit(
-                        track->mediaSenderTrackIndex(),
+                        //track->mediaSenderTrackIndex(),
+                        trackIndex,
                         accessUnit);
 
                 if (err != OK) {
@@ -747,6 +935,8 @@ status_t WifiDisplaySource::PlaybackSession::setupMediaPacketizer(
         bool enableAudio, bool enableVideo) {
     DataSource::RegisterDefaultSniffers();
 
+    addVideoSource();
+    ALOGI("%s %d", __FUNCTION__, __LINE__);
     mExtractor = new NuMediaExtractor;
 
     status_t err = mExtractor->setDataSource(mMediaPath.c_str());
@@ -755,6 +945,8 @@ status_t WifiDisplaySource::PlaybackSession::setupMediaPacketizer(
         return err;
     }
 
+    ALOGI("%s %d", __FUNCTION__, __LINE__);
+	
     size_t n = mExtractor->countTracks();
     bool haveAudio = false;
     bool haveVideo = false;
@@ -897,6 +1089,12 @@ status_t WifiDisplaySource::PlaybackSession::setupPacketizer(
         return OK;
     }
 
+    char val[256];
+    if (property_get("media.wfd.disableAudio", val, NULL) && (!strcasecmp("true", val) || !strcmp("1", val))) {
+        ALOGD("disableAudio");
+        return OK;
+    }
+
     return addAudioSource(usePCMAudio);
 }
 
@@ -933,6 +1131,8 @@ status_t WifiDisplaySource::PlaybackSession::addSource(
     trackIndex = mTracks.size();
 
     sp<AMessage> format;
+    ALOGI("%s %d", __FUNCTION__, __LINE__);
+
     status_t err = convertMetaDataToMessage(source->getFormat(), &format);
     CHECK_EQ(err, (status_t)OK);
 
@@ -971,6 +1171,7 @@ status_t WifiDisplaySource::PlaybackSession::addSource(
     notify = new AMessage(Converter::kWhatMediaPullerNotify, converter->id());
     notify->setSize("trackIndex", trackIndex);
 
+    ALOGI("%s %d", __FUNCTION__, __LINE__);
     sp<MediaPuller> puller = new MediaPuller(source, notify);
     pullLooper->registerHandler(puller);
 
@@ -996,16 +1197,72 @@ status_t WifiDisplaySource::PlaybackSession::addSource(
         mVideoTrackIndex = trackIndex;
     }
 
-    uint32_t flags = 0;
-    if (converter->needToManuallyPrependSPSPPS()) {
-        flags |= MediaSender::FLAG_MANUALLY_PREPEND_SPS_PPS;
+#if 1
+
+	ALOGE("[%s %d] isVideo:%d, trackIndex:%d", __FUNCTION__, __LINE__, isVideo, trackIndex);
+
+	sp<AMessage> converterformat;
+
+	converterformat = converter->getOutputFormat();
+
+	if(isVideo == 1)
+	{
+		AString outputMIME;
+		outputMIME = MEDIA_MIMETYPE_VIDEO_AVC;
+		converterformat->setString("mime", outputMIME.c_str());
+		ALOGI("[%s %d] MEDIA_MIMETYPE_VIDEO_AVC", __FUNCTION__, __LINE__);
+	}
+
+	if(isVideo == 0 && usePCMAudio== 1)
+	{
+		AString outputMIME;
+		outputMIME = MEDIA_MIMETYPE_AUDIO_RAW;
+		converterformat->setString("mime", outputMIME.c_str());
+		ALOGI("[%s %d] MEDIA_MIMETYPE_AUDIO_RAW", __FUNCTION__, __LINE__);
+	}
+
+	uint32_t flags = MediaSender::FLAG_MANUALLY_PREPEND_SPS_PPS;
+	
+	ssize_t mediaSenderTrackIndex =
+		mMediaSender->addTrack(converterformat, flags);
+
+#endif
+    return OK;
+}
+
+status_t WifiDisplaySource::PlaybackSession::addVideoSource() {
+    sp<VdinMediaSource> source = new VdinMediaSource(width(), height(), true);
+	//sp<SurfaceMediaSource> source = new SurfaceMediaSource(width(), height());
+
+    source->setUseAbsoluteTimestamps();
+
+    ALOGI("%s %d", __FUNCTION__, __LINE__);
+    sp<RepeaterSource> videoSource =
+        new RepeaterSource(source, 30.0 /* rateHz */);
+
+    size_t numInputBuffers;
+#if 1
+    //status_t err = addSource(
+    //        true /* isVideo */, videoSource, true /* isRepeaterSource */,
+    //        false /* usePCMAudio */, &numInputBuffers, source->isMetaDataStoredInVideoBuffers());
+    status_t err = addSource(
+                true /* isVideo */, videoSource, true /* isRepeaterSource */,
+                false/* usePCMAudio */, 0 /* profileIdc */, 0 /* levelIdc */,
+                0 /* constraintSet */, &numInputBuffers /* numInputBuffers */);
+#else
+    status_t err = addSource(
+            true /* isVideo */, source, false /* isRepeaterSource */,
+            false /* usePCMAudio */, &numInputBuffers, source->isMetaDataStoredInVideoBuffers());
+#endif
+
+    if (err != OK) {
+        return err;
     }
 
-    ssize_t mediaSenderTrackIndex =
-        mMediaSender->addTrack(converter->getOutputFormat(), flags);
-    CHECK_GE(mediaSenderTrackIndex, 0);
+    err = source->setMaxAcquiredBufferCount(numInputBuffers);
+    CHECK_EQ(err, (status_t)OK);
 
-    track->setMediaSenderTrackIndex(mediaSenderTrackIndex);
+    //mBufferQueue = source->getBufferQueue();
 
     return OK;
 }
@@ -1024,6 +1281,22 @@ status_t WifiDisplaySource::PlaybackSession::addVideoSource(
                 &height,
                 &framesPerSecond,
                 &interlaced));
+	
+	ALOGI("[%s %d] width:%d height:%d", __FUNCTION__, __LINE__, width, height);
+
+	sp<VdinMediaSource> source = new VdinMediaSource(width, height,true);
+
+	mVdinMediaSource = source;
+
+	int videoframerate = 30;
+	
+	char val[PROPERTY_VALUE_MAX];
+	if(property_get("media.wfd.videoframerate", val, NULL))
+	{
+		sscanf(val,"%d",&videoframerate);
+		source->setFrameRate(videoframerate);
+		ALOGD("setFrameRate %d", videoframerate);
+	}
 
     unsigned profileIdc, levelIdc, constraintSet;
     CHECK(VideoFormats::GetProfileLevel(
@@ -1033,18 +1306,20 @@ status_t WifiDisplaySource::PlaybackSession::addVideoSource(
                 &levelIdc,
                 &constraintSet));
 
-    sp<SurfaceMediaSource> source = new SurfaceMediaSource(width, height);
+    //sp<SurfaceMediaSource> source = new SurfaceMediaSource(width, height);
 
     source->setUseAbsoluteTimestamps();
 
-    sp<RepeaterSource> videoSource =
-        new RepeaterSource(source, framesPerSecond);
+    //sp<RepeaterSource> videoSource =
+        //new RepeaterSource(source, framesPerSecond);
 
-    size_t numInputBuffers;
-    status_t err = addSource(
-            true /* isVideo */, videoSource, true /* isRepeaterSource */,
-            false /* usePCMAudio */, profileIdc, levelIdc, constraintSet,
-            &numInputBuffers);
+
+	size_t numInputBuffers;
+	status_t err = addSource(
+			true /* isVideo */, source, false /* isRepeaterSource */,
+			false /* usePCMAudio */, profileIdc, levelIdc, constraintSet,
+			&numInputBuffers);
+
 
     if (err != OK) {
         return err;
@@ -1053,7 +1328,7 @@ status_t WifiDisplaySource::PlaybackSession::addVideoSource(
     err = source->setMaxAcquiredBufferCount(numInputBuffers);
     CHECK_EQ(err, (status_t)OK);
 
-    mBufferQueue = source->getBufferQueue();
+    //mBufferQueue = source->getBufferQueue();
 
     return OK;
 }
@@ -1080,6 +1355,14 @@ sp<IGraphicBufferProducer> WifiDisplaySource::PlaybackSession::getSurfaceTexture
     return mBufferQueue;
 }
 
+int32_t WifiDisplaySource::PlaybackSession::width() const {
+    return 1280;
+}
+
+int32_t WifiDisplaySource::PlaybackSession::height() const {
+    return 720;
+}
+
 void WifiDisplaySource::PlaybackSession::requestIDRFrame() {
     for (size_t i = 0; i < mTracks.size(); ++i) {
         const sp<Track> &track = mTracks.valueAt(i);
@@ -1096,6 +1379,12 @@ void WifiDisplaySource::PlaybackSession::notifySessionDead() {
 
     mWeAreDead = true;
 }
+
+void WifiDisplaySource::PlaybackSession::setVideoRotation(int degree) {
+	if(mVdinMediaSource != NULL)
+		mVdinMediaSource->setVideoRotation(degree);
+}
+
 
 }  // namespace android
 

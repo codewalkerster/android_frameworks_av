@@ -144,6 +144,10 @@ private:
 
 NuPlayer::NuPlayer()
     : mUIDValid(false),
+      mSeek(-1),
+      mVideoIsHevc(false),
+      mLastVideoTimeUs(-1),
+      mLastSeekTimeUs(-1),
       mSourceFlags(0),
       mVideoIsAVC(false),
       mAudioEOS(false),
@@ -151,6 +155,8 @@ NuPlayer::NuPlayer()
       mScanSourcesPending(false),
       mScanSourcesGeneration(0),
       mPollDurationGeneration(0),
+      mPollBufferingPercentGeneration(0),
+      mBufferingPercent(0),
       mTimeDiscontinuityPending(false),
       mFlushingAudio(NONE),
       mFlushingVideo(NONE),
@@ -164,6 +170,14 @@ NuPlayer::NuPlayer()
 }
 
 NuPlayer::~NuPlayer() {
+}
+
+bool NuPlayer::isHEVC() {
+    return mVideoIsHevc;
+}
+
+int64_t NuPlayer::getLastSeekTimeUs() {
+    return mLastSeekTimeUs;
 }
 
 void NuPlayer::setUID(uid_t uid) {
@@ -286,6 +300,7 @@ void NuPlayer::resetAsync() {
 }
 
 void NuPlayer::seekToAsync(int64_t seekTimeUs) {
+    pollBufferingPercent();
     sp<AMessage> msg = new AMessage(kWhatSeek, id());
     msg->setInt64("seekTimeUs", seekTimeUs);
     msg->post();
@@ -402,6 +417,36 @@ void NuPlayer::onMessageReceived(const sp<AMessage> &msg) {
             break;
         }
 
+	 case kWhatPollBandwidth:
+	 {
+	     int32_t kbps = 0;
+	     if(mSource != NULL) {
+	         kbps = mSource->getBandwidth();
+	     }
+	     notifyListener(MEDIA_INFO, MEDIA_INFO_DOWNLOAD_BITRATE, kbps);
+	     ALOGI("Got bandwidth : %d kbps", kbps);
+	     msg->post(500000ll);  // poll again in 0.5 sec.
+	     break;
+	 }
+
+	 case kWhatPollBufferingPercent:
+	 {
+	     int32_t generation;
+	     msg->findInt32("generation", &generation);
+	     if (generation != mPollBufferingPercentGeneration) {
+                break;
+            }
+	     int32_t bp = 0;
+	     if(mSource != NULL) {
+	         bp = mSource->getBufferingPercent();
+	     }
+	     mBufferingPercent = (mBufferingPercent > bp) ? mBufferingPercent : bp;
+	     notifyListener(MEDIA_INFO, MEDIA_INFO_BUFFERING_PERCENT, mBufferingPercent);
+	     ALOGI("Got buffering percent : %d\%", bp);
+	     msg->post(500000ll);  // poll again in 0.5 sec.
+	     break;
+	 }
+
         case kWhatSetVideoNativeWindow:
         {
             ALOGV("kWhatSetVideoNativeWindow");
@@ -444,6 +489,7 @@ void NuPlayer::onMessageReceived(const sp<AMessage> &msg) {
             ALOGV("kWhatStart");
 
             mVideoIsAVC = false;
+	     mVideoIsHevc = false;
             mAudioEOS = false;
             mVideoEOS = false;
             mSkipRenderingAudioUntilMediaTimeUs = -1;
@@ -899,6 +945,7 @@ status_t NuPlayer::instantiateDecoder(bool audio, sp<Decoder> *decoder) {
         AString mime;
         CHECK(format->findString("mime", &mime));
         mVideoIsAVC = !strcasecmp(MEDIA_MIMETYPE_VIDEO_AVC, mime.c_str());
+	 mVideoIsHevc = !strcasecmp(MEDIA_MIMETYPE_VIDEO_HEVC, mime.c_str());
     }
 
     sp<AMessage> notify =
@@ -1021,6 +1068,36 @@ status_t NuPlayer::feedDecoderInputData(bool audio, const sp<AMessage> &msg) {
             dropAccessUnit = true;
             ++mNumFramesDropped;
         }
+#if 0
+        if(mVideoIsHevc) {
+            int64_t curUs;
+            CHECK(accessUnit->meta()->findInt64("timeUs", &curUs));
+	     if(mSeekCount != 0) {
+	         accessUnit->meta()->findInt32("isSeeking", &mSeek);
+	     }
+            if(mSeek == 1) {
+                if(audio) {
+    	             if(mLastVideoTimeUs == -1) {
+                        dropAccessUnit = true;
+                    } else {
+                        int64_t diff = abs(mLastVideoTimeUs - curUs);
+    		          if(diff > 200000ll && curUs < mLastVideoTimeUs) {
+                            dropAccessUnit = true;
+    		          } else {
+    		              mSeek = 0;
+			       mLastVideoTimeUs = -1;
+    		          }
+                    }
+       	   } else {
+       	         int key = 0;
+			  accessUnit->meta()->findInt32("findkeyframe", &key);
+       	         if(key == 1) {
+       		      mLastVideoTimeUs = curUs;
+       		  }
+       	     }
+       	 }
+        }
+#endif
     } while (dropAccessUnit);
 
     // ALOGV("returned a valid buffer of %s data", audio ? "audio" : "video");
@@ -1202,6 +1279,22 @@ void NuPlayer::cancelPollDuration() {
     ++mPollDurationGeneration;
 }
 
+void NuPlayer::pollBandwidth() {
+    sp<AMessage> msg = new AMessage(kWhatPollBandwidth, id());
+    msg->post();
+}
+
+void NuPlayer::pollBufferingPercent() {
+    sp<AMessage> msg = new AMessage(kWhatPollBufferingPercent, id());
+    msg->setInt32("generation", mPollBufferingPercentGeneration);
+    msg->post();
+}
+
+void NuPlayer::cancelPollBufferingPercent() {
+    mBufferingPercent = 0;
+    ++mPollBufferingPercentGeneration;
+}
+
 void NuPlayer::processDeferredActions() {
     while (!mDeferredActions.empty()) {
         // We won't execute any deferred actions until we're no longer in
@@ -1241,8 +1334,36 @@ void NuPlayer::performSeek(int64_t seekTimeUs) {
     ALOGV("performSeek seekTimeUs=%lld us (%.2f secs)",
           seekTimeUs,
           seekTimeUs / 1E6);
-
+#if 0
+    if(mVideoIsHevc) {
+        int64_t curUs = systemTime(SYSTEM_TIME_MONOTONIC) / 1000ll;
+        if(mLastSeekTimeUs!=-1) {
+            if(abs(curUs - mLastSeekTimeUs) > 500000ll) {
+                mLastSeekTimeUs = curUs;
+	     } else {
+	         mFirstKey = true;
+	         if (mDriver != NULL) {
+                   sp<NuPlayerDriver> driver = mDriver.promote();
+                   if (driver != NULL) {
+			  driver->notifyPosition(seekTimeUs);
+                       driver->notifySeekComplete();
+                       return;
+                   }
+               }
+	     }
+	 } else {
+	     mLastSeekTimeUs = curUs;
+	 }
+    }
+#endif
     mSource->seekTo(seekTimeUs);
+
+    if(mVideoIsHevc) {
+       usleep(100000);
+       //mSeek = true;
+       //mLastVideoTimeUs = -1;
+       mLastSeekTimeUs = systemTime(SYSTEM_TIME_MONOTONIC) / 1000ll;
+    }
 
     if (mDriver != NULL) {
         sp<NuPlayerDriver> driver = mDriver.promote();
@@ -1388,6 +1509,8 @@ void NuPlayer::onSourceNotify(const sp<AMessage> &msg) {
                     driver->notifyDuration(durationUs);
                 }
             }
+
+	     pollBandwidth();
             break;
         }
 
@@ -1426,12 +1549,17 @@ void NuPlayer::onSourceNotify(const sp<AMessage> &msg) {
 
         case Source::kWhatBufferingStart:
         {
+	     pollBufferingPercent();
             notifyListener(MEDIA_INFO, MEDIA_INFO_BUFFERING_START, 0);
             break;
         }
 
         case Source::kWhatBufferingEnd:
         {
+	     cancelPollBufferingPercent();
+	     notifyListener(MEDIA_INFO, MEDIA_INFO_BUFFERING_PERCENT, 100);
+	     ALOGI("Set buffering percent when buffering end!");
+	     usleep(100000ll);
             notifyListener(MEDIA_INFO, MEDIA_INFO_BUFFERING_END, 0);
             break;
         }

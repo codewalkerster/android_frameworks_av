@@ -64,6 +64,14 @@ MediaCodecList::MediaCodecList()
 
         addMediaCodec(
                 false /* encoder */, "OMX.google.raw.decoder", "audio/raw");
+
+#ifdef USE_AM_SOFT_DEMUXER_CODEC
+	 addMediaCodec(false, "OMX.google.vp6.decoder", "video/x-vnd.on2.vp6");
+	 addMediaCodec(false, "OMX.google.vp6a.decoder", "video/x-vnd.on2.vp6a");
+	 addMediaCodec(false, "OMX.google.vp6f.decoder", "video/x-vnd.on2.vp6f");
+	 addMediaCodec(false, "OMX.google.h265.decoder", "video/hevc");
+#endif
+	 addMediaCodec(false, "OMX.google.wmv2.decoder", "video/wmv2");
     }
 
 #if 0
@@ -396,7 +404,7 @@ void MediaCodecList::addType(const char *name) {
     if (index < 0) {
         bit = mTypes.size();
 
-        if (bit == 32) {
+        if (bit == 64) {
             ALOGW("Too many distinct type names in configuration.");
             return;
         }
@@ -407,7 +415,7 @@ void MediaCodecList::addType(const char *name) {
     }
 
     CodecInfo *info = &mCodecInfos.editItemAt(mCodecInfos.size() - 1);
-    info->mTypes |= 1ul << bit;
+    info->mTypes |= 1ull << bit;
 }
 
 ssize_t MediaCodecList::findCodecByType(
@@ -418,7 +426,7 @@ ssize_t MediaCodecList::findCodecByType(
         return -ENOENT;
     }
 
-    uint32_t typeMask = 1ul << mTypes.valueAt(typeIndex);
+    uint64_t typeMask = 1ull << mTypes.valueAt(typeIndex);
 
     while (startIndex < mCodecInfos.size()) {
         const CodecInfo &info = mCodecInfos.itemAt(startIndex);
@@ -496,7 +504,7 @@ status_t MediaCodecList::getSupportedTypes(
     const CodecInfo &info = mCodecInfos.itemAt(index);
 
     for (size_t i = 0; i < mTypes.size(); ++i) {
-        uint32_t typeMask = 1ul << mTypes.valueAt(i);
+        uint64_t typeMask = 1ull << mTypes.valueAt(i);
 
         if (info.mTypes & typeMask) {
             types->push(mTypes.keyAt(i));

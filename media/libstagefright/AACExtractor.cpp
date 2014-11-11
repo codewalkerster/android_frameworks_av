@@ -174,7 +174,8 @@ AACExtractor::AACExtractor(
     if (mDataSource->getSize(&streamSize) == OK) {
          while (offset < streamSize) {
             if ((frameSize = getAdtsFrameLength(source, offset, NULL)) == 0) {
-                return;
+                //return;
+                break;
             }
 
             mOffsetVector.push(offset);
@@ -363,15 +364,21 @@ bool SniffAAC(
              pos, pos);
     }
 
-    uint8_t header[2];
+    uint8_t header[3];
 
-    if (source->readAt(pos, &header, 2) != 2) {
+    if (source->readAt(pos, &header, 3) != 3) {
         return false;
     }
 
     // ADTS syncword
     if ((header[0] == 0xff) && ((header[1] & 0xf6) == 0xf0)) {
-        *mimeType = MEDIA_MIMETYPE_AUDIO_AAC_ADTS;
+		if(((header[2] >> 6) & 0x3) != 1){
+			ALOGI("AAC:yes no LC \n");
+			return false;
+		}
+		ALOGI("profile = %d\n", (header[2] >> 6) & 0x3);
+		ALOGI("AAC:yes profile:LC \n");
+		*mimeType = MEDIA_MIMETYPE_AUDIO_AAC_ADTS;
         *confidence = 0.2;
 
         *meta = new AMessage;

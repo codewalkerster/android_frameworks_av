@@ -962,9 +962,10 @@ status_t AudioFlinger::EffectHandle::enable()
 
     // checkSuspendOnEffectEnabled() can suspend this same effect when enabled
     if (mEffect->suspended()) {
+	 ALOGV("mEffect suspended,do nothing return \n");	
         return NO_ERROR;
     }
-
+    ALOGV("mEffect->setEnabled \n");	    
     status_t status = mEffect->setEnabled(true);
     if (status != NO_ERROR) {
         if (thread != 0) {
@@ -1765,8 +1766,9 @@ void AudioFlinger::EffectChain::checkSuspendOnEffectEnabled(const sp<EffectModul
         // if effect is requested to suspended but was not yet enabled, supend it now.
         if (desc->mEffect == 0) {
             desc->mEffect = effect;
-            effect->setEnabled(false);
-            effect->setSuspended(true);
+	// need enable effect here,Or when effect suspended,has no chance to enable it anymore. 		
+            effect->setEnabled(true);
+            effect->setSuspended(false);
         }
     } else {
         if (index < 0) {

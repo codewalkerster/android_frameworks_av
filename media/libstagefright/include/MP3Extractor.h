@@ -47,7 +47,7 @@ private:
     sp<MetaData> mMeta;
     uint32_t mFixedHeader;
     sp<MP3Seeker> mSeeker;
-
+    off64_t *mptstable;
     MP3Extractor(const MP3Extractor &);
     MP3Extractor &operator=(const MP3Extractor &);
 };

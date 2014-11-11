@@ -27,7 +27,7 @@ and necessary type defitionitions and enumerations.
 #ifndef AVCAPI_COMMON_H_INCLUDED
 #include "avcapi_common.h"
 #endif
-
+//#include "avcenc_int.h"
 // For memset, etc
 #include <string.h>
 
@@ -79,10 +79,11 @@ typedef enum
     Generic success value
     */
     AVCENC_SUCCESS = AVC_SUCCESS,
-    AVCENC_PICTURE_READY = 2,
-    AVCENC_NEW_IDR = 3, /* upon getting this, users have to call PVAVCEncodeSPS and PVAVCEncodePPS to get a new SPS and PPS*/
-    AVCENC_SKIPPED_PICTURE = 4 /* continuable error message */
-
+    AVCENC_SLICE_READY = 2,
+    AVCENC_PICTURE_READY = 3,
+    AVCENC_NEW_IDR = 4, /* upon getting this, users have to call PVAVCEncodeSPS and PVAVCEncodePPS to get a new SPS and PPS*/
+    AVCENC_SKIPPED_PICTURE = 5, /* continuable error message */
+    AVCENC_READY_QUIT = 6
 } AVCEnc_Status;
 
 #define MAX_NUM_SLICE_GROUP  8      /* maximum for all the profiles */
@@ -245,7 +246,7 @@ extern "C"
              AVCENC_PICTURE_READY for the completion of a frame encoding,
              AVCENC_FAIL for failure (this should not occur, though)."
     */
-    OSCL_IMPORT_REF AVCEnc_Status PVAVCEncodeNAL(AVCHandle *avcHandle, uint8 *buffer, uint *buf_nal_size, int *nal_type);
+    OSCL_IMPORT_REF AVCEnc_Status PVAVCEncodeNAL(AVCHandle *avcHandle, void* object , uint8 *buffer, uint *buf_nal_size, int *nal_type);
 
     /**
     This function sniffs the nal_unit_type such that users can call corresponding APIs.
@@ -314,7 +315,7 @@ extern "C"
     OSCL_IMPORT_REF AVCEnc_Status PVAVCEncUpdateIDRInterval(AVCHandle *avcHandle, int IDRInterval);
     OSCL_IMPORT_REF AVCEnc_Status PVAVCEncIDRRequest(AVCHandle *avcHandle);
     OSCL_IMPORT_REF AVCEnc_Status PVAVCEncUpdateIMBRefresh(AVCHandle *avcHandle, int numMB);
-
+    OSCL_IMPORT_REF void ConvertYUV420SemiPlanarToYUV420Planar(uint8_t *inyuv, uint8_t* outyuv,int32_t width, int32_t height);
 
 #ifdef __cplusplus
 }

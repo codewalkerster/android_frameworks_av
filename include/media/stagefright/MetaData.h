@@ -48,7 +48,8 @@ enum {
     kKeyChannelCount      = '#chn',  // int32_t
     kKeyChannelMask       = 'chnm',  // int32_t
     kKeySampleRate        = 'srte',  // int32_t (audio sampling rate Hz)
-    kKeyFrameRate         = 'frmR',  // int32_t (video frame rate fps)
+	kKeyBlockAlign        = 'bagn',
+	kKeyFrameRate         = 'frmR',  // int32_t (video frame rate fps)
     kKeyBitRate           = 'brte',  // int32_t (bps)
     kKeyESDS              = 'esds',  // raw data
     kKeyAACProfile        = 'aacp',  // int32_t
@@ -158,6 +159,11 @@ enum {
     kKeyCryptoIV          = 'cryI',  // uint8_t[16]
     kKeyCryptoMode        = 'cryM',  // int32_t
 
+    // audio profile
+    kKeyAudioProfile      = 'aprf',  // int32_t    
+    kKeyExtraData         = 'exda',
+    kKeyExtraDataSize     = 'edsz',
+    kKeyCodecID           = 'cdid',
     kKeyCryptoDefaultIVSize = 'cryS',  // int32_t
 
     kKeyPssh              = 'pssh',  // raw data

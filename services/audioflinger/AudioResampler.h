@@ -75,7 +75,7 @@ public:
 
 protected:
     // number of bits for phase fraction - 30 bits allows nearly 2x downsampling
-    static const int kNumPhaseBits = 30;
+    static const int kNumPhaseBits = 28;//30;
 
     // phase mask for fraction
     static const uint32_t kPhaseMask = (1LU<<kNumPhaseBits)-1;
@@ -104,7 +104,7 @@ protected:
     size_t mInputIndex;
     int32_t mPhaseIncrement;
     uint32_t mPhaseFraction;
-    uint64_t mLocalTimeFreq;
+    uint32_t mLocalTimeFreq;
     int64_t mPTS;
 
 private:

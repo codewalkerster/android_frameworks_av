@@ -36,6 +36,7 @@ struct ElementaryStreamQueue {
         MPEG_VIDEO,
         MPEG4_VIDEO,
         PCM_AUDIO,
+        H265
     };
 
     enum Flags {
@@ -57,15 +58,18 @@ private:
         size_t mLength;
     };
 
+    // hevc seek
+    bool mHevcFindKey;
+
     Mode mMode;
     uint32_t mFlags;
-
     sp<ABuffer> mBuffer;
     List<RangeInfo> mRangeInfos;
 
     sp<MetaData> mFormat;
 
     sp<ABuffer> dequeueAccessUnitH264();
+    sp<ABuffer> dequeueAccessUnitH265();
     sp<ABuffer> dequeueAccessUnitAAC();
     sp<ABuffer> dequeueAccessUnitMPEGAudio();
     sp<ABuffer> dequeueAccessUnitMPEGVideo();

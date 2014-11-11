@@ -44,6 +44,9 @@ RemoteDisplay::RemoteDisplay(
 RemoteDisplay::~RemoteDisplay() {
 }
 
+void RemoteDisplay::setRotation(int degree) {
+     mSource->setRotation(degree);
+}
 status_t RemoteDisplay::pause() {
     return mSource->pause();
 }

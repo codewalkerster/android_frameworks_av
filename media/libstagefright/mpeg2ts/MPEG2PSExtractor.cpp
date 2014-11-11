@@ -543,6 +543,9 @@ MPEG2PSExtractor::Track::Track(
         case ATSParser::STREAMTYPE_H264:
             mode = ElementaryStreamQueue::H264;
             break;
+        case ATSParser::STREAMTYPE_H265:
+            mode = ElementaryStreamQueue::H265;
+            break;	
         case ATSParser::STREAMTYPE_MPEG2_AUDIO_ADTS:
             mode = ElementaryStreamQueue::AAC;
             break;

@@ -118,7 +118,6 @@ private:
         camera_frame_metadata_t *metadata);
 
     int                     getOrientation(int orientation, bool mirror);
-
     status_t                setPreviewWindow(
         const sp<IBinder>& binder,
         const sp<ANativeWindow>& window);

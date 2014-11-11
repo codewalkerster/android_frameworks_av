@@ -17,11 +17,21 @@
 //#define LOG_NDEBUG 0
 #define LOG_TAG "SoftAVCEncoder"
 #include <utils/Log.h>
-
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
+#include <sys/ioctl.h>
+#include <sys/time.h>
 #include "avcenc_api.h"
 #include "avcenc_int.h"
 #include "OMX_Video.h"
 
+#include <pthread.h>
+#include <sys/prctl.h>
+#include <semaphore.h>  
 #include <HardwareAPI.h>
 #include <MetadataBufferType.h>
 #include <media/stagefright/foundation/ADebug.h>
@@ -31,6 +41,7 @@
 #include <media/stagefright/Utils.h>
 #include <ui/Rect.h>
 #include <ui/GraphicBufferMapper.h>
+#include <dlfcn.h>
 
 #include "SoftAVCEncoder.h"
 
@@ -57,7 +68,7 @@ static LevelConversion ConversionTable[] = {
     { OMX_VIDEO_AVCLevel12, AVC_LEVEL1_2 },
     { OMX_VIDEO_AVCLevel13, AVC_LEVEL1_3 },
     { OMX_VIDEO_AVCLevel2,  AVC_LEVEL2 },
-#if 0
+#if 1
     // encoding speed is very poor if video
     // resolution is higher than CIF
     { OMX_VIDEO_AVCLevel21, AVC_LEVEL2_1 },
@@ -105,6 +116,8 @@ static status_t ConvertAvcSpecLevelToOmxAvcLevel(
     return BAD_VALUE;
 }
 
+#ifdef ASM_OPT
+#else
 inline static void ConvertYUV420SemiPlanarToYUV420Planar(
         uint8_t *inyuv, uint8_t* outyuv,
         int32_t width, int32_t height) {
@@ -134,7 +147,7 @@ inline static void ConvertYUV420SemiPlanarToYUV420Planar(
         }
     }
 }
-
+#endif
 static void* MallocWrapper(
         void *userData, int32_t size, int32_t attrs) {
     void *ptr = malloc(size);
@@ -181,28 +194,33 @@ SoftAVCEncoder::SoftAVCEncoder(
       mStoreMetaDataInBuffers(false),
       mIDRFrameRefreshIntervalInSec(1),
       mAVCEncProfile(AVC_BASELINE),
-      mAVCEncLevel(AVC_LEVEL2),
+      mAVCEncLevel(AVC_LEVEL3_2),
       mNumInputFrames(-1),
       mPrevTimestampUs(-1),
       mStarted(false),
+      mInited(false),
       mSawInputEOS(false),
       mSignalledError(false),
       mHandle(new tagAVCHandle),
       mEncParams(new tagAVCEncParam),
       mInputFrameData(NULL),
-      mSliceGroup(NULL) {
+      mSliceGroup(NULL){
+ 
+    mPlatformEncActived = false;
+    mHardwareFirst = true;
 
     initPorts();
     ALOGI("Construct SoftAVCEncoder");
 }
 
 SoftAVCEncoder::~SoftAVCEncoder() {
-    ALOGV("Destruct SoftAVCEncoder");
+    ALOGV("Destruct SoftAVCEncoder Enter");
     releaseEncoder();
     List<BufferInfo *> &outQueue = getPortQueue(1);
     List<BufferInfo *> &inQueue = getPortQueue(0);
     CHECK(outQueue.empty());
     CHECK(inQueue.empty());
+    ALOGV("Destruct SoftAVCEncoder Exit");
 }
 
 OMX_ERRORTYPE SoftAVCEncoder::initEncParams() {
@@ -215,6 +233,13 @@ OMX_ERRORTYPE SoftAVCEncoder::initEncParams() {
     mHandle->CBAVC_FrameUnbind = UnbindFrameWrapper;
     mHandle->CBAVC_Malloc = MallocWrapper;
     mHandle->CBAVC_Free = FreeWrapper;
+    mHandle->platform_enc = new tagPlatformEnc;
+    CHECK(mHandle->platform_enc != NULL);
+    memset(mHandle->platform_enc,0,sizeof(PlatformEnc_t));
+	
+    mHandle->platform_enc->func= new tagPlatformEncFuncPtr;
+    CHECK(mHandle->platform_enc->func != NULL);
+    memset(mHandle->platform_enc->func,0,sizeof(PlatformEncFuncPtr));
 
     CHECK(mEncParams != NULL);
     memset(mEncParams, 0, sizeof(mEncParams));
@@ -236,9 +261,13 @@ OMX_ERRORTYPE SoftAVCEncoder::initEncParams() {
     mEncParams->num_ref_frame = 1;
     mEncParams->num_slice_group = 1;
     mEncParams->fmo_type = 0;
-
+#ifdef DISABLE_DEBLOCK
+    mEncParams->db_filter = AVC_OFF;
+    mEncParams->disable_db_idc = 1;
+#else
     mEncParams->db_filter = AVC_ON;
-    mEncParams->disable_db_idc = 0;
+    mEncParams->disable_db_idc = 2;
+#endif
 
     mEncParams->alpha_offset = 0;
     mEncParams->beta_offset = 0;
@@ -296,6 +325,9 @@ OMX_ERRORTYPE SoftAVCEncoder::initEncParams() {
     } else {
         mEncParams->idr_period =
             (mIDRFrameRefreshIntervalInSec * mVideoFrameRate);
+        if(mEncParams->idr_period > 10){
+            mEncParams->idr_period =10;
+        }        
     }
 
     // Set profile and level
@@ -305,8 +337,101 @@ OMX_ERRORTYPE SoftAVCEncoder::initEncParams() {
     return OMX_ErrorNone;
 }
 
+void* SoftAVCEncoder::beginSliceThread_0(void *cookie)
+{
+    SoftAVCEncoder *c = (SoftAVCEncoder *)cookie;
+    int slot = 0 ;
+    prctl(PR_SET_NAME, (unsigned long)"AVC_SLOT0", 0, 0, 0);
+    ALOGV("Thread slot %d is created \n" ,slot);	
+    return c->AVCThread_slot(slot);
+}
+void* SoftAVCEncoder::beginSliceThread_1(void *cookie)
+{
+    SoftAVCEncoder *c = (SoftAVCEncoder *)cookie;
+    int slot = 1 ;
+    prctl(PR_SET_NAME, (unsigned long)"AVC_SLOT1", 0, 0, 0);
+    ALOGV("Thread slot %d is created \n" ,slot);	
+    return c->AVCThread_slot(slot);
+}
+void* SoftAVCEncoder::beginSliceThread_2(void *cookie)
+{
+    SoftAVCEncoder *c = (SoftAVCEncoder *)cookie;
+    int slot = 2 ;
+    prctl(PR_SET_NAME, (unsigned long)"AVC_SLOT2", 0, 0, 0);
+    ALOGV("Thread slot %d is created \n" ,slot);	
+    return c->AVCThread_slot(slot);
+}
+void* SoftAVCEncoder::beginSliceThread_3(void *cookie)
+{
+    SoftAVCEncoder *c = (SoftAVCEncoder *)cookie;
+    int slot = 3 ;
+    prctl(PR_SET_NAME, (unsigned long)"AVC_SLOT3", 0, 0, 0);
+    ALOGV("Thread slot %d is created \n" ,slot);	
+    return c->AVCThread_slot(slot);
+}
+void* SoftAVCEncoder::beginSliceThread_4(void *cookie)
+{
+    SoftAVCEncoder *c = (SoftAVCEncoder *)cookie;
+    int slot = 4 ;
+    prctl(PR_SET_NAME, (unsigned long)"AVC_SLOT4", 0, 0, 0);
+    ALOGV("Thread slot %d is created \n" ,slot);	
+    return c->AVCThread_slot(slot);
+}
+void* SoftAVCEncoder::beginSliceThread_5(void *cookie)
+{
+    SoftAVCEncoder *c = (SoftAVCEncoder *)cookie;
+    int slot = 5 ;
+    prctl(PR_SET_NAME, (unsigned long)"AVC_SLOT5", 0, 0, 0);
+    ALOGV("Thread slot %d is created \n" ,slot);	
+    return c->AVCThread_slot(slot);
+}
+
+void* SoftAVCEncoder::AVCThread_slot( int slot)
+{
+    int count =10;
+    uint8_t *outPtr ;
+    uint32_t dataLength ;
+    int* type;
+    AVCEncObject *encvid;
+    AVCEnc_Status encoderStatus = AVCENC_SUCCESS;
+    AVCCommonObj *video ;
+    int step ;
+    int enc_state;
+    while(1){
+        sem_wait(&sem_slice[slot]); 
+        if(!mStarted){
+            int sem_count = 0;
+            m_status = AVCENC_READY_QUIT;
+            sem_getvalue(&semdone[slot],&sem_count);
+            if(sem_count<0){
+                sem_post(&semdone[slot]);
+                ALOGV("AVCThread_slot %d post sem done",slot);
+                usleep(50000);
+            }
+            break;
+        }
+        ALOGV("slot %d is running \n" ,slot);		
+        encvid = (AVCEncObject*)mHandle->AVCObject;	
+        enc_state = encvid->enc_state;
+        dataLength = *((unsigned int*)(m_nal_size[slot])) ;
+        step = dataLength/m_thread_slot_num;
+        outPtr = (unsigned char*)m_buffer[slot] ;
+        type = (int*)(m_nal_type[slot]);
+        encvid = (AVCEncObject*)mHandle->AVCObject_slot[slot];
+        encvid->enc_state = (AVCEnc_State)enc_state;
+        video = encvid->common;
+        video->thread_source  = slot;
+        outPtr += slot*step;
+        ALOGV("slice thread : outPtr is 0x%x , length is %d , type is %d ,step is %d \n",(unsigned)outPtr, dataLength, *type ,step);	
+        encoderStatus = PVAVCEncodeNAL(mHandle, (void*)encvid ,outPtr, &dataLength, type);
+        m_status = encoderStatus;
+        sem_post(&semdone[slot]);
+    }
+    return NULL;
+}
+
 OMX_ERRORTYPE SoftAVCEncoder::initEncoder() {
-    CHECK(!mStarted);
+    CHECK(!mInited);
 
     OMX_ERRORTYPE errType = OMX_ErrorNone;
     if (OMX_ErrorNone != (errType = initEncParams())) {
@@ -316,31 +441,124 @@ OMX_ERRORTYPE SoftAVCEncoder::initEncoder() {
         return errType;
     }
 
-    AVCEnc_Status err;
-    err = PVAVCEncInitialize(mHandle, mEncParams, NULL, NULL);
+    AVCEnc_Status err = AVCENC_FAIL;
+
+    if(mHardwareFirst)
+        mHandle->mLibHandle = dlopen("libstagefright_platformenc.so", RTLD_NOW);
+    if(mHandle->mLibHandle){
+        typedef void (*GetHandle)(PlatformEnc_t* enc);
+        ALOGD("Load the libstagefright_platformenc.so");
+        GetHandle func = (GetHandle)dlsym(mHandle->mLibHandle, "GetPlatformEncHandle");
+        if(func)
+            (void)(*func)(mHandle->platform_enc);
+        else
+            ALOGD("Can't get GetPlatformEncHandle func from libstagefright_platformenc.so");
+        if((func == NULL)||(mHandle->platform_enc->available == false)){
+            ALOGD("libstagefright_platformenc.so is not available");
+            dlclose(mHandle->mLibHandle);
+            mHandle->mLibHandle = NULL;
+        }
+        if((mHandle->platform_enc->available)&&(mHandle->platform_enc->opened<1)){
+            err = (AVCEnc_Status)mHandle->platform_enc->func->Initialize((void*)mHandle, (void*)mEncParams);
+            if(err == AVCENC_SUCCESS){
+                mHandle->platform_enc->opened++;
+                mPlatformEncActived = true;
+            }else{
+                ALOGD("Platform enc init Fail err =%d",err);
+                dlclose(mHandle->mLibHandle);
+                mHandle->mLibHandle = NULL;
+            }
+        }
+    }
+
+    if(mPlatformEncActived == false){
+        m_thread_slot_num =  2 ;
+        mHandle->total_slice_num  = m_thread_slot_num;
+        err = PVAVCEncInitialize(mHandle, mEncParams, NULL, NULL);
+    }
     if (err != AVCENC_SUCCESS) {
         ALOGE("Failed to initialize the encoder: %d", err);
         mSignalledError = true;
         notify(OMX_EventError, OMX_ErrorUndefined, 0, 0);
         return OMX_ErrorUndefined;
     }
-
-    mNumInputFrames = -2;  // 1st two buffers contain SPS and PPS
+    if(mPlatformEncActived == false)
+        mNumInputFrames = -2;  // 1st two buffers contain SPS and PPS
+    else
+        mNumInputFrames = 0;
     mSpsPpsHeaderReceived = false;
     mReadyForNextFrame = true;
     mIsIDRFrame = false;
     mStarted = true;
+    mInited = true;
+    int ret =0;
+    int i = 0;
+    if(mPlatformEncActived == false){
+        typedef void* (*THREAD_FUN)(void*) ;
+        THREAD_FUN thread_fun[MAX_THREAD_NUM];
+        thread_fun[0] = beginSliceThread_0 ;
+        thread_fun[1] = beginSliceThread_1;
+        thread_fun[2] = beginSliceThread_2;
+        thread_fun[3] = beginSliceThread_3;
+        thread_fun[4] = beginSliceThread_4;
+        thread_fun[5] = beginSliceThread_5;
+    	
+        for(i =0; i< m_thread_slot_num ; i++){
+            ret = sem_init(&(sem_slice[i]) , 0,0) ;
+        }
+        for(i =0; i< m_thread_slot_num ; i++){
+            ret = sem_init(&(semdone[i]) , 0,0) ;
+        }
+    
+        pthread_attr_t attr;
+        for(i =0;i< m_thread_slot_num;i++){
+            pthread_attr_init(&attr);
+            pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+            if(pthread_create(&mThread[i], &attr, thread_fun[i], this)!=0){
+                pthread_attr_destroy(&attr);
+                return OMX_ErrorUndefined;
+            }
+            pthread_attr_destroy(&attr);
+        }
+    }
 
     return OMX_ErrorNone;
 }
 
 OMX_ERRORTYPE SoftAVCEncoder::releaseEncoder() {
+    int i = 0;
+    void *dummy = NULL;
     if (!mStarted) {
         return OMX_ErrorNone;
     }
 
-    PVAVCCleanUpEncoder(mHandle);
+    mStarted = false;
+    if(mPlatformEncActived == false){
+        for(i = 0 ; i < m_thread_slot_num; i++){
+            sem_post(&(sem_slice[i])); 
+           pthread_join(mThread[i], &dummy);
+        }
+
+        PVAVCCleanUpEncoder(mHandle);
+    }
     releaseOutputBuffers();
+
+    if(mPlatformEncActived){
+        AVCEnc_Status status;
+        status = (AVCEnc_Status)mHandle->platform_enc->func->Release((void*)mHandle);
+        if(status == AVCENC_SUCCESS)
+            mHandle->platform_enc->opened--;           
+    }
+
+    delete mHandle->platform_enc->func;
+    mHandle->platform_enc->func = NULL;
+
+    delete mHandle->platform_enc;
+    mHandle->platform_enc = NULL;
+
+    if(mHandle->mLibHandle){
+        dlclose(mHandle->mLibHandle);
+    }
 
     delete mInputFrameData;
     mInputFrameData = NULL;
@@ -354,8 +572,14 @@ OMX_ERRORTYPE SoftAVCEncoder::releaseEncoder() {
     delete mHandle;
     mHandle = NULL;
 
-    mStarted = false;
-
+    if(mPlatformEncActived == false){
+        for(i = 0 ; i < m_thread_slot_num; i++){
+            sem_destroy(&(sem_slice[i])); 
+        }   
+        for(i = 0 ; i < m_thread_slot_num; i++){
+            sem_destroy(&(semdone[i])); 
+        }
+    }
     return OMX_ErrorNone;
 }
 
@@ -375,8 +599,10 @@ void SoftAVCEncoder::initPorts() {
     const size_t kInputBufferSize = (mVideoWidth * mVideoHeight * 3) >> 1;
 
     // 31584 is PV's magic number.  Not sure why.
+    //const size_t kOutputBufferSize =
+    //        (kInputBufferSize > 31584) ? kInputBufferSize: 31584;
     const size_t kOutputBufferSize =
-            (kInputBufferSize > 31584) ? kInputBufferSize: 31584;
+            (kInputBufferSize > 512*1024) ? kInputBufferSize: 512*1024;
 
     def.nPortIndex = 0;
     def.eDir = OMX_DirInput;
@@ -552,8 +778,9 @@ OMX_ERRORTYPE SoftAVCEncoder::internalSetParameter(
             OMX_VIDEO_PARAM_BITRATETYPE *bitRate =
                 (OMX_VIDEO_PARAM_BITRATETYPE *) params;
 
-            if (bitRate->nPortIndex != 1 ||
-                bitRate->eControlRate != OMX_Video_ControlRateVariable) {
+            if (bitRate->nPortIndex != 1){// ||
+                //bitRate->eControlRate != OMX_Video_ControlRateVariable) {
+                ALOGE("[%s %d] err:%d", __FUNCTION__, __LINE__, OMX_ErrorUndefined);
                 return OMX_ErrorUndefined;
             }
 
@@ -697,7 +924,7 @@ OMX_ERRORTYPE SoftAVCEncoder::internalSetParameter(
 
             if (mStoreMetaDataInBuffers) {
                 mVideoColorFormat == OMX_COLOR_FormatYUV420SemiPlanar;
-                if (mInputFrameData == NULL) {
+                if ((mInputFrameData == NULL) &&(mInited)){
                     mInputFrameData =
                             (uint8_t *) malloc((mVideoWidth * mVideoHeight * 3 ) >> 1);
                 }
@@ -716,7 +943,7 @@ void SoftAVCEncoder::onQueueFilled(OMX_U32 portIndex) {
         return;
     }
 
-    if (!mStarted) {
+    if (!mInited) {
         if (OMX_ErrorNone != initEncoder()) {
             return;
         }
@@ -725,7 +952,7 @@ void SoftAVCEncoder::onQueueFilled(OMX_U32 portIndex) {
     List<BufferInfo *> &inQueue = getPortQueue(0);
     List<BufferInfo *> &outQueue = getPortQueue(1);
 
-    while (!mSawInputEOS && !inQueue.empty() && !outQueue.empty()) {
+    while (!mSawInputEOS && !inQueue.empty() && !outQueue.empty()&&mStarted) {
         BufferInfo *inInfo = *inQueue.begin();
         OMX_BUFFERHEADERTYPE *inHeader = inInfo->mHeader;
         BufferInfo *outInfo = *outQueue.begin();
@@ -739,6 +966,10 @@ void SoftAVCEncoder::onQueueFilled(OMX_U32 portIndex) {
 
         uint8_t *outPtr = (uint8_t *) outHeader->pBuffer;
         uint32_t dataLength = outHeader->nAllocLen;
+        uint32_t temp_len; 
+        int i;
+        AVCEncObject *encvid;
+        int ret;
 
         if (!mSpsPpsHeaderReceived && mNumInputFrames < 0) {
             // 4 bytes are reserved for holding the start code 0x00000001
@@ -754,8 +985,14 @@ void SoftAVCEncoder::onQueueFilled(OMX_U32 portIndex) {
         // SPS and PPS are separated by start code 0x00000001
         // Assume that we have exactly one SPS and exactly one PPS.
         while (!mSpsPpsHeaderReceived && mNumInputFrames <= 0) {
-            encoderStatus = PVAVCEncodeNAL(mHandle, outPtr, &dataLength, &type);
+            if(mPlatformEncActived){
+                encoderStatus = (AVCEnc_Status)mHandle->platform_enc->func->EncodeNAL((void*)mHandle, outPtr, &dataLength, &type);
+            }else{
+                encoderStatus = PVAVCEncodeNAL(mHandle, NULL, outPtr, &dataLength, &type);
+            }
             if (encoderStatus == AVCENC_WRONG_STATE) {
+                if(mPlatformEncActived)
+                    outHeader->nFilledLen = dataLength;
                 mSpsPpsHeaderReceived = true;
                 CHECK_EQ(0, mNumInputFrames);  // 1st video frame is 0
                 outHeader->nFlags = OMX_BUFFERFLAG_CODECCONFIG;
@@ -799,25 +1036,22 @@ void SoftAVCEncoder::onQueueFilled(OMX_U32 portIndex) {
             if (inHeader->nFlags & OMX_BUFFERFLAG_EOS) {
                 mSawInputEOS = true;
             }
-
             if (inHeader->nFilledLen > 0) {
                 AVCFrameIO videoInput;
                 memset(&videoInput, 0, sizeof(videoInput));
                 videoInput.height = ((mVideoHeight  + 15) >> 4) << 4;
                 videoInput.pitch = ((mVideoWidth + 15) >> 4) << 4;
                 videoInput.coding_timestamp = (inHeader->nTimeStamp + 500) / 1000;  // in ms
+                //ALOGV("coding_timestamp is %lld  ,mVideoFrameRate is %d\n" ,videoInput.coding_timestamp, mVideoFrameRate);
                 uint8_t *inputData = NULL;
                 if (mStoreMetaDataInBuffers) {
-                    if (inHeader->nFilledLen != 8) {
-                        ALOGE("MetaData buffer is wrong size! "
-                                "(got %lu bytes, expected 8)", inHeader->nFilledLen);
+                    if((inHeader->nFilledLen != 8) &&(inHeader->nFilledLen != 12)){
+                        ALOGE("MetaData buffer is wrong size!(got %lu bytes, expected 8 or 12)", inHeader->nFilledLen);
                         mSignalledError = true;
                         notify(OMX_EventError, OMX_ErrorUndefined, 0, 0);
                         return;
                     }
-                    inputData =
-                            extractGrallocData(inHeader->pBuffer + inHeader->nOffset,
-                                    &srcBuffer);
+                    inputData = extractGrallocData(inHeader->pBuffer + inHeader->nOffset, &srcBuffer);
                     if (inputData == NULL) {
                         ALOGE("Unable to extract gralloc buffer in metadata mode");
                         mSignalledError = true;
@@ -829,7 +1063,8 @@ void SoftAVCEncoder::onQueueFilled(OMX_U32 portIndex) {
                     inputData = (uint8_t *)inHeader->pBuffer + inHeader->nOffset;
                 }
 
-                if (mVideoColorFormat != OMX_COLOR_FormatYUV420Planar) {
+                if ((mVideoColorFormat != OMX_COLOR_FormatYUV420Planar)&&(mPlatformEncActived ==false)){
+                //if (mVideoColorFormat != OMX_COLOR_FormatYUV420Planar){
                     ConvertYUV420SemiPlanarToYUV420Planar(
                         inputData, mInputFrameData, mVideoWidth, mVideoHeight);
                     inputData = mInputFrameData;
@@ -837,11 +1072,16 @@ void SoftAVCEncoder::onQueueFilled(OMX_U32 portIndex) {
                 CHECK(inputData != NULL);
                 videoInput.YCbCr[0] = inputData;
                 videoInput.YCbCr[1] = videoInput.YCbCr[0] + videoInput.height * videoInput.pitch;
-                videoInput.YCbCr[2] = videoInput.YCbCr[1] +
-                    ((videoInput.height * videoInput.pitch) >> 2);
+                if ((mVideoColorFormat == OMX_COLOR_FormatYUV420Planar)||(mPlatformEncActived ==false))
+                    videoInput.YCbCr[2] = videoInput.YCbCr[1] + ((videoInput.height * videoInput.pitch) >> 2);
+                else
+                    videoInput.YCbCr[2] = 0;
                 videoInput.disp_order = mNumInputFrames;
 
-                encoderStatus = PVAVCEncSetInput(mHandle, &videoInput);
+                if(mPlatformEncActived)
+                    encoderStatus = (AVCEnc_Status)mHandle->platform_enc->func->SetInput((void*)mHandle, (void*)&videoInput);
+                else
+                    encoderStatus = PVAVCEncSetInput(mHandle, &videoInput);
                 if (encoderStatus == AVCENC_SUCCESS || encoderStatus == AVCENC_NEW_IDR) {
                     mReadyForNextFrame = false;
                     ++mNumInputFrames;
@@ -871,19 +1111,62 @@ void SoftAVCEncoder::onQueueFilled(OMX_U32 portIndex) {
         CHECK(encoderStatus == AVCENC_SUCCESS || encoderStatus == AVCENC_NEW_IDR);
         dataLength = outHeader->nAllocLen;  // Reset the output buffer length
         if (inHeader->nFilledLen > 0) {
-            encoderStatus = PVAVCEncodeNAL(mHandle, outPtr, &dataLength, &type);
+            temp_len = dataLength;
+#ifdef MULTI_THREAD
+            if(mPlatformEncActived){
+                encoderStatus = (AVCEnc_Status)mHandle->platform_enc->func->EncodeNAL((void*)mHandle, outPtr, &dataLength, &type);
+            }else{
+                for(i = 0 ; i < m_thread_slot_num; i++){
+                    m_buffer[i] = (void*)outPtr;
+                    m_nal_size[i] = (void*)&dataLength;
+                    m_nal_type[i] =(void*)&type;
+                }
+                //ALOGV("before: m_buffer is %x , m_nal_size is %d , data_length is %d , m_nal_type is %d \n",m_buffer, *(unsigned*)m_nal_size, dataLength, *(int*)m_nal_type);	
+                for(i = 0 ; i < m_thread_slot_num; i++){
+                    sem_post(&(sem_slice[i])); 
+                }
+    
+                for(i = 0 ; i < m_thread_slot_num; i++){
+                    sem_wait(&semdone[i]); 
+                    ALOGV("onQueueFilled-sema wait passed, i is %d  \n" , i) ;
+                }
+                if(mStarted)
+                    encoderStatus =  (AVCEnc_Status)m_status;
+                else
+                    encoderStatus = AVCENC_READY_QUIT;
+                //ALOGV(/"after: m_buffer is %x , m_nal_size is %d , data_length is %d , m_nal_type is %d \n",m_buffer, *(unsigned*)m_nal_size, dataLength, *(int*)m_nal_type);	
+            }
+#else
+            encvid = (AVCEncObject*)mHandle->AVCObject;	
+            if(mPlatformEncActived)
+                encoderStatus = (AVCEnc_Status)mHandle->platform_enc->func->EncodeNAL((void*)mHandle, outPtr, &dataLength, &type);
+            else
+                encoderStatus = PVAVCEncodeNAL(mHandle, encvid ,outPtr, &dataLength, &type);
+#endif
+            if(encoderStatus == AVCENC_SLICE_READY){	
+                ALOGV("slice ready \n");
+                encvid = (AVCEncObject*)mHandle->AVCObject;	
+                encvid->enc_state = AVCEnc_SLICE_MERGE ; 
+                dataLength = temp_len;
+                encoderStatus = PVAVCEncodeNAL(mHandle, NULL ,outPtr, &dataLength, &type);
+            }
             if (encoderStatus == AVCENC_SUCCESS) {
-                CHECK(NULL == PVAVCEncGetOverrunBuffer(mHandle));
+                if(mPlatformEncActived == false)
+                    CHECK(NULL == PVAVCEncGetOverrunBuffer(mHandle));
             } else if (encoderStatus == AVCENC_PICTURE_READY) {
-                CHECK(NULL == PVAVCEncGetOverrunBuffer(mHandle));
+                if(mPlatformEncActived == false)
+                    CHECK(NULL == PVAVCEncGetOverrunBuffer(mHandle));
                 if (mIsIDRFrame) {
                     outHeader->nFlags |= OMX_BUFFERFLAG_SYNCFRAME;
                     mIsIDRFrame = false;
                 }
+
                 mReadyForNextFrame = true;
                 AVCFrameIO recon;
-                if (PVAVCEncGetRecon(mHandle, &recon) == AVCENC_SUCCESS) {
-                    PVAVCEncReleaseRecon(mHandle, &recon);
+                if(mPlatformEncActived == false){
+                    if (PVAVCEncGetRecon(mHandle, &recon) == AVCENC_SUCCESS) {
+                        PVAVCEncReleaseRecon(mHandle, &recon);
+                    }
                 }
             } else {
                 dataLength = 0;
@@ -962,10 +1245,10 @@ OMX_ERRORTYPE SoftAVCEncoder::getExtensionIndex(
 uint8_t *SoftAVCEncoder::extractGrallocData(void *data, buffer_handle_t *buffer) {
     OMX_U32 type = *(OMX_U32*)data;
     status_t res;
-    if (type != kMetadataBufferTypeGrallocSource) {
+    if ((type != kMetadataBufferTypeGrallocSource) &&(type != kMetadataBufferTypeCanvasSource)){
         ALOGE("Data passed in with metadata mode does not have type "
-                "kMetadataBufferTypeGrallocSource (%d), has type %ld instead",
-                kMetadataBufferTypeGrallocSource, type);
+                "kMetadataBufferTypeGrallocSource (%d) or kMetadataBufferTypeCanvasSource (%d), has type %ld instead",
+                kMetadataBufferTypeGrallocSource, kMetadataBufferTypeCanvasSource, type);
         return NULL;
     }
     buffer_handle_t imgBuffer = *(buffer_handle_t*)((uint8_t*)data + 4);
@@ -973,7 +1256,7 @@ uint8_t *SoftAVCEncoder::extractGrallocData(void *data, buffer_handle_t *buffer)
     const Rect rect(mVideoWidth, mVideoHeight);
     uint8_t *img;
     res = GraphicBufferMapper::get().lock(imgBuffer,
-            GRALLOC_USAGE_HW_VIDEO_ENCODER,
+            GRALLOC_USAGE_HW_VIDEO_ENCODER|GRALLOC_USAGE_SW_READ_MASK,
             rect, (void**)&img);
     if (res != OK) {
         ALOGE("%s: Unable to lock image buffer %p for access", __FUNCTION__,

@@ -60,7 +60,6 @@ WifiDisplaySource::WifiDisplaySource(
       mReaperPending(false),
       mNextCSeq(1),
       mUsingHDCP(false),
-      mIsHDCP2_0(false),
       mHDCPPort(0),
       mHDCPInitializationComplete(false),
       mSetupTriggerDeferred(false),
@@ -71,32 +70,33 @@ WifiDisplaySource::WifiDisplaySource(
 
     mSupportedSourceVideoFormats.disableAll();
 
-    mSupportedSourceVideoFormats.setNativeResolution(
-            VideoFormats::RESOLUTION_CEA, 5);  // 1280x720 p30
+	int videoreolutiontype;
+	int videoreolutiongroup;
 
-    // Enable all resolutions up to 1280x720p30
-    mSupportedSourceVideoFormats.enableResolutionUpto(
-            VideoFormats::RESOLUTION_CEA, 5,
-            VideoFormats::PROFILE_CHP,  // Constrained High Profile
-            VideoFormats::LEVEL_32);    // Level 3.2
+	ALOGE("WifiDisplaySource construct");
+
+	char val_type[PROPERTY_VALUE_MAX];
+	char val_group[PROPERTY_VALUE_MAX];
+	if(property_get("media.wfd.videoreolutiontype", val_type, NULL)&&property_get("media.wfd.videoreolutiongroup", val_group, NULL))
+	{
+
+		sscanf(val_type,"%d",&videoreolutiontype);
+		sscanf(val_group,"%d",&videoreolutiongroup);
+
+		ALOGE("videoreolutiontype:%d videoreolutiongroup:%d", videoreolutiontype, videoreolutiongroup);
+	    mSupportedSourceVideoFormats.enableResolutionUpto(
+	            (VideoFormats::ResolutionType)videoreolutiontype, videoreolutiongroup,
+	            VideoFormats::PROFILE_CHP,  // Constrained High Profile
+	            VideoFormats::LEVEL_32);    // Level 3.2
+	} else {
+		mSupportedSourceVideoFormats.enableResolutionUpto(
+				VideoFormats::RESOLUTION_CEA, 5,
+				VideoFormats::PROFILE_CHP,	// Constrained High Profile
+				VideoFormats::LEVEL_32);	// Level 3.2
+	}
 }
 
 WifiDisplaySource::~WifiDisplaySource() {
-}
-
-static status_t PostAndAwaitResponse(
-        const sp<AMessage> &msg, sp<AMessage> *response) {
-    status_t err = msg->postAndAwaitResponse(response);
-
-    if (err != OK) {
-        return err;
-    }
-
-    if (response == NULL || !(*response)->findInt32("err", &err)) {
-        err = OK;
-    }
-
-    return err;
 }
 
 status_t WifiDisplaySource::start(const char *iface) {
@@ -106,36 +106,101 @@ status_t WifiDisplaySource::start(const char *iface) {
     msg->setString("iface", iface);
 
     sp<AMessage> response;
-    return PostAndAwaitResponse(msg, &response);
+    msg->post();
+
+    /*
+    if (err != OK) {
+        ALOGE("failed to start:err=%d", err);
+        return err;
+    }
+
+    if (!response->findInt32("err", &err)) {
+        err = OK;
+    }
+
+
+    return err;
+    */
+    ALOGE("[%s %d]", __FUNCTION__, __LINE__);
+    return 0;
 }
 
 status_t WifiDisplaySource::stop() {
     sp<AMessage> msg = new AMessage(kWhatStop, id());
 
     sp<AMessage> response;
-    return PostAndAwaitResponse(msg, &response);
+    status_t err = msg->postAndAwaitResponse(&response);
+
+    if (err != OK) {
+		ALOGE("[%s %d]", __FUNCTION__, __LINE__);
+        return err;
+    }
+
+    if (!response->findInt32("err", &err)) {
+        err = OK;
+    }
+	ALOGE("[%s %d]", __FUNCTION__, __LINE__);
+
+    return err;
 }
 
 status_t WifiDisplaySource::pause() {
+	ALOGE("[%s %d]", __FUNCTION__, __LINE__);
     sp<AMessage> msg = new AMessage(kWhatPause, id());
 
     sp<AMessage> response;
-    return PostAndAwaitResponse(msg, &response);
+    status_t err = msg->postAndAwaitResponse(&response);
+
+    if (err != OK) {
+		ALOGE("[%s %d]", __FUNCTION__, __LINE__);
+        return err;
+    }
+
+    if (!response->findInt32("err", &err)) {
+        err = OK;
+    }
+	ALOGE("[%s %d]", __FUNCTION__, __LINE__);
+
+    return err;
 }
 
 status_t WifiDisplaySource::resume() {
+	ALOGE("[%s %d]", __FUNCTION__, __LINE__);
     sp<AMessage> msg = new AMessage(kWhatResume, id());
 
     sp<AMessage> response;
-    return PostAndAwaitResponse(msg, &response);
+    status_t err = msg->postAndAwaitResponse(&response);
+
+    if (err != OK) {
+		ALOGE("[%s %d]", __FUNCTION__, __LINE__);
+        return err;
+    }
+
+    if (!response->findInt32("err", &err)) {
+        err = OK;
+    }
+	ALOGE("[%s %d]", __FUNCTION__, __LINE__);
+
+    return err;
+}
+
+status_t WifiDisplaySource::setRotation(int degree) {
+	ALOGI("[%s %d] degree:%d", __FUNCTION__, __LINE__, degree);
+    sp<AMessage> msg = new AMessage(kWhatSetRotation, id());
+	msg->setInt32("degree", degree);
+
+    sp<AMessage> response;
+    msg->post();
+
+    return 0;
 }
 
 void WifiDisplaySource::onMessageReceived(const sp<AMessage> &msg) {
     switch (msg->what()) {
         case kWhatStart:
         {
-            uint32_t replyID;
-            CHECK(msg->senderAwaitsResponse(&replyID));
+            uint32_t replyID=0;
+            //CHECK(msg->senderAwaitsResponse(&replyID));
 
             AString iface;
             CHECK(msg->findString("iface", &iface));
@@ -161,12 +226,15 @@ void WifiDisplaySource::onMessageReceived(const sp<AMessage> &msg) {
                 port = kWifiDisplayDefaultPort;
             }
 
+            ALOGI("Received kWhatStart on %s:%lu (err= %d)", iface.c_str(), port, err);
+
             if (err == OK) {
                 if (inet_aton(iface.c_str(), &mInterfaceAddr) != 0) {
                     sp<AMessage> notify = new AMessage(kWhatRTSPNotify, id());
 
                     err = mNetSession->createRTSPServer(
                             mInterfaceAddr, port, notify, &mSessionID);
+                    ALOGI("createRTSPServer: err = %d", err);
                 } else {
                     err = -EINVAL;
                 }
@@ -174,9 +242,9 @@ void WifiDisplaySource::onMessageReceived(const sp<AMessage> &msg) {
 
             mState = AWAITING_CLIENT_CONNECTION;
 
-            sp<AMessage> response = new AMessage;
-            response->setInt32("err", err);
-            response->postReply(replyID);
+            //sp<AMessage> response = new AMessage;
+            //response->setInt32("err", err);
+            //response->postReply(replyID);
             break;
         }
 
@@ -207,9 +275,11 @@ void WifiDisplaySource::onMessageReceived(const sp<AMessage> &msg) {
 
                     if (sessionID == mClientSessionID) {
                         mClientSessionID = 0;
-
-                        mClient->onDisplayError(
-                                IRemoteDisplayClient::kDisplayErrorUnknown);
+                        if (mClient != NULL)
+                        {
+                            mClient->onDisplayError(
+                                    IRemoteDisplayClient::kDisplayErrorUnknown);
+                        }
                     }
                     break;
                 }
@@ -231,14 +301,14 @@ void WifiDisplaySource::onMessageReceived(const sp<AMessage> &msg) {
 
                     CHECK(msg->findString("client-ip", &mClientInfo.mRemoteIP));
                     CHECK(msg->findString("server-ip", &mClientInfo.mLocalIP));
-
+#if 1
                     if (mClientInfo.mRemoteIP == mClientInfo.mLocalIP) {
                         // Disallow connections from the local interface
                         // for security reasons.
                         mNetSession->destroySession(sessionID);
                         break;
                     }
-
+#endif
                     CHECK(msg->findInt32(
                                 "server-port", &mClientInfo.mLocalPort));
                     mClientInfo.mPlaybackSessionID = -1;
@@ -258,7 +328,7 @@ void WifiDisplaySource::onMessageReceived(const sp<AMessage> &msg) {
                 {
                     status_t err = onReceiveClientData(msg);
 
-                    if (err != OK) {
+                    if ((err != OK) && (mClient != NULL)) {
                         mClient->onDisplayError(
                                 IRemoteDisplayClient::kDisplayErrorUnknown);
                     }
@@ -374,9 +444,11 @@ void WifiDisplaySource::onMessageReceived(const sp<AMessage> &msg) {
 
                 mNetSession->destroySession(mClientSessionID);
                 mClientSessionID = 0;
-
-                mClient->onDisplayError(
-                        IRemoteDisplayClient::kDisplayErrorUnknown);
+                if (mClient != NULL)
+                {
+                    mClient->onDisplayError(
+                            IRemoteDisplayClient::kDisplayErrorUnknown);
+                }
             } else {
                 scheduleReaper();
             }
@@ -393,9 +465,11 @@ void WifiDisplaySource::onMessageReceived(const sp<AMessage> &msg) {
 
             if (what == PlaybackSession::kWhatSessionDead) {
                 ALOGI("playback session wants to quit.");
-
-                mClient->onDisplayError(
-                        IRemoteDisplayClient::kDisplayErrorUnknown);
+                if (mClient != NULL)
+                {
+                    mClient->onDisplayError(
+                            IRemoteDisplayClient::kDisplayErrorUnknown);
+                }
             } else if (what == PlaybackSession::kWhatSessionEstablished) {
                 mPlaybackSessionEstablished = true;
 
@@ -532,9 +606,11 @@ void WifiDisplaySource::onMessageReceived(const sp<AMessage> &msg) {
                 default:
                 {
                     ALOGE("HDCP failure, shutting down.");
-
-                    mClient->onDisplayError(
-                            IRemoteDisplayClient::kDisplayErrorUnknown);
+                    if (mClient != NULL)
+                    {
+                        mClient->onDisplayError(
+                                IRemoteDisplayClient::kDisplayErrorUnknown);
+                    }
                     break;
                 }
             }
@@ -546,6 +622,26 @@ void WifiDisplaySource::onMessageReceived(const sp<AMessage> &msg) {
             finishStop2();
             break;
         }
+
+
+		case kWhatSetRotation:
+		{
+
+			if (mClientSessionID == 0 || mClientInfo.mPlaybackSession == NULL) {
+
+				ALOGE("[%s %d] kWhatSetRotation mClientSessionID:%d mPlaybackSession%x", __FUNCTION__, __LINE__,
+					mClientSessionID, &(mClientInfo.mPlaybackSession));
+				break;
+			}
+
+			int degree = 0;
+			msg->findInt32("degree", &degree);
+
+			if(degree >= 0 && degree < 360)
+				mClientInfo.mPlaybackSession->setVideoRotation(degree);
+
+			break;
+		}
 
         default:
             TRESPASS();
@@ -568,6 +664,7 @@ status_t WifiDisplaySource::sendM1(int32_t sessionID) {
             "Require: org.wfa.wfd1.0\r\n"
             "\r\n");
 
+    ALOGI("\nSend Request:\n%s", request.c_str());
     status_t err =
         mNetSession->sendRequest(sessionID, request.c_str(), request.size());
 
@@ -575,6 +672,7 @@ status_t WifiDisplaySource::sendM1(int32_t sessionID) {
         return err;
     }
 
+    ALOGI("registerResponseHandler:id = %d, onReceiveM1Response", mNextCSeq);
     registerResponseHandler(
             sessionID, mNextCSeq, &WifiDisplaySource::onReceiveM1Response);
 
@@ -584,11 +682,16 @@ status_t WifiDisplaySource::sendM1(int32_t sessionID) {
 }
 
 status_t WifiDisplaySource::sendM3(int32_t sessionID) {
+
+    char prop[PROPERTY_VALUE_MAX];
+    int ret = property_get("persist.miracast.hdcp2", prop, "false");
     AString body =
-        "wfd_content_protection\r\n"
         "wfd_video_formats\r\n"
         "wfd_audio_codecs\r\n"
         "wfd_client_rtp_ports\r\n";
+    if (!strcmp(prop, "true")) {
+        body.append("wfd_content_protection\r\n");
+    }
 
     AString request = "GET_PARAMETER rtsp://localhost/wfd1.0 RTSP/1.0\r\n";
     AppendCommonResponse(&request, mNextCSeq);
@@ -598,6 +701,7 @@ status_t WifiDisplaySource::sendM3(int32_t sessionID) {
     request.append("\r\n");
     request.append(body);
 
+    ALOGI("\nSend Request:\n%s", request.c_str());
     status_t err =
         mNetSession->sendRequest(sessionID, request.c_str(), request.size());
 
@@ -605,6 +709,7 @@ status_t WifiDisplaySource::sendM3(int32_t sessionID) {
         return err;
     }
 
+    ALOGI("registerResponseHandler:id = %d, onReceiveM3Response", mNextCSeq);
     registerResponseHandler(
             sessionID, mNextCSeq, &WifiDisplaySource::onReceiveM3Response);
 
@@ -658,6 +763,7 @@ status_t WifiDisplaySource::sendM4(int32_t sessionID) {
     request.append("\r\n");
     request.append(body);
 
+    ALOGI("\nSend Request:\n%s", request.c_str());
     status_t err =
         mNetSession->sendRequest(sessionID, request.c_str(), request.size());
 
@@ -665,6 +771,7 @@ status_t WifiDisplaySource::sendM4(int32_t sessionID) {
         return err;
     }
 
+    ALOGI("registerResponseHandler:id = %d, onReceiveM4Response", mNextCSeq);
     registerResponseHandler(
             sessionID, mNextCSeq, &WifiDisplaySource::onReceiveM4Response);
 
@@ -704,6 +811,7 @@ status_t WifiDisplaySource::sendTrigger(
     request.append("\r\n");
     request.append(body);
 
+    ALOGI("\nSend Request:\n%s", request.c_str());
     status_t err =
         mNetSession->sendRequest(sessionID, request.c_str(), request.size());
 
@@ -711,6 +819,7 @@ status_t WifiDisplaySource::sendTrigger(
         return err;
     }
 
+    ALOGI("registerResponseHandler:id = %d, onReceiveM5Response", mNextCSeq);
     registerResponseHandler(
             sessionID, mNextCSeq, &WifiDisplaySource::onReceiveM5Response);
 
@@ -728,6 +837,7 @@ status_t WifiDisplaySource::sendM16(int32_t sessionID) {
             StringPrintf("Session: %d\r\n", mClientInfo.mPlaybackSessionID));
     request.append("\r\n");  // Empty body
 
+    ALOGI("\nSend Request:\n%s", request.c_str());
     status_t err =
         mNetSession->sendRequest(sessionID, request.c_str(), request.size());
 
@@ -735,6 +845,7 @@ status_t WifiDisplaySource::sendM16(int32_t sessionID) {
         return err;
     }
 
+    ALOGI("registerResponseHandler:id = %d, onReceiveM16Response", mNextCSeq);
     registerResponseHandler(
             sessionID, mNextCSeq, &WifiDisplaySource::onReceiveM16Response);
 
@@ -748,6 +859,7 @@ status_t WifiDisplaySource::sendM16(int32_t sessionID) {
 status_t WifiDisplaySource::onReceiveM1Response(
         int32_t sessionID, const sp<ParsedMessage> &msg) {
     int32_t statusCode;
+    ALOGI("%s", __FUNCTION__);
     if (!msg->getStatusCode(&statusCode)) {
         return ERROR_MALFORMED;
     }
@@ -792,14 +904,19 @@ static void GetAudioModes(const char *s, const char *prefix, uint32_t *modes) {
 status_t WifiDisplaySource::onReceiveM3Response(
         int32_t sessionID, const sp<ParsedMessage> &msg) {
     int32_t statusCode;
+    ALOGI("%s", __FUNCTION__);
+
     if (!msg->getStatusCode(&statusCode)) {
         return ERROR_MALFORMED;
     }
 
+    ALOGI("%s %d", __FUNCTION__, __LINE__);
+    
     if (statusCode != 200) {
         return ERROR_UNSUPPORTED;
     }
 
+    ALOGI("%s %d", __FUNCTION__, __LINE__);
     sp<Parameters> params =
         Parameters::Parse(msg->getContent(), strlen(msg->getContent()));
 
@@ -807,11 +924,30 @@ status_t WifiDisplaySource::onReceiveM3Response(
         return ERROR_MALFORMED;
     }
 
+    ALOGI("%s %d", __FUNCTION__, __LINE__);
+    
     AString value;
     if (!params->findParameter("wfd_client_rtp_ports", &value)) {
         ALOGE("Sink doesn't report its choice of wfd_client_rtp_ports.");
         return ERROR_MALFORMED;
     }
+
+/*
+    ALOGI("%s %d", __FUNCTION__, __LINE__);
+
+    unsigned port0 = 0, port1 = 0;
+    char profile[128];
+    char mode[128];
+    int ret;
+    ret = sscanf(value.c_str(), " %s %u %u %s",
+               profile, &port0, &port1, mode);
+    ALOGE("ret = %d, port0 = %d, port1 = %d, profile[%s] mode[%s]",
+          ret, port0, port1, profile, mode);
+    ALOGE("!!! FIXME: buffer overwritten profile and mode.");
+    if (ret != 4
+        || port0 == 0 || port0 > 65535 || port1 != 0) {
+        ALOGE("Sink chose its wfd_client_rtp_ports poorly (%s)",
+*/
 
     unsigned port0 = 0, port1 = 0;
     if (sscanf(value.c_str(),
@@ -834,6 +970,8 @@ status_t WifiDisplaySource::onReceiveM3Response(
 
         return ERROR_UNSUPPORTED;
     }
+
+    ALOGI("%s %d", __FUNCTION__, __LINE__);
 
     mWfdClientRtpPorts = value;
     mChosenRTPPort = port0;
@@ -893,6 +1031,11 @@ status_t WifiDisplaySource::onReceiveM3Response(
 
     mSinkSupportsAudio = false;
 
+    ALOGI("%s %d", __FUNCTION__, __LINE__);
+
+    uint32_t modes;
+    GetAudioModes(value.c_str(), "AAC", &modes);
+
     if  (!(value == "none")) {
         mSinkSupportsAudio = true;
 
@@ -903,7 +1046,25 @@ status_t WifiDisplaySource::onReceiveM3Response(
 
         GetAudioModes(value.c_str(), "LPCM", &modes);
 
+/*
+    ALOGI("%s %d", __FUNCTION__, __LINE__);
+
+    char val[PROPERTY_VALUE_MAX];
+    if (supportsPCM
+            && property_get("media.wfd.use-pcm-audio", val, NULL)
+            && (!strcasecmp("true", val) || !strcmp("1", val))) {
+        ALOGI("Using PCM audio.");
+        mUsingPCMAudio = true;
+    } else if (supportsAAC) {
+        ALOGI("Using AAC audio.");
+        mUsingPCMAudio = false;
+    } else if (supportsPCM) {
+        ALOGI("Using PCM audio.");
+        mUsingPCMAudio = true;
+*/
         bool supportsPCM = (modes & 2) != 0;  // LPCM 2ch 48kHz
+
+		ALOGI("supportsAAC:%d supportsPCM:%d", supportsAAC, supportsPCM);
 
         char val[PROPERTY_VALUE_MAX];
         if (supportsPCM
@@ -930,6 +1091,8 @@ status_t WifiDisplaySource::onReceiveM3Response(
         return ERROR_UNSUPPORTED;
     }
 
+    ALOGI("%s %d", __FUNCTION__, __LINE__);
+
     mUsingHDCP = false;
     if (!params->findParameter("wfd_content_protection", &value)) {
         ALOGI("Sink doesn't appear to support content protection.");
@@ -938,14 +1101,18 @@ status_t WifiDisplaySource::onReceiveM3Response(
     } else {
         mUsingHDCP = true;
 
-        bool isHDCP2_0 = false;
         if (value.startsWith("HDCP2.0 ")) {
-            isHDCP2_0 = true;
+			mHDCPVersion = 20;
         } else if (!value.startsWith("HDCP2.1 ")) {
-            ALOGE("malformed wfd_content_protection: '%s'", value.c_str());
+			mHDCPVersion = 21;
+            //ALOGE("malformed wfd_content_protection: '%s'", value.c_str());
 
+            //return ERROR_MALFORMED;
+        } else if (!value.startsWith("HDCP2.2 ")) {
+			mHDCPVersion = 22;
+		} else {
             return ERROR_MALFORMED;
-        }
+		}
 
         int32_t hdcpPort;
         if (!ParsedMessage::GetInt32Attribute(
@@ -953,8 +1120,8 @@ status_t WifiDisplaySource::onReceiveM3Response(
                 || hdcpPort < 1 || hdcpPort > 65535) {
             return ERROR_MALFORMED;
         }
+		ALOGI("hdcpport: %d\n", hdcpPort);
 
-        mIsHDCP2_0 = isHDCP2_0;
         mHDCPPort = hdcpPort;
 
         status_t err = makeHDCP();
@@ -966,12 +1133,15 @@ status_t WifiDisplaySource::onReceiveM3Response(
         }
     }
 
+    ALOGI("%s %d", __FUNCTION__, __LINE__);
     return sendM4(sessionID);
 }
 
 status_t WifiDisplaySource::onReceiveM4Response(
         int32_t sessionID, const sp<ParsedMessage> &msg) {
     int32_t statusCode;
+    ALOGI("%s", __FUNCTION__);
+
     if (!msg->getStatusCode(&statusCode)) {
         return ERROR_MALFORMED;
     }
@@ -993,6 +1163,8 @@ status_t WifiDisplaySource::onReceiveM4Response(
 status_t WifiDisplaySource::onReceiveM5Response(
         int32_t sessionID, const sp<ParsedMessage> &msg) {
     int32_t statusCode;
+    ALOGI("%s", __FUNCTION__);
+
     if (!msg->getStatusCode(&statusCode)) {
         return ERROR_MALFORMED;
     }
@@ -1007,6 +1179,8 @@ status_t WifiDisplaySource::onReceiveM5Response(
 status_t WifiDisplaySource::onReceiveM16Response(
         int32_t sessionID, const sp<ParsedMessage> &msg) {
     // If only the response was required to include a "Session:" header...
+
+    ALOGI("%s", __FUNCTION__);
 
     CHECK_EQ(sessionID, mClientSessionID);
 
@@ -1046,9 +1220,6 @@ status_t WifiDisplaySource::onReceiveClientData(const sp<AMessage> &msg) {
     sp<ParsedMessage> data =
         static_cast<ParsedMessage *>(obj.get());
 
-    ALOGV("session %d received '%s'",
-          sessionID, data->debugString().c_str());
-
     AString method;
     AString uri;
     data->getRequestField(0, &method);
@@ -1061,6 +1232,9 @@ status_t WifiDisplaySource::onReceiveClientData(const sp<AMessage> &msg) {
 
     if (method.startsWith("RTSP/")) {
         // This is a response.
+
+        ALOGI("\nReceived Response:\n%s",
+              data->debugString().c_str());
 
         ResponseID id;
         id.mSessionID = sessionID;
@@ -1095,6 +1269,9 @@ status_t WifiDisplaySource::onReceiveClientData(const sp<AMessage> &msg) {
         sendErrorResponse(sessionID, "505 RTSP Version not supported", cseq);
         return ERROR_UNSUPPORTED;
     }
+
+    ALOGI("\nReceived Request:\n%s",
+          data->debugString().c_str());
 
     status_t err;
     if (method == "OPTIONS") {
@@ -1141,6 +1318,7 @@ status_t WifiDisplaySource::onOptionsRequest(
 
     response.append("\r\n");
 
+    ALOGI("\nSend Response:\n%s", response.c_str());
     status_t err = mNetSession->sendRequest(sessionID, response.c_str());
 
     if (err == OK) {
@@ -1277,6 +1455,8 @@ status_t WifiDisplaySource::onSetupRequest(
             mChosenVideoProfile,
             mChosenVideoLevel);
 
+    ALOGI("playbackSession->init ret = %d", err);
+
     if (err != OK) {
         looper()->unregisterHandler(playbackSession->id());
         playbackSession.clear();
@@ -1331,6 +1511,7 @@ status_t WifiDisplaySource::onSetupRequest(
 
     response.append("\r\n");
 
+    ALOGI("\nSend Response:\n%s", response.c_str());
     err = mNetSession->sendRequest(sessionID, response.c_str());
 
     if (err != OK) {
@@ -1381,6 +1562,7 @@ status_t WifiDisplaySource::onPlayRequest(
     response.append("Range: npt=now-\r\n");
     response.append("\r\n");
 
+    ALOGI("\nSend Response:\n%s", response.c_str());
     status_t err = mNetSession->sendRequest(sessionID, response.c_str());
 
     if (err != OK) {
@@ -1432,6 +1614,7 @@ status_t WifiDisplaySource::onPauseRequest(
     AppendCommonResponse(&response, cseq, playbackSessionID);
     response.append("\r\n");
 
+    ALOGI("\nSend Response:\n%s", response.c_str());
     err = mNetSession->sendRequest(sessionID, response.c_str());
 
     if (err != OK) {
@@ -1463,20 +1646,24 @@ status_t WifiDisplaySource::onTeardownRequest(
     response.append("Connection: close\r\n");
     response.append("\r\n");
 
+    ALOGI("\nSend Response:\n%s", response.c_str());
     mNetSession->sendRequest(sessionID, response.c_str());
 
     if (mState == AWAITING_CLIENT_TEARDOWN) {
         CHECK_NE(mStopReplyID, 0);
         finishStop();
     } else {
-        mClient->onDisplayError(IRemoteDisplayClient::kDisplayErrorUnknown);
+    	if (mClient != NULL)
+    	{
+            mClient->onDisplayError(IRemoteDisplayClient::kDisplayErrorUnknown);
+        }
     }
 
     return OK;
 }
 
 void WifiDisplaySource::finishStop() {
-    ALOGV("finishStop");
+    ALOGI("finishStop");
 
     mState = STOPPING;
 
@@ -1484,7 +1671,7 @@ void WifiDisplaySource::finishStop() {
 }
 
 void WifiDisplaySource::finishStopAfterDisconnectingClient() {
-    ALOGV("finishStopAfterDisconnectingClient");
+    ALOGI("finishStopAfterDisconnectingClient");
 
     if (mHDCP != NULL) {
         ALOGI("Initiating HDCP shutdown.");
@@ -1496,7 +1683,7 @@ void WifiDisplaySource::finishStopAfterDisconnectingClient() {
 }
 
 void WifiDisplaySource::finishStop2() {
-    ALOGV("finishStop2");
+    ALOGI("finishStop2");
 
     if (mHDCP != NULL) {
         mHDCP->setObserver(NULL);
@@ -1538,6 +1725,7 @@ status_t WifiDisplaySource::onGetParameterRequest(
     AppendCommonResponse(&response, cseq, playbackSessionID);
     response.append("\r\n");
 
+    ALOGI("\nSend Response:\n%s", response.c_str());
     status_t err = mNetSession->sendRequest(sessionID, response.c_str());
     return err;
 }
@@ -1565,6 +1753,7 @@ status_t WifiDisplaySource::onSetParameterRequest(
     AppendCommonResponse(&response, cseq, playbackSessionID);
     response.append("\r\n");
 
+    ALOGI("\nSend Response:\n%s", response.c_str());
     status_t err = mNetSession->sendRequest(sessionID, response.c_str());
     return err;
 }
@@ -1608,6 +1797,7 @@ void WifiDisplaySource::sendErrorResponse(
 
     response.append("\r\n");
 
+    ALOGI("\nSend Response:\n%s", response.c_str());
     mNetSession->sendRequest(sessionID, response.c_str());
 }
 
@@ -1631,7 +1821,7 @@ sp<WifiDisplaySource::PlaybackSession> WifiDisplaySource::findPlaybackSession(
 }
 
 void WifiDisplaySource::disconnectClientAsync() {
-    ALOGV("disconnectClient");
+    ALOGI("disconnectClient");
 
     if (mClientInfo.mPlaybackSession == NULL) {
         disconnectClient2();
@@ -1639,13 +1829,13 @@ void WifiDisplaySource::disconnectClientAsync() {
     }
 
     if (mClientInfo.mPlaybackSession != NULL) {
-        ALOGV("Destroying PlaybackSession");
+        ALOGI("Destroying PlaybackSession");
         mClientInfo.mPlaybackSession->destroyAsync();
     }
 }
 
 void WifiDisplaySource::disconnectClient2() {
-    ALOGV("disconnectClient2");
+    ALOGI("disconnectClient2");
 
     if (mClientInfo.mPlaybackSession != NULL) {
         looper()->unregisterHandler(mClientInfo.mPlaybackSession->id());
@@ -1656,9 +1846,10 @@ void WifiDisplaySource::disconnectClient2() {
         mNetSession->destroySession(mClientSessionID);
         mClientSessionID = 0;
     }
-
-    mClient->onDisplayDisconnected();
-
+    if (mClient != NULL)
+    {
+        mClient->onDisplayDisconnected();
+    }
     finishStopAfterDisconnectingClient();
 }
 

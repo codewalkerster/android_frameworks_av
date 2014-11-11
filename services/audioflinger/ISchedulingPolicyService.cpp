@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "ISchedulingPolicyService"
+#define LOG_TAG "SchedulingPolicyService"
 //#define LOG_NDEBUG 0
 
 #include <binder/Parcel.h>
@@ -45,17 +45,9 @@ public:
         data.writeInt32(tid);
         data.writeInt32(prio);
         uint32_t flags = asynchronous ? IBinder::FLAG_ONEWAY : 0;
-        status_t status = remote()->transact(REQUEST_PRIORITY_TRANSACTION, data, &reply, flags);
-        if (status != NO_ERROR) {
-            return status;
-        }
-        if (asynchronous) {
-            return NO_ERROR;
-        }
-        // fail on exception: force binder reconnection
-        if (reply.readExceptionCode() != 0) {
-            return DEAD_OBJECT;
-        }
+        remote()->transact(REQUEST_PRIORITY_TRANSACTION, data, &reply, flags);
+        // fail on exception
+        if (reply.readExceptionCode() != 0) return -1;
         return reply.readInt32();
     }
 };

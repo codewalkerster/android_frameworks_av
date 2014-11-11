@@ -15,7 +15,7 @@
  */
 
 
-// #define LOG_NDEBUG 0
+//#define LOG_NDEBUG 0
 #define LOG_TAG "PreviewPlayer"
 #include <utils/Log.h>
 
@@ -1063,7 +1063,9 @@ void PreviewPlayer::onVideoEvent() {
 
     if (mVideoRenderer != NULL) {
         mVideoRenderer->render(mVideoBuffer, mCurrentVideoEffect,
-                mRenderingMode, mIsVideoSourceJpg);
+                mRenderingMode, true/*mIsVideoSourceJpg*/);
+        //for we use the soft decoder, which will not use the native window buffers, 
+        //so render always use external buffers
     }
 
     mVideoBuffer->release();
@@ -1205,7 +1207,7 @@ void PreviewPlayer::onPrepareAsyncEvent() {
     }
 
     if (mVideoTrack != NULL && mVideoSource == NULL) {
-        status_t err = initVideoDecoder_l(OMXCodec::kHardwareCodecsOnly);
+        status_t err = initVideoDecoder_l(OMXCodec::kSoftwareCodecsOnly);//kHardwareCodecsOnly);
 
         if (err != OK) {
             abortPrepare(err);

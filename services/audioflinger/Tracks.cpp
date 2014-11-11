@@ -16,7 +16,7 @@
 */
 
 
-#define LOG_TAG "AudioFlinger"
+#define LOG_TAG "Track"
 //#define LOG_NDEBUG 0
 
 #include "Configuration.h"
@@ -81,13 +81,18 @@ AudioFlinger::ThreadBase::TrackBase::TrackBase(
         mChannelMask(channelMask),
         mChannelCount(popcount(channelMask)),
         mFrameSize(audio_is_linear_pcm(format) ?
-                mChannelCount * audio_bytes_per_sample(format) : sizeof(int8_t)),
+                mChannelCount * audio_bytes_per_sample(format) :(audio_is_raw_data(format)?mChannelCount*sizeof(int16_t): sizeof(int8_t))),
         mFrameCount(frameCount),
         mSessionId(sessionId),
         mIsOut(isOut),
         mServerProxy(NULL),
         mId(android_atomic_inc(&nextTrackId)),
         mTerminated(false)
+        ,FramsRead(0)
+        ,FrmCnt(0)
+        ,FrmCntOffset(0)
+        ,pFrmCounterEnable(NULL)
+        
 {
     // if the caller is us, trust the specified uid
     if (IPCThreadState::self()->getCallingPid() != getpid_cached || clientUid == -1) {
@@ -307,6 +312,10 @@ void AudioFlinger::TrackHandle::signal()
     return mTrack->signal();
 }
 
+void* AudioFlinger::TrackHandle::getTrack()
+{
+      return mTrack.get();
+}
 status_t AudioFlinger::TrackHandle::onTransact(
     uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags)
 {
@@ -1530,6 +1539,9 @@ AudioFlinger::PlaybackThread::OutputTrack::~OutputTrack()
 status_t AudioFlinger::PlaybackThread::OutputTrack::start(AudioSystem::sync_event_t event,
                                                           int triggerSession)
 {
+    ALOGV("[%p]OutputTrack::start FrmCounterEnable/%d FrmCnt/%d FramsRead/%d getFramesFilled/%d\n",
+           this, pFrmCounterEnable? *pFrmCounterEnable:0,
+           FrmCnt,FramsRead,mClientProxy->getFramesFilled());
     status_t status = Track::start(event, triggerSession);
     if (status != NO_ERROR) {
         return status;
@@ -1542,6 +1554,9 @@ status_t AudioFlinger::PlaybackThread::OutputTrack::start(AudioSystem::sync_even
 
 void AudioFlinger::PlaybackThread::OutputTrack::stop()
 {
+    ALOGV("[%p]OutputTrack::stop FrmCounterEnable/%d FrmCnt/%d FramsRead/%d getFramesFilled/%d...\n",
+           this, pFrmCounterEnable? *pFrmCounterEnable:0,
+           FrmCnt,FramsRead,mClientProxy->getFramesFilled());
     Track::stop();
     clearBufferQueue();
     mOutBuffer.frameCount = 0;
@@ -1564,7 +1579,7 @@ bool AudioFlinger::PlaybackThread::OutputTrack::write(int16_t* data, uint32_t fr
         sp<ThreadBase> thread = mThread.promote();
         if (thread != 0) {
             MixerThread *mixerThread = (MixerThread *)thread.get();
-            if (mFrameCount > frames) {
+            if (0/*mFrameCount > frames*/) {
                 if (mBufferQueue.size() < kMaxOverFlowBuffers) {
                     uint32_t startFrames = (mFrameCount - frames);
                     pInBuffer = new Buffer;
@@ -1579,7 +1594,11 @@ bool AudioFlinger::PlaybackThread::OutputTrack::write(int16_t* data, uint32_t fr
             }
         }
     }
-
+    sp<ThreadBase> thread = mThread.promote();
+    if (thread != 0 && thread->standby() && frames != 0) {
+	    ALOGI("OutPut Track restore active track to thread %p\n",mThread.unsafe_get());
+	    start();
+    }		
     while (waitTimeLeftMs) {
         // First write pending buffers, then new data
         if (mBufferQueue.size()) {
@@ -1639,7 +1658,7 @@ bool AudioFlinger::PlaybackThread::OutputTrack::write(int16_t* data, uint32_t fr
     if (inBuffer.frameCount) {
         sp<ThreadBase> thread = mThread.promote();
         if (thread != 0 && !thread->standby()) {
-            if (mBufferQueue.size() < kMaxOverFlowBuffers) {
+            if (1/*mBufferQueue.size() < kMaxOverFlowBuffers*/) {
                 pInBuffer = new Buffer;
                 pInBuffer->mBuffer = new int16_t[inBuffer.frameCount * channelCount];
                 pInBuffer->frameCount = inBuffer.frameCount;
@@ -1662,7 +1681,7 @@ bool AudioFlinger::PlaybackThread::OutputTrack::write(int16_t* data, uint32_t fr
     if (frames == 0 && mBufferQueue.size() == 0) {
         // FIXME borken, replace by getting framesReady() from proxy
         size_t user = 0;    // was mCblk->user
-        if (user < mFrameCount) {
+        if (0/*user < mFrameCount*/) {
             frames = mFrameCount - user;
             pInBuffer = new Buffer;
             pInBuffer->mBuffer = new int16_t[frames * channelCount];
@@ -1676,6 +1695,26 @@ bool AudioFlinger::PlaybackThread::OutputTrack::write(int16_t* data, uint32_t fr
     }
 
     return outputBufferFull;
+}
+uint AudioFlinger::PlaybackThread::OutputTrack::LatencyDupBuf_Get()
+{
+   return mClientProxy->getFramesFilled();
+}
+
+void AudioFlinger::PlaybackThread::OutputTrack::releaseBuffer(AudioBufferProvider::Buffer* buffer)
+{
+    ServerProxy::Buffer buf;
+    buf.mFrameCount = buffer->frameCount;
+    buf.mRaw = buffer->raw;
+    buffer->frameCount = 0;
+    buffer->raw = NULL;
+
+    if(pFrmCounterEnable!=NULL && *pFrmCounterEnable==1 ){
+        FramsRead+=buf.mFrameCount;
+    }else{
+        FramsRead=0;
+    }
+    mServerProxy->releaseBuffer(&buf);
 }
 
 status_t AudioFlinger::PlaybackThread::OutputTrack::obtainBuffer(

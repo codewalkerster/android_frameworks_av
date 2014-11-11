@@ -436,14 +436,18 @@ status_t MediaPlayer::seekTo_l(int msec)
             ALOGW("Stream has no duration and is therefore not seekable.");
             return err;
         }
-
+		
+        #ifdef LIVEPLAY_SEEK
+        if ((durationMs > 0)&&(msec > durationMs)) {
+        #else
         if (msec > durationMs) {
+        #endif
             ALOGW("Attempt to seek to past end of file: request = %d, "
                   "durationMs = %d",
                   msec,
                   durationMs);
 
-            msec = durationMs;
+            //msec = durationMs;
         }
 
         // cache duration
@@ -683,7 +687,8 @@ void MediaPlayer::notify(int msg, int ext1, int ext2, const Parcel *obj)
     }
 
     // Allows calls from JNI in idle state to notify errors
-    if (!(msg == MEDIA_ERROR && mCurrentState == MEDIA_PLAYER_IDLE) && mPlayer == 0) {
+    if (!((msg == MEDIA_ERROR || msg == MEDIA_INFO) && mCurrentState == MEDIA_PLAYER_IDLE) && mPlayer == 0) {
+    //if (!(msg == MEDIA_ERROR && mCurrentState == MEDIA_PLAYER_IDLE) && mPlayer == 0) {
         ALOGV("notify(%d, %d, %d) callback on disconnected mediaplayer", msg, ext1, ext2);
         if (locked) mLock.unlock();   // release the lock when done.
         return;

@@ -33,6 +33,14 @@
 #include "include/WAVExtractor.h"
 #include "include/WVMExtractor.h"
 
+#include "include/ADIFExtractor.h"
+#include "include/ADTSExtractor.h"
+#include "include/LATMExtractor.h"
+#include "include/AsfExtractor.h"
+#include "include/THDExtractor.h"
+#include "include/DtshdExtractor.h"
+#include "include/AIFFExtractor.h"
+
 #include "matroska/MatroskaExtractor.h"
 
 #include <media/stagefright/foundation/AMessage.h>
@@ -158,6 +166,7 @@ void DataSource::RegisterDefaultSniffers() {
         return;
     }
 
+	RegisterSniffer_l(SniffADTS);
     RegisterSniffer_l(SniffMPEG4);
     RegisterSniffer_l(SniffMatroska);
     RegisterSniffer_l(SniffOgg);
@@ -167,8 +176,14 @@ void DataSource::RegisterDefaultSniffers() {
     RegisterSniffer_l(SniffMPEG2TS);
     RegisterSniffer_l(SniffMP3);
     RegisterSniffer_l(SniffAAC);
+	RegisterSniffer_l(SniffADIF);
+	RegisterSniffer_l(SniffLATM);
     RegisterSniffer_l(SniffMPEG2PS);
     RegisterSniffer_l(SniffWVM);
+	RegisterSniffer_l(SniffAsf);
+	RegisterSniffer_l(SniffAIFF);
+	RegisterSniffer_l(SniffTHD);
+	RegisterSniffer_l(SniffDtshd);
 
     char value[PROPERTY_VALUE_MAX];
     if (property_get("drm.service.enabled", value, NULL)

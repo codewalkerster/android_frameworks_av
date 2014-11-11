@@ -33,6 +33,17 @@
 #include <media/stagefright/foundation/ANetworkSession.h>
 #include <ui/GraphicBuffer.h>
 
+#include <stdio.h>
+#include <assert.h>
+#include <limits.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sched.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
+#include <cutils/properties.h>
+
 namespace android {
 
 MediaSender::MediaSender(
@@ -44,14 +55,28 @@ MediaSender::MediaSender(
       mGeneration(0),
       mPrevTimeUs(-1ll),
       mInitDoneCount(0),
-      mLogFile(NULL) {
-    // mLogFile = fopen("/data/misc/log.ts", "wb");
+      mDumpfd(-1) {
+
+    char val[256];
+    if (property_get("media.wfd.wfd-ts-dump", val, NULL) && (!strcasecmp("true", val) || !strcmp("1", val))) {
+        mDumpfd = open("/system/temp/log.ts", O_CREAT | O_RDWR | O_TRUNC, 0644);
+        ALOGV("open file to log ts stream:%d", mDumpfd);
+    }
+	
+    mSendVideoFirst = false;
+	
+    if(property_get("media.wfd.sendvideofrist", val, NULL) && (!strcasecmp("true", val) || !strcmp("1", val))){
+        mSendVideoFirst = true;
+    }
+
+    ALOGD("MediaSender mSendAudioFirst:%d", mSendVideoFirst);
 }
 
 MediaSender::~MediaSender() {
-    if (mLogFile != NULL) {
-        fclose(mLogFile);
-        mLogFile = NULL;
+    if (mDumpfd >= 0) {
+        ALOGV("close file ts stream:%d", mDumpfd);
+        close(mDumpfd);
+        mDumpfd = -1;
     }
 }
 
@@ -227,7 +252,11 @@ status_t MediaSender::queueAccessUnit(
                 if (info.mAccessUnits.empty()) {
                     minTrackIndex = -1;
                     minTimeUs = -1ll;
-                    break;
+					
+                    if(mSendVideoFirst == true)
+                        break;//audio is waiting for video
+                    else
+                        continue;
                 }
 
                 int64_t timeUs;
@@ -253,8 +282,9 @@ status_t MediaSender::queueAccessUnit(
                     minTrackIndex, accessUnit, &tsPackets);
 
             if (err == OK) {
-                if (mLogFile != NULL) {
-                    fwrite(tsPackets->data(), 1, tsPackets->size(), mLogFile);
+                if (mDumpfd >= 0) {
+                    write(mDumpfd, tsPackets->data(), tsPackets->size());
+                    ALOGV("dump ts dumpfd:%d size:%d", mDumpfd, tsPackets->size());
                 }
 
                 int64_t timeUs;
@@ -402,6 +432,12 @@ status_t MediaSender::packetizeAccessUnit(
         && (info.mFlags & FLAG_MANUALLY_PREPEND_SPS_PPS)
         && IsIDR(accessUnit);
 
+	bool startcode_ex = memcmp(accessUnit->data(), "\x00\x00\x00\x01", 4);
+    if (startcode_ex != 0) {
+        accessUnit = mTSPacketizer->prependStartCode(
+                info.mPacketizerTrackIndex, accessUnit);
+    }
+
     if (mHDCP != NULL && !info.mIsAudio) {
         isHDCPEncrypted = true;
 
@@ -493,7 +529,13 @@ status_t MediaSender::packetizeAccessUnit(
         flags |= TSPacketizer::PREPEND_SPS_PPS_TO_IDR_FRAMES;
     }
 
-    int64_t timeUs = ALooper::GetNowUs();
+    //int64_t timeUs = ALooper::GetNowUs();
+
+    int64_t timeNow64;
+    struct timeval timeNow;
+    gettimeofday(&timeNow, NULL);
+    int64_t timeUs = (int64_t)timeNow.tv_sec*1000*1000 + (int64_t)timeNow.tv_usec;
+
     if (mPrevTimeUs < 0ll || mPrevTimeUs + 100000ll <= timeUs) {
         flags |= TSPacketizer::EMIT_PCR;
         flags |= TSPacketizer::EMIT_PAT_AND_PMT;

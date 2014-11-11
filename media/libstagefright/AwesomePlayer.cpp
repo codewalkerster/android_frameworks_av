@@ -56,8 +56,13 @@
 
 #include <cutils/properties.h>
 
+#ifdef USE_AM_SOFT_DEMUXER_CODEC
+#include <media/stagefright/AmMediaExtractorPlugin.h>
+#endif
+#define  TRACE()    ALOGV("## [%s::%d] ----------\n",__FUNCTION__,__LINE__)
+
 #define USE_SURFACE_ALLOC 1
-#define FRAME_DROP_FREQ 0
+#define FRAME_DROP_FREQ 3
 
 namespace android {
 
@@ -66,10 +71,10 @@ static int64_t kHighWaterMarkUs = 5000000ll;  // 5secs
 static const size_t kLowWaterMarkBytes = 40000;
 static const size_t kHighWaterMarkBytes = 200000;
 
+
 // maximum time in paused state when offloading audio decompression. When elapsed, the AudioPlayer
 // is destroyed to allow the audio DSP to power down.
 static int64_t kOffloadPauseMaxUs = 60000000ll;
-
 
 struct AwesomeEvent : public TimedEventQueue::Event {
     AwesomeEvent(
@@ -198,6 +203,10 @@ AwesomePlayer::AwesomePlayer()
       mDisplayHeight(0),
       mVideoScalingMode(NATIVE_WINDOW_SCALING_MODE_SCALE_TO_WINDOW),
       mFlags(0),
+      mHEVC(false),
+      m_openHEVC(false),
+      m_vpx(false),
+      mStop(false),
       mExtractorFlags(0),
       mVideoBuffer(NULL),
       mDecryptHandle(NULL),
@@ -226,6 +235,7 @@ AwesomePlayer::AwesomePlayer()
     mAudioTearDownEvent = new AwesomeEvent(this,
                               &AwesomePlayer::onAudioTearDownEvent);
     mAudioTearDownEventPending = false;
+    memset(&mStreamInfo, 0, sizeof(mStreamInfo));
 
     reset();
 }
@@ -347,7 +357,11 @@ status_t AwesomePlayer::setDataSource(const sp<IStreamSource> &source) {
 
 status_t AwesomePlayer::setDataSource_l(
         const sp<DataSource> &dataSource) {
+#ifdef USE_AM_SOFT_DEMUXER_CODEC
+    sp<MediaExtractor> extractor = MediaExtractor::CreateEx(dataSource,mHEVC);
+#else
     sp<MediaExtractor> extractor = MediaExtractor::Create(dataSource);
+#endif
 
     if (extractor == NULL) {
         return UNKNOWN_ERROR;
@@ -408,6 +422,8 @@ status_t AwesomePlayer::setDataSource_l(const sp<MediaExtractor> &extractor) {
 
     bool haveAudio = false;
     bool haveVideo = false;
+    bool needVideo = !PropIsEnable("media.amplayer.novideo",false);
+    bool needAudio = !PropIsEnable("media.amplayer.noaudio",false);
     for (size_t i = 0; i < extractor->countTracks(); ++i) {
         sp<MetaData> meta = extractor->getTrackMetaData(i);
 
@@ -416,9 +432,10 @@ status_t AwesomePlayer::setDataSource_l(const sp<MediaExtractor> &extractor) {
 
         String8 mime = String8(_mime);
 
-        if (!haveVideo && !strncasecmp(mime.string(), "video/", 6)) {
+        if (needVideo && !haveVideo && !strncasecmp(mime.string(), "video/", 6)) {
             setVideoSource(extractor->getTrack(i));
             haveVideo = true;
+            mActiveVideoTrackIndex = i;
 
             // Set the presentation/display size
             int32_t displayWidth, displayHeight;
@@ -439,10 +456,18 @@ status_t AwesomePlayer::setDataSource_l(const sp<MediaExtractor> &extractor) {
                     &mStats.mTracks.editItemAt(mStats.mVideoTrackIndex);
                 stat->mMIME = mime.string();
             }
-        } else if (!haveAudio && !strncasecmp(mime.string(), "audio/", 6)) {
+        } else if (needAudio && !haveAudio && !strncasecmp(mime.string(), "audio/", 6)) {
+            int32_t channelnum = 0;
+
             setAudioSource(extractor->getTrack(i));
             haveAudio = true;
             mActiveAudioTrackIndex = i;
+
+            meta->findInt32(kKeyChannelCount, &channelnum);
+            if (!strcasecmp(mime.string(), MEDIA_MIMETYPE_AUDIO_AAC) && (channelnum > 2)) {
+                meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_ADTS_PROFILE);
+                ALOGV("[%s::%d] use faad to decode multichannel:%d %s file!\n",__FUNCTION__,__LINE__, channelnum, _mime);
+            }
 
             {
                 Mutex::Autolock autoLock(mStatsLock);
@@ -479,8 +504,22 @@ status_t AwesomePlayer::setDataSource_l(const sp<MediaExtractor> &extractor) {
     }
 
     mExtractorFlags = extractor->flags();
-
     return OK;
+}
+bool AwesomePlayer::PropIsEnable(const char* str, bool def)
+{
+    char value[PROPERTY_VALUE_MAX];
+    if (property_get(str, value, NULL) > 0) {
+        if ((!strcmp(value, "1") || !strcmp(value, "true") || !strcmp(value, "ok"))) {
+            ALOGI("%s is enabled\n", str);
+            return true;
+        } else {
+            ALOGI("%s is disabled\n", str);
+            return false;
+        }
+    }
+    ALOGI("%s is not setting,use default %s\n", str, def ? "true" : "false");
+    return def;
 }
 
 void AwesomePlayer::reset() {
@@ -491,6 +530,7 @@ void AwesomePlayer::reset() {
 void AwesomePlayer::reset_l() {
     mVideoRenderingStarted = false;
     mActiveAudioTrackIndex = -1;
+    mActiveVideoTrackIndex = -1;
     mDisplayWidth = 0;
     mDisplayHeight = 0;
 
@@ -530,6 +570,24 @@ void AwesomePlayer::reset_l() {
 
     while (mFlags & PREPARING) {
         mPreparedCondition.wait(mLock);
+    }
+	
+    if (mStreamInfo.stream_info.total_video_num) {
+        for (int i = 0; i < mStreamInfo.stream_info.total_video_num; i ++) {
+            if (mStreamInfo.video_info[i] != NULL) {
+                free(mStreamInfo.video_info[i]);
+                mStreamInfo.video_info[i] = NULL;
+            }
+        }
+    }
+
+    if (mStreamInfo.stream_info.total_audio_num) {
+        for (int i = 0; i < mStreamInfo.stream_info.total_audio_num; i ++) {
+            if (mStreamInfo.audio_info[i] != NULL) {
+                free(mStreamInfo.audio_info[i]);
+                mStreamInfo.audio_info[i] = NULL;
+            }
+        }
     }
 
     cancelPlayerEvents();
@@ -1202,7 +1260,7 @@ void AwesomePlayer::initRenderer_l() {
     setVideoScalingMode_l(mVideoScalingMode);
     if (USE_SURFACE_ALLOC
             && !strncmp(component, "OMX.", 4)
-            && strncmp(component, "OMX.google.", 11)) {
+            && (strncmp(component, "OMX.google.", 11) || !strcmp(component, "OMX.google.h265.decoder"))) {
         // Hardware decoders avoid the CPU color conversion by decoding
         // directly to ANativeBuffers, so we must use a renderer that
         // just pushes those buffers to the ANativeWindow.
@@ -1277,6 +1335,11 @@ status_t AwesomePlayer::pause_l(bool at_eos) {
 
     addBatteryData(params);
 
+    return OK;
+}
+
+status_t AwesomePlayer::stop() {
+    mStop = true;
     return OK;
 }
 
@@ -1666,6 +1729,22 @@ status_t AwesomePlayer::initVideoDecoder(uint32_t flags) {
                     componentNameLength - kSuffixLength], kSuffix)) {
             modifyFlags(SLOW_DECODER_HACK, SET);
         }
+#ifdef USE_AM_SOFT_DEMUXER_CODEC
+        static const char *kComponent = "OMX.google.h265.decoder";
+        static const size_t kLength = strlen(kComponent);
+        if(!strncmp(componentName, kComponent, kLength)) {
+            modifyFlags(SLOW_DECODER_HACK, SET);
+            m_openHEVC = true;
+        }
+#endif
+        static const char *vp8_Component = "OMX.google.vp8.decoder";
+        static const char *vp9_Component = "OMX.google.vp9.decoder";
+        static const size_t vpx_Length = strlen(vp8_Component);
+        if(!strncmp(componentName, vp8_Component, vpx_Length)
+           || !strncmp(componentName, vp9_Component, vpx_Length)) {
+            modifyFlags(SLOW_DECODER_HACK, SET);
+            m_vpx = true;
+        }
     }
 
     return mVideoSource != NULL ? OK : UNKNOWN_ERROR;
@@ -1722,6 +1801,12 @@ void AwesomePlayer::finishSeekIfNecessary(int64_t videoTimeUs) {
 
 void AwesomePlayer::onVideoEvent() {
     ATRACE_CALL();
+
+    // prevent blocking when player exited.
+    if(mStop) {
+        return;
+    }
+
     Mutex::Autolock autoLock(mLock);
     if (!mVideoEventPending) {
         // The event has been cancelled in reset_l() but had already
@@ -1896,7 +1981,11 @@ void AwesomePlayer::onVideoEvent() {
                 && mAudioPlayer != NULL
                 && mAudioPlayer->getMediaTimeMapping(
                     &realTimeUs, &mediaTimeUs)) {
-            if (mWVMExtractor == NULL) {
+#ifdef USE_AM_SOFT_DEMUXER_CODEC
+            if (mWVMExtractor == NULL && m_openHEVC == false && m_vpx == false) {   // hevc/h.265 soft decoder is slow now, avoid skipping ahead.
+#else
+            if (mWVMExtractor == NULL && m_vpx == false) {    // vpx decoding slow sometimes, avoid skipping ahead.
+#endif
                 ALOGI("we're much too late (%.2f secs), video skipping ahead",
                      latenessUs / 1E6);
 
@@ -1942,7 +2031,7 @@ void AwesomePlayer::onVideoEvent() {
             }
         }
 
-        if (latenessUs < -10000) {
+        if (latenessUs < -10000 && latenessUs > -15000000ll) {
             // We're more than 10ms early.
             postVideoEvent_l(10000);
             return;
@@ -2346,8 +2435,12 @@ status_t AwesomePlayer::finishSetDataSource_l() {
             mWVMExtractor->setUID(mUID);
         extractor = mWVMExtractor;
     } else {
+#ifdef USE_AM_SOFT_DEMUXER_CODEC
+        extractor = MediaExtractor::CreateEx(dataSource, mHEVC);
+#else
         extractor = MediaExtractor::Create(
                 dataSource, sniffedMIME.empty() ? NULL : sniffedMIME.c_str());
+#endif
 
         if (extractor == NULL) {
             return UNKNOWN_ERROR;
@@ -2517,6 +2610,272 @@ status_t AwesomePlayer::setCacheStatCollectFreq(const Parcel &request) {
     return ERROR_UNSUPPORTED;
 }
 
+aformat_t AwesomePlayer::audioTypeConvert(enum CodecID id, pfile_type File_type)
+{
+    aformat_t format = (aformat_t)-1;
+    switch (id) {
+    case CODEC_ID_PCM_MULAW:
+        //format = AFORMAT_MULAW;
+        format = AFORMAT_ADPCM;
+        break;
+
+    case CODEC_ID_PCM_ALAW:
+        //format = AFORMAT_ALAW;
+        format = AFORMAT_ADPCM;
+        break;
+
+
+    case CODEC_ID_MP1:
+    case CODEC_ID_MP2:
+    case CODEC_ID_MP3:
+        format = AFORMAT_MPEG;
+        break;
+
+    case CODEC_ID_AAC_LATM:
+        format = AFORMAT_AAC_LATM;
+        break;
+
+
+    case CODEC_ID_AAC:
+        if (File_type == RM_FILE) {
+            format = AFORMAT_RAAC;
+        } else {
+            format = AFORMAT_AAC;
+        }
+        break;
+
+    case CODEC_ID_AC3:
+        format = AFORMAT_AC3;
+        break;
+    case CODEC_ID_EAC3:
+        format = AFORMAT_EAC3;
+        break;
+    case CODEC_ID_DTS:
+        format = AFORMAT_DTS;
+        break;
+
+    case CODEC_ID_PCM_S16BE:
+        format = AFORMAT_PCM_S16BE;
+        break;
+
+    case CODEC_ID_PCM_S16LE:
+        format = AFORMAT_PCM_S16LE;
+        break;
+
+    case CODEC_ID_PCM_U8:
+        format = AFORMAT_PCM_U8;
+        break;
+
+    case CODEC_ID_COOK:
+        format = AFORMAT_COOK;
+        break;
+
+    case CODEC_ID_ADPCM_IMA_WAV:
+    case CODEC_ID_ADPCM_MS:
+        format = AFORMAT_ADPCM;
+        break;
+    case CODEC_ID_AMR_NB:
+    case CODEC_ID_AMR_WB:
+        format =  AFORMAT_AMR;
+        break;
+    case CODEC_ID_WMAV1:
+    case CODEC_ID_WMAV2:
+        format =  AFORMAT_WMA;
+        break;
+    case CODEC_ID_FLAC:
+        format = AFORMAT_FLAC;
+        break;
+
+    case CODEC_ID_WMAPRO:
+        format = AFORMAT_WMAPRO;
+        break;
+
+    case CODEC_ID_PCM_BLURAY:
+        format = AFORMAT_PCM_BLURAY;
+        break;
+    case CODEC_ID_ALAC:
+        format = AFORMAT_ALAC;
+        break;
+    case CODEC_ID_VORBIS:
+        format =    AFORMAT_VORBIS;
+        break;
+    case CODEC_ID_APE:
+        format =    AFORMAT_APE;
+        break;
+    case CODEC_ID_PCM_WIFIDISPLAY:
+    	format = AFORMAT_PCM_WIFIDISPLAY;
+        break;
+    default:
+        format = AFORMAT_UNSUPPORT;
+        ALOGV("audio codec_id=0x%x\n", id);
+    }
+    ALOGV("[audioTypeConvert]audio codec_id=0x%x format=%d\n", id, format);
+
+    return format;
+}
+
+status_t AwesomePlayer::updateMediaInfo(void) {
+    //Mutex::Autolock autoLock(mLock);
+    maudio_info_t *ainfo;
+    mvideo_info_t *vinfo;
+
+    for (size_t i = 0; i < mExtractor->countTracks(); ++i) {
+        sp<MetaData> meta = mExtractor->getTrackMetaData(i);
+
+        const char *_mime;
+        CHECK(meta->findCString(kKeyMIMEType, &_mime));
+
+        String8 mime = String8(_mime);
+        if (!strncasecmp(mime.string(), "video/", 6)) {        
+            vinfo = (mvideo_info_t *)malloc(sizeof(mvideo_info_t));
+            memset(vinfo, 0, sizeof(mvideo_info_t));
+
+            int32_t codecid,width,height,bitrate;
+            int64_t duration;
+            vinfo->index       = i;
+            if (meta->findInt32(kKeyCodecID, &codecid))
+                vinfo->id = codecid;
+            if (meta->findInt32(kKeyWidth, &width))
+                vinfo->width = width;
+            if (meta->findInt32(kKeyHeight, &height))
+                vinfo->height = height;
+            if (meta->findInt64(kKeyDuration, &duration))
+                vinfo->duartion = duration;
+            if (meta->findInt32(kKeyBitRate, &bitrate))
+                vinfo->bit_rate = bitrate;
+            vinfo->format      = (vformat_t)0;
+            vinfo->aspect_ratio_num = 0;
+            vinfo->aspect_ratio_den = 0;
+            vinfo->frame_rate_num   = 0;
+            vinfo->frame_rate_den   = 0;
+            vinfo->video_rotation_degree = 0;
+            mStreamInfo.video_info[mStreamInfo.stream_info.total_video_num] = vinfo;
+            mStreamInfo.stream_info.total_video_num++;
+			
+        } else if (!strncasecmp(mime.string(), "audio/", 6)) {
+            ainfo = (maudio_info_t *)malloc(sizeof(maudio_info_t));
+            memset(ainfo, 0, sizeof(maudio_info_t));
+            int32_t codecid, bitrate, samplerate, channelcount;
+            int64_t duration;
+            ainfo->index     = i;
+            if (meta->findInt32(kKeyCodecID, &codecid))
+                ainfo->id = codecid;
+            if (meta->findInt32(kKeyBitRate, &bitrate))
+                ainfo->bit_rate = bitrate;
+            if (meta->findInt32(kKeySampleRate, &samplerate))
+                ainfo->sample_rate = samplerate;
+            if (meta->findInt32(kKeyChannelCount, &channelcount))
+                ainfo->channel = channelcount;
+            if (meta->findInt64(kKeyDuration, &duration))
+                ainfo->duration = duration;
+            ainfo->aformat      = audioTypeConvert((enum CodecID)ainfo->id, (pfile_type)0);
+            mStreamInfo.audio_info[mStreamInfo.stream_info.total_audio_num] = ainfo;
+            mStreamInfo.stream_info.total_audio_num++;
+        } else {
+            
+        }
+    }
+	
+    mStreamInfo.stream_info.cur_video_index = mActiveVideoTrackIndex;
+    mStreamInfo.stream_info.cur_audio_index = mActiveAudioTrackIndex;
+    mStreamInfo.stream_info.cur_sub_index   = -1;
+
+    return OK;
+}
+
+void transferFileSize(int64_t size, char *filesize)
+{
+    //LOGE("[transferFileSize] size:%lld\n", size);
+    if(size <= 1024)
+        strcpy(filesize, "1KB");
+    else if(size <= 1024 * 1024) {
+        size /= 1024;
+        size += 1;
+        sprintf(filesize,"%d",size);
+        strcat(filesize, "KB");
+    }
+    else if (size > 1024 * 1024) {
+        size /= 1024*1024;
+        size += 1;
+        sprintf(filesize,"%d",size);
+        strcat(filesize, "MB");
+    }
+    //LOGE("[transferFileSize] filesize:%s\n", filesize);
+}
+
+status_t AwesomePlayer::getMediaInfo(Parcel* reply) {
+    //Mutex::Autolock autoLock(mLock);
+    TRACE();
+    int datapos=reply->dataPosition();	
+    updateMediaInfo();
+
+    //filename
+    reply->writeString16(String16("-1"));
+    //duration
+    if (mDurationUs > 0)
+        reply->writeInt32(mDurationUs/1000000);
+    else 
+        reply->writeInt32(-1);
+	//filesize
+    int64_t file_size = -1;
+    if(mStats.mFd > 0)
+      mFileSource->getSize(&file_size);
+    char filesize[256] = {0,};
+    if (file_size > 0) {
+        transferFileSize((int64_t)file_size, filesize);
+        reply->writeString16(String16(filesize));   
+    }
+    else
+        reply->writeString16(String16("-1"));
+    //bitrate
+    if (mBitrate >= 0)
+        reply->writeInt32(mBitrate);
+    else
+        reply->writeInt32(-1);
+    //filetype
+    reply->writeInt32(-1);
+    ALOGV("filename:NULL duration:%x filesize:-1 bitrate:%d \n", mDurationUs, mBitrate);
+
+    /*select info*/
+    reply->writeInt32(mActiveVideoTrackIndex);
+    reply->writeInt32(mActiveAudioTrackIndex);
+    reply->writeInt32(-1);
+    ALOGV("--cur video:%d cur audio:%d cur sub:%d \n",mStreamInfo.stream_info.cur_video_index,mStreamInfo.stream_info.cur_audio_index,mStreamInfo.stream_info.cur_sub_index);
+    /*build video info*/
+    reply->writeInt32(mStreamInfo.stream_info.total_video_num);    
+    for (int i = 0; i < mStreamInfo.stream_info.total_video_num; i ++) {            
+        sp<MetaData> meta = mExtractor->getTrackMetaData(mStreamInfo.video_info[i]->index);
+        const char *_mime;    
+        CHECK(meta->findCString(kKeyMIMEType, &_mime));
+		
+        reply->writeInt32(mStreamInfo.video_info[i]->index);
+        reply->writeInt32(mStreamInfo.video_info[i]->id);
+        reply->writeString16(String16(_mime));
+        reply->writeInt32(mStreamInfo.video_info[i]->width);
+        reply->writeInt32(mStreamInfo.video_info[i]->height);
+        ALOGV("--video index:%d id:%d totlanum:%d width:%d height:%d \n",mStreamInfo.video_info[i]->index,mStreamInfo.video_info[i]->id,mStreamInfo.stream_info.total_video_num,mStreamInfo.video_info[i]->width,mStreamInfo.video_info[i]->height);
+    }
+	
+    /*build audio info*/
+    reply->writeInt32(mStreamInfo.stream_info.total_audio_num);
+    for (int i = 0; i < mStreamInfo.stream_info.total_audio_num; i ++) {		
+        reply->writeInt32(mStreamInfo.audio_info[i]->index);
+        reply->writeInt32(mStreamInfo.audio_info[i]->id);
+        //reply->writeString16(String16(player_value2str("aformat", mStreamInfo.audio_info[i]->aformat)));
+        reply->writeInt32(mStreamInfo.audio_info[i]->aformat);
+        reply->writeInt32(mStreamInfo.audio_info[i]->channel);
+        reply->writeInt32(mStreamInfo.audio_info[i]->sample_rate);
+        ALOGV("--audio index:%d id:%d totlanum:%d channel:%d samplerate:%d \n",mStreamInfo.audio_info[i]->index,mStreamInfo.audio_info[i]->id,mStreamInfo.stream_info.total_audio_num,mStreamInfo.audio_info[i]->channel,mStreamInfo.audio_info[i]->sample_rate);
+    }     
+
+    /*build subtitle info*/
+    reply->writeInt32(0);
+	
+    reply->setDataPosition(datapos);
+
+    return OK;
+}
+
 status_t AwesomePlayer::getParameter(int key, Parcel *reply) {
     switch (key) {
     case KEY_PARAMETER_AUDIO_CHANNEL_COUNT:
@@ -2529,6 +2888,16 @@ status_t AwesomePlayer::getParameter(int key, Parcel *reply) {
             reply->writeInt32(channelCount);
         }
         return OK;
+    case KEY_PARAMETER_AML_PLAYER_GET_MEDIA_INFO:
+        {
+            TRACE();
+            getMediaInfo(reply);
+            return OK;
+        }
+    case KEY_PARAMETER_AML_PLAYER_GET_DTS_ASSET_TOTAL:
+    	{
+    		return OK;	
+    	}
     default:
         {
             return ERROR_UNSUPPORTED;
@@ -2920,6 +3289,15 @@ void AwesomePlayer::onAudioTearDownEvent() {
 
     // Call prepare for the host decoding
     beginPrepareAsync_l();
+}
+
+status_t AwesomePlayer::setHEVCFlag(bool flag) {
+    mHEVC = flag;
+    return OK;
+}
+
+bool AwesomePlayer::getHEVCFlag() {
+    return mHEVC;
 }
 
 }  // namespace android

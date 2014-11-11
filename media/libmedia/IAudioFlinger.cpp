@@ -74,6 +74,8 @@ enum {
     GET_PRIMARY_OUTPUT_SAMPLING_RATE,
     GET_PRIMARY_OUTPUT_FRAME_COUNT,
     SET_LOW_RAM_DEVICE,
+    GET_LATENCY_IN_DUPBUF,
+    FLUSH_FRMCNTER_DUBUF,
 };
 
 class BpAudioFlinger : public BpInterface<IAudioFlinger>
@@ -737,7 +739,26 @@ public:
         remote()->transact(SET_LOW_RAM_DEVICE, data, &reply);
         return reply.readInt32();
     }
-
+    virtual uint32_t LatencyDupBuf_Get(audio_io_handle_t output) const
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
+        data.writeInt32((int32_t) output);
+        remote()->transact(GET_LATENCY_IN_DUPBUF, data, &reply);
+        return reply.readInt32();
+    }
+    virtual  uint32_t DupFrmCounter_Flush(audio_io_handle_t output,uint32_t*pFrmCnt,int FrmCounterEnable,uint32_t *track )const
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IAudioFlinger::getInterfaceDescriptor());
+        data.writeInt32((int32_t) output);
+        data.writeInt32((int32_t) pFrmCnt);
+        data.writeInt32((int32_t) FrmCounterEnable);
+        data.writeInt32((int32_t) track);
+        remote()->transact(FLUSH_FRMCNTER_DUBUF, data, &reply);
+        *pFrmCnt=reply.readInt32();
+        return reply.readInt32();
+    }
 };
 
 IMPLEMENT_META_INTERFACE(AudioFlinger, "android.media.IAudioFlinger");
@@ -1128,6 +1149,23 @@ status_t BnAudioFlinger::onTransact(
             reply->writeInt32(setLowRamDevice(isLowRamDevice));
             return NO_ERROR;
         } break;
+        case GET_LATENCY_IN_DUPBUF:{
+            CHECK_INTERFACE(IAudioFlinger, data, reply);
+            reply->writeInt32(LatencyDupBuf_Get((audio_io_handle_t) data.readInt32()) );
+            return NO_ERROR;
+        }break;
+        case FLUSH_FRMCNTER_DUBUF:{
+            CHECK_INTERFACE(IAudioFlinger, data, reply);
+            audio_io_handle_t output=(audio_io_handle_t)data.readInt32();
+            uint32_t *pFrmCnt=(uint32_t*)data.readInt32(),FrmCnt_IPC=0;
+            int32_t   FrmCounterEnable=data.readInt32();
+            uint32_t *track=(uint32_t *)data.readInt32();
+            int ret;
+            ret=DupFrmCounter_Flush(output,&FrmCnt_IPC,FrmCounterEnable,track);
+            reply->writeInt32(FrmCnt_IPC);
+            reply->writeInt32(ret);
+            return NO_ERROR;
+        }break;
         default:
             return BBinder::onTransact(code, data, reply, flags);
     }

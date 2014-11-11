@@ -142,8 +142,8 @@ OMX_ERRORTYPE SoftMPEG4Encoder::initEncParams() {
     mEncParams->tickPerSrc = mEncParams->timeIncRes / mVideoFrameRate;
 
     mEncParams->bitRate[0] = mVideoBitRate;
-    mEncParams->iQuant[0] = 15;
-    mEncParams->pQuant[0] = 12;
+    mEncParams->iQuant[0] = 2;
+    mEncParams->pQuant[0] = 2;
     mEncParams->quantType[0] = 0;
     mEncParams->noFrameSkipped = PV_OFF;
 
@@ -606,7 +606,7 @@ OMX_ERRORTYPE SoftMPEG4Encoder::internalSetParameter(
 
             if (mStoreMetaDataInBuffers) {
                 mVideoColorFormat == OMX_COLOR_FormatYUV420SemiPlanar;
-                if (mInputFrameData == NULL) {
+                if ((mInputFrameData == NULL) &&(mStarted)){
                     mInputFrameData =
                             (uint8_t *) malloc((mVideoWidth * mVideoHeight * 3 ) >> 1);
                 }
@@ -681,21 +681,18 @@ void SoftMPEG4Encoder::onQueueFilled(OMX_U32 portIndex) {
         if (inHeader->nFilledLen > 0) {
             uint8_t *inputData = NULL;
             if (mStoreMetaDataInBuffers) {
-                if (inHeader->nFilledLen != 8) {
-                    ALOGE("MetaData buffer is wrong size! "
-                            "(got %lu bytes, expected 8)", inHeader->nFilledLen);
+                if((inHeader->nFilledLen != 8) &&(inHeader->nFilledLen != 12)){
+                    ALOGE("MetaData buffer is wrong size!(got %lu bytes, expected 8 or 12)", inHeader->nFilledLen);
                     mSignalledError = true;
                     notify(OMX_EventError, OMX_ErrorUndefined, 0, 0);
                     return;
                 }
-                inputData =
-                        extractGrallocData(inHeader->pBuffer + inHeader->nOffset,
-                                &srcBuffer);
+                inputData = extractGrallocData(inHeader->pBuffer + inHeader->nOffset, &srcBuffer);
                 if (inputData == NULL) {
                     ALOGE("Unable to extract gralloc buffer in metadata mode");
                     mSignalledError = true;
                     notify(OMX_EventError, OMX_ErrorUndefined, 0, 0);
-                        return;
+                    return;
                 }
                 // TODO: Verify/convert pixel format enum
             } else {
@@ -753,6 +750,7 @@ void SoftMPEG4Encoder::onQueueFilled(OMX_U32 portIndex) {
         outHeader->nFilledLen = dataLength;
         mInputBufferInfoVec.erase(mInputBufferInfoVec.begin());
         outInfo->mOwnedByUs = false;
+        mInputBufferInfoVec.erase(mInputBufferInfoVec.begin());
         notifyFillBufferDone(outHeader);
     }
 }
@@ -769,10 +767,10 @@ OMX_ERRORTYPE SoftMPEG4Encoder::getExtensionIndex(
 uint8_t *SoftMPEG4Encoder::extractGrallocData(void *data, buffer_handle_t *buffer) {
     OMX_U32 type = *(OMX_U32*)data;
     status_t res;
-    if (type != kMetadataBufferTypeGrallocSource) {
+    if ((type != kMetadataBufferTypeGrallocSource) &&(type != kMetadataBufferTypeCanvasSource)){
         ALOGE("Data passed in with metadata mode does not have type "
-                "kMetadataBufferTypeGrallocSource (%d), has type %ld instead",
-                kMetadataBufferTypeGrallocSource, type);
+                "kMetadataBufferTypeGrallocSource (%d) or kMetadataBufferTypeCanvasSource (%d), has type %ld instead",
+                kMetadataBufferTypeGrallocSource, kMetadataBufferTypeCanvasSource, type);
         return NULL;
     }
     buffer_handle_t imgBuffer = *(buffer_handle_t*)((uint8_t*)data + 4);
@@ -780,7 +778,7 @@ uint8_t *SoftMPEG4Encoder::extractGrallocData(void *data, buffer_handle_t *buffe
     const Rect rect(mVideoWidth, mVideoHeight);
     uint8_t *img;
     res = GraphicBufferMapper::get().lock(imgBuffer,
-            GRALLOC_USAGE_HW_VIDEO_ENCODER,
+            GRALLOC_USAGE_HW_VIDEO_ENCODER|GRALLOC_USAGE_SW_READ_MASK,
             rect, (void**)&img);
     if (res != OK) {
         ALOGE("%s: Unable to lock image buffer %p for access", __FUNCTION__,

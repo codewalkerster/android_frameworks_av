@@ -414,7 +414,7 @@ private:
         virtual status_t    setParameters(const String8& keyValuePairs);
         virtual status_t    getTimestamp(AudioTimestamp& timestamp);
         virtual void        signal(); // signal playback thread for a change in control block
-
+        virtual void*       getTrack();
         virtual status_t onTransact(
             uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags);
 
@@ -647,6 +647,9 @@ private:
     bool    mIsLowRamDevice;
     bool    mIsDeviceTypeKnown;
     nsecs_t mGlobalEffectEnableTime;  // when a global effect was last enabled
+public: 
+    virtual     uint32_t    LatencyDupBuf_Get(audio_io_handle_t output) const;
+    virtual     uint32_t    DupFrmCounter_Flush(audio_io_handle_t output,uint32_t*pFrmCnt,int FrmCounterEnable,uint32_t *track )const;
 };
 
 #undef INCLUDING_FROM_AUDIOFLINGER_H

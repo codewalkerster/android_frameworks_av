@@ -29,6 +29,9 @@ namespace android {
 MediaScanner::MediaScanner()
     : mLocale(NULL), mSkipList(NULL), mSkipIndex(NULL) {
     loadSkipList();
+
+    mBypassExternalStorage2 = false;
+    mExternalStorage2 = "external_storage";
 }
 
 MediaScanner::~MediaScanner() {
@@ -99,6 +102,24 @@ MediaScanResult MediaScanner::processDirectory(
 
     client.setLocale(locale());
 
+    mBypassExternalStorage2 = false;
+    char*p = getenv("EMULATED_STORAGE_TARGET");
+    if(p == NULL)
+        p = getenv("EXTERNAL_STORAGE");
+    if(p) {
+        char* tmp = strstr(pathBuffer,p);
+        if(tmp == pathBuffer){
+            tmp = tmp + strlen(p) + 1; //+1 to skip the '/' 
+            tmp = strchr(tmp,'/');
+            if( (tmp!=NULL) && (*(tmp+1) == 0) ) {//current path is the root of externalStorage
+                ALOGD("need skip external2Storage %s in %s ",p,pathBuffer);
+                mBypassExternalStorage2 = true;
+            } else {
+                ALOGD("current direcoty %s is not the root of externalStorage %s",pathBuffer,p);
+            }
+        }
+    }
+    
     MediaScanResult result = doProcessDirectory(pathBuffer, pathRemaining, client, false);
 
     free(pathBuffer);
@@ -130,6 +151,11 @@ bool MediaScanner::shouldSkipDirectory(char *path) {
 
 MediaScanResult MediaScanner::doProcessDirectory(
         char *path, int pathRemaining, MediaScannerClient &client, bool noMedia) {
+    if(client.needStopScan() == true) {
+         ALOGD("Be asked to stop scan");
+         return MEDIA_SCAN_RESULT_ERROR;
+    }
+
     // place to copy file or directory name
     char* fileSpot = path + strlen(path);
     struct dirent* entry;
@@ -157,8 +183,20 @@ MediaScanResult MediaScanner::doProcessDirectory(
         return MEDIA_SCAN_RESULT_SKIPPED;
     }
 
+    char *folderName = NULL;
+    if (mBypassExternalStorage2) {
+        //check if the EXTERNAL_STORAGE2 in current directory
+        folderName = mExternalStorage2;
+        mBypassExternalStorage2 = false;
+    }
+
     MediaScanResult result = MEDIA_SCAN_RESULT_OK;
     while ((entry = readdir(dir))) {
+        if ((folderName != NULL) && (strcmp(entry->d_name, folderName) == 0)) {
+            //find and skip
+            folderName = NULL;
+            continue;
+        }
         if (doProcessDirectoryEntry(path, pathRemaining, client, noMedia, entry, fileSpot)
                 == MEDIA_SCAN_RESULT_ERROR) {
             result = MEDIA_SCAN_RESULT_ERROR;
@@ -172,6 +210,11 @@ MediaScanResult MediaScanner::doProcessDirectory(
 MediaScanResult MediaScanner::doProcessDirectoryEntry(
         char *path, int pathRemaining, MediaScannerClient &client, bool noMedia,
         struct dirent* entry, char* fileSpot) {
+    if(client.needStopScan() == true) {
+         ALOGD("Be asked to stop scan");
+         return MEDIA_SCAN_RESULT_ERROR;
+    }
+
     struct stat statbuf;
     const char* name = entry->d_name;
 

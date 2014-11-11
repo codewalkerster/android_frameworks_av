@@ -6,6 +6,10 @@ include $(CLEAR_VARS)
 
 LOCAL_ARM_MODE := arm
 
+#ifeq ($(ARCH_ARM_HAVE_NEON),true)
+#	LOCAL_CFLAGS += -D__ARM_HAVE_NEON
+#endif
+
 LOCAL_SRC_FILES:= \
     StereoWidening/src/LVCS_BypassMix.c \
     StereoWidening/src/LVCS_Control.c \

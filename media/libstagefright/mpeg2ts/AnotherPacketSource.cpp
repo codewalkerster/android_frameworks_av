@@ -248,7 +248,7 @@ int64_t AnotherPacketSource::getBufferedDurationUs(status_t *finalResult) {
 
         ++it;
     }
-
+	ALOGV("current %s delay: t1=%lld,t2=%lld,delay=%lld\n",mIsAudio?"audio":"video",time1,time2,time2-time1);
     return time2 - time1;
 }
 

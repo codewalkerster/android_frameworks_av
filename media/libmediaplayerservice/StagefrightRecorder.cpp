@@ -1346,6 +1346,9 @@ status_t StagefrightRecorder::setupCameraSource(
         *cameraSource = mCameraSourceTimeLapse;
     } else {
         *cameraSource = CameraSource::CreateFromCamera(
+                //mCamera, mCameraProxy, mCameraId, videoSize, mFrameRate,
+                //mPreviewSurface, false /*storeMetaDataInVideoBuffers*/);
+
                 mCamera, mCameraProxy, mCameraId, mClientName, mClientUid,
                 videoSize, mFrameRate,
                 mPreviewSurface, encoderSupportsCameraSourceMetaDataMode);

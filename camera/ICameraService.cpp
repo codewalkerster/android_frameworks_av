@@ -20,7 +20,6 @@
 
 #include <stdint.h>
 #include <sys/types.h>
-
 #include <binder/Parcel.h>
 #include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
@@ -92,6 +91,16 @@ public:
     {
     }
 
+	// usb camera plug in or out
+    virtual void usbCameraAttach(bool isAttach)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(ICameraService::getInterfaceDescriptor());
+        remote()->transact(BnCameraService::USB_CAMERA_ATTACH, data, &reply);
+		data.writeInt32(isAttach);
+        //return reply.readInt32();
+    }
+	
     // get number of cameras available
     virtual int32_t getNumberOfCameras()
     {
@@ -102,7 +111,14 @@ public:
         if (readExceptionCode(reply)) return 0;
         return reply.readInt32();
     }
-
+    // find apk
+    virtual bool findApk()
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(ICameraService::getInterfaceDescriptor());
+        remote()->transact(BnCameraService::FIND_APK, data, &reply);
+        return reply.readInt32();
+    }
     // get information about a camera
     virtual status_t getCameraInfo(int cameraId,
                                    struct CameraInfo* cameraInfo) {
@@ -243,10 +259,20 @@ status_t BnCameraService::onTransact(
     uint32_t code, const Parcel& data, Parcel* reply, uint32_t flags)
 {
     switch(code) {
+		case USB_CAMERA_ATTACH: {
+            CHECK_INTERFACE(ICameraService, data, reply);
+			usbCameraAttach(data.readInt32());
+            return NO_ERROR;
+        } break;
         case GET_NUMBER_OF_CAMERAS: {
             CHECK_INTERFACE(ICameraService, data, reply);
             reply->writeNoException();
             reply->writeInt32(getNumberOfCameras());
+            return NO_ERROR;
+        } break;
+        case FIND_APK: {
+            CHECK_INTERFACE(ICameraService, data, reply);
+            reply->writeInt32(findApk());
             return NO_ERROR;
         } break;
         case GET_CAMERA_INFO: {

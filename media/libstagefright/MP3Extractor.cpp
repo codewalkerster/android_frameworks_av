@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-//#define LOG_NDEBUG 0
+#define LOG_NDEBUG 0
 #define LOG_TAG "MP3Extractor"
 #include <utils/Log.h>
 
@@ -44,7 +44,7 @@ namespace android {
 // copyright bit, original bit and emphasis.
 // Yes ... there are things that must indeed match...
 static const uint32_t kMask = 0xfffe0c00;
-
+#define  PTSTABLENUM    2000
 static bool Resync(
         const sp<DataSource> &source, uint32_t match_header,
         off64_t *inout_pos, off64_t *post_id3_pos, uint32_t *out_header) {
@@ -94,7 +94,7 @@ static bool Resync(
     bool valid = false;
 
     const size_t kMaxReadBytes = 1024;
-    const size_t kMaxBytesChecked = 128 * 1024;
+    const size_t kMaxBytesChecked = 128 * 1024*2;
     uint8_t buf[kMaxReadBytes];
     ssize_t bytesToRead = kMaxReadBytes;
     ssize_t totalBytesRead = 0;
@@ -155,7 +155,7 @@ static bool Resync(
             continue;
         }
 
-        ALOGV("found possible 1st frame at %lld (header = 0x%08x)", pos, header);
+        //ALOGV("found possible 1st frame at %lld (header = 0x%08x)", pos, header);
 
         // We found what looks like a valid frame,
         // now find its successors.
@@ -172,7 +172,7 @@ static bool Resync(
 
             uint32_t test_header = U32_AT(tmp);
 
-            ALOGV("subsequent header is %08x", test_header);
+            //ALOGV("subsequent header is %08x", test_header);
 
             if ((test_header & kMask) != (header & kMask)) {
                 valid = false;
@@ -186,7 +186,7 @@ static bool Resync(
                 break;
             }
 
-            ALOGV("found subsequent frame #%d at %lld", j + 2, test_pos);
+            //ALOGV("found subsequent frame #%d at %lld", j + 2, test_pos);
 
             test_pos += test_frame_size;
         }
@@ -198,7 +198,7 @@ static bool Resync(
                 *out_header = header;
             }
         } else {
-            ALOGV("no dice, no valid sequence of frames found.");
+            //ALOGV("no dice, no valid sequence of frames found.");
         }
 
         ++pos;
@@ -214,7 +214,7 @@ public:
     MP3Source(
             const sp<MetaData> &meta, const sp<DataSource> &source,
             off64_t first_frame_pos, uint32_t fixed_header,
-            const sp<MP3Seeker> &seeker);
+            const sp<MP3Seeker> &seeker,off64_t *ptstable);
 
     virtual status_t start(MetaData *params = NULL);
     virtual status_t stop();
@@ -241,7 +241,7 @@ private:
 
     int64_t mBasisTimeUs;
     int64_t mSamplesRead;
-
+    off64_t *mptstable;
     MP3Source(const MP3Source &);
     MP3Source &operator=(const MP3Source &);
 };
@@ -325,16 +325,25 @@ MP3Extractor::MP3Extractor(
             mMeta->setInt32(kKeyEncoderPadding, encp);
         }
     }
-
+    unsigned vbr_bitrate = 0;
+    mptstable = new off64_t[PTSTABLENUM];	
+    if(mptstable)	
+    	memset(mptstable,0,PTSTABLENUM*sizeof(	off64_t));
+    ALOGV("mptstable new \n");	
+	
     if (mSeeker != NULL) {
         // While it is safe to send the XING/VBRI frame to the decoder, this will
         // result in an extra 1152 samples being output. The real first frame to
         // decode is after the XING/VBRI frame, so skip there.
         mFirstFramePos += frame_size;
     }
-
+	/* vbr mp3 audio,calculate the bitrate and duraiton */
+    else if(VBRISeeker::getVbrDuration(mDataSource, mFirstFramePos,&vbr_bitrate,mptstable) == true){
+   	 		ALOGI("===bitrate changed from %d to %d===\n",bitrate*1000,vbr_bitrate * 1000);		
+			bitrate = vbr_bitrate;
+    			mMeta->setInt32(kKeyBitRate, bitrate * 1000);
+    }
     int64_t durationUs;
-
     if (mSeeker == NULL || !mSeeker->getDuration(&durationUs)) {
         off64_t fileSize;
         if (mDataSource->getSize(&fileSize) == OK) {
@@ -349,6 +358,7 @@ MP3Extractor::MP3Extractor(
     }
 
     mInitCheck = OK;
+    ALOGI("sr %d, ch %d,duration %lld s,bitrate %d bps\n",	sample_rate,num_channels,durationUs/(1000*1000),bitrate * 1000);
 
     // Get iTunes-style gapless info if present.
     // When getting the id3 tag, skip the V1 tags to prevent the source cache
@@ -395,7 +405,7 @@ sp<MediaSource> MP3Extractor::getTrack(size_t index) {
 
     return new MP3Source(
             mMeta, mDataSource, mFirstFramePos, mFixedHeader,
-            mSeeker);
+            mSeeker,mptstable);
 }
 
 sp<MetaData> MP3Extractor::getTrackMetaData(size_t index, uint32_t flags) {
@@ -418,7 +428,7 @@ const size_t MP3Source::kMaxFrameSize = (1 << 12); /* 4096 bytes */
 MP3Source::MP3Source(
         const sp<MetaData> &meta, const sp<DataSource> &source,
         off64_t first_frame_pos, uint32_t fixed_header,
-        const sp<MP3Seeker> &seeker)
+        const sp<MP3Seeker> &seeker,off64_t *ptstable)
     : mMeta(meta),
       mDataSource(source),
       mFirstFramePos(first_frame_pos),
@@ -428,6 +438,7 @@ MP3Source::MP3Source(
       mStarted(false),
       mSeeker(seeker),
       mGroup(NULL),
+      mptstable(ptstable),
       mBasisTimeUs(0),
       mSamplesRead(0) {
 }
@@ -452,7 +463,6 @@ status_t MP3Source::start(MetaData *) {
     mSamplesRead = 0;
 
     mStarted = true;
-
     return OK;
 }
 
@@ -463,14 +473,17 @@ status_t MP3Source::stop() {
     mGroup = NULL;
 
     mStarted = false;
-
+    if(mptstable)	
+    	delete[] mptstable;	
+    ALOGV("mptstable delete \n");	
+    mptstable = NULL;	
     return OK;
 }
 
 sp<MetaData> MP3Source::getFormat() {
     return mMeta;
 }
-
+#define TRACE   ALOGV("enter fun %s,line %d\n",__FUNCTION__,__LINE__);
 status_t MP3Source::read(
         MediaBuffer **out, const ReadOptions *options) {
     *out = NULL;
@@ -478,7 +491,8 @@ status_t MP3Source::read(
     int64_t seekTimeUs;
     ReadOptions::SeekMode mode;
     bool seekCBR = false;
-
+    bool  seekfromtab = 	false;
+    int seekTimeS;
     if (options != NULL && options->getSeekTo(&seekTimeUs, &mode)) {
         int64_t actualSeekTimeUs = seekTimeUs;
         if (mSeeker == NULL
@@ -492,10 +506,24 @@ status_t MP3Source::read(
             }
 
             mCurrentTimeUs = seekTimeUs;
-            mCurrentPos = mFirstFramePos + seekTimeUs * bitrate / 8000000;
+	     seekTimeS= 	(seekTimeUs/1000000);	
+	     ALOGV("before seek to %lld,offset %lld\n",seekTimeUs,mCurrentPos);
+		 
+	     if(mptstable && (seekTimeS < PTSTABLENUM) && mptstable[seekTimeS] > 0 ){
+		 	mCurrentPos = mptstable[seekTimeS];
+			ALOGV("seek to %lld,offset %lld\n",seekTimeUs,mCurrentPos);
+			seekfromtab = true;
+	     }
+	     else{	 
+	     ALOGV("1before seek to %lld,offset %lld\n",seekTimeUs,mCurrentPos);		 	
+            		mCurrentPos = mFirstFramePos + seekTimeUs * bitrate / 8000000;
+	     }			
             seekCBR = true;
         } else {
             mCurrentTimeUs = actualSeekTimeUs;
+	     ALOGV("2before seek to %lld,offset %lld,curtime %lld\n",seekTimeUs,mCurrentPos,mCurrentTimeUs);		 	
+			
+			
         }
 
         mBasisTimeUs = mCurrentTimeUs;
@@ -530,8 +558,20 @@ status_t MP3Source::read(
 
             // re-calculate mCurrentTimeUs because we might have called Resync()
             if (seekCBR) {
-                mCurrentTimeUs = (mCurrentPos - mFirstFramePos) * 8000 / bitrate;
-                mBasisTimeUs = mCurrentTimeUs;
+		  if(seekfromtab == false){		
+                	mCurrentTimeUs = (mCurrentPos - mFirstFramePos) * 8000 / bitrate;
+               	 mBasisTimeUs = mCurrentTimeUs;
+		   	ALOGV("cur  %lld,offset %lld\n",mCurrentTimeUs,mCurrentPos);
+		  }
+		  else{
+		  	for(;mptstable[seekTimeS] < mCurrentPos && seekTimeS < PTSTABLENUM ;seekTimeS++){
+		  	}
+			mCurrentTimeUs = seekTimeS*1000*1000;
+			mBasisTimeUs = mCurrentTimeUs;
+			ALOGV("reseek curtime to %lld\n",mCurrentTimeUs);
+								
+		  }	
+				
             }
 
             break;
@@ -655,7 +695,7 @@ bool SniffMP3(
     if (!Resync(source, 0, &pos, &post_id3_pos, &header)) {
         return false;
     }
-
+    ALOGV("SniffMP3 ok,offset %d ,post_id3_pos %d\n",pos,header);
     *meta = new AMessage;
     (*meta)->setInt64("offset", pos);
     (*meta)->setInt32("header", header);

@@ -47,6 +47,8 @@ static Mutex gWVMutex;
 WVMExtractor::WVMExtractor(const sp<DataSource> &source)
     : mDataSource(source)
 {
+
+
     Mutex::Autolock autoLock(gWVMutex);
 
     if (!getVendorLibHandle()) {
@@ -74,7 +76,18 @@ WVMExtractor::WVMExtractor(const sp<DataSource> &source)
 
 static void init_routine()
 {
-    gVendorLibHandle = dlopen("libwvm.so", RTLD_NOW);
+    if (gVendorLibHandle == NULL) {
+        #if (BOARD_WIDEVINE_SUPPORTLEVEL == 1) 
+		 ALOGE("getVendorLibHandle libwvm_L1.so \n");
+		 gVendorLibHandle = dlopen("libwvm_L1.so", RTLD_NOW);
+		#endif 
+		
+        #if (BOARD_WIDEVINE_SUPPORTLEVEL == 3)
+		 ALOGE("getVendorLibHandle libwvm.so \n");
+		 gVendorLibHandle = dlopen("libwvm.so", RTLD_NOW);
+        #endif
+    }else
+        
     if (gVendorLibHandle == NULL) {
         ALOGE("Failed to open libwvm.so");
     }

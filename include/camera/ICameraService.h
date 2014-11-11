@@ -42,6 +42,8 @@ public:
         GET_NUMBER_OF_CAMERAS = IBinder::FIRST_CALL_TRANSACTION,
         GET_CAMERA_INFO,
         CONNECT,
+        USB_CAMERA_ATTACH,
+        FIND_APK,
         CONNECT_PRO,
         CONNECT_DEVICE,
         ADD_LISTENER,
@@ -97,6 +99,9 @@ public:
             int clientUid,
             /*out*/
             sp<ICameraDeviceUser>& device) = 0;
+
+    virtual bool findApk() = 0;
+    virtual void usbCameraAttach(bool isAttach) = 0;
 };
 
 // ----------------------------------------------------------------------------

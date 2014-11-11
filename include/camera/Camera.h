@@ -70,6 +70,12 @@ public:
 
             // construct a camera client from an existing remote
     static  sp<Camera>  create(const sp<ICamera>& camera);
+    static  void        usbCameraAttach(bool isAttach);
+    static  bool        findApk();
+    static  int32_t     getNumberOfCameras();
+    static  status_t    getCameraInfo(int cameraId,
+                                      struct CameraInfo* cameraInfo);
+    static  sp<Camera>  connect(int cameraId);
     static  sp<Camera>  connect(int cameraId,
                                 const String16& clientPackageName,
                                 int clientUid);
@@ -77,6 +83,7 @@ public:
             virtual     ~Camera();
 
             status_t    reconnect();
+            void        disconnect();
             status_t    lock();
             status_t    unlock();
 

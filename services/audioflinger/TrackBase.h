@@ -142,4 +142,9 @@ protected:
     sp<NBAIO_Sink>      mTeeSink;
     sp<NBAIO_Source>    mTeeSource;
     bool                mTerminated;
+public:
+    uint32_t            FramsRead;
+    uint32_t            FrmCnt;
+    uint32_t            FrmCntOffset;
+    int32_t            *pFrmCounterEnable;
 };

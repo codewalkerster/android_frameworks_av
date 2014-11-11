@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-//#define LOG_NDEBUG 0
+#define LOG_NDEBUG 0
 #define LOG_TAG "SoftMPEG4"
 #include <utils/Log.h>
 
@@ -26,7 +26,7 @@
 #include <media/IOMX.h>
 
 #include "mp4dec_api.h"
-
+ 
 namespace android {
 
 static const CodecProfileLevel kM4VProfileLevels[] = {
@@ -35,6 +35,7 @@ static const CodecProfileLevel kM4VProfileLevels[] = {
     { OMX_VIDEO_MPEG4ProfileSimple, OMX_VIDEO_MPEG4Level1 },
     { OMX_VIDEO_MPEG4ProfileSimple, OMX_VIDEO_MPEG4Level2 },
     { OMX_VIDEO_MPEG4ProfileSimple, OMX_VIDEO_MPEG4Level3 },
+    { OMX_VIDEO_MPEG4ProfileCore,   OMX_VIDEO_MPEG4Level2}
 };
 
 static const CodecProfileLevel kH263ProfileLevels[] = {
@@ -59,7 +60,7 @@ SoftMPEG4::SoftMPEG4(
         OMX_COMPONENTTYPE **component)
     : SoftVideoDecoderOMXComponent(
             name, componentRole, codingType, profileLevels, numProfileLevels,
-            352 /* width */, 288 /* height */, callbacks, appData, component),
+            480 /* width */, 360 /* height */, callbacks, appData, component),
       mMode(codingType == OMX_VIDEO_CodingH263 ? MODE_H263 : MODE_MPEG4),
       mHandle(new tagvideoDecControls),
       mInputBufferCount(0),
@@ -89,6 +90,173 @@ SoftMPEG4::~SoftMPEG4() {
 status_t SoftMPEG4::initDecoder() {
     memset(mHandle, 0, sizeof(tagvideoDecControls));
     return OK;
+}
+
+OMX_ERRORTYPE SoftMPEG4::internalGetParameter(
+        OMX_INDEXTYPE index, OMX_PTR params) {
+    switch (index) {
+        case OMX_IndexParamVideoPortFormat:
+        {
+            OMX_VIDEO_PARAM_PORTFORMATTYPE *formatParams =
+                (OMX_VIDEO_PARAM_PORTFORMATTYPE *)params;
+
+            if (formatParams->nPortIndex > 1) {
+                return OMX_ErrorUndefined;
+            }
+
+            if (formatParams->nIndex != 0) {
+                return OMX_ErrorNoMore;
+            }
+
+            if (formatParams->nPortIndex == 0) {
+                formatParams->eCompressionFormat =
+                    (mMode == MODE_MPEG4)
+                        ? OMX_VIDEO_CodingMPEG4 : OMX_VIDEO_CodingH263;
+
+                formatParams->eColorFormat = OMX_COLOR_FormatUnused;
+                formatParams->xFramerate = 0;
+            } else {
+                CHECK_EQ(formatParams->nPortIndex, 1u);
+
+                formatParams->eCompressionFormat = OMX_VIDEO_CodingUnused;
+                formatParams->eColorFormat = OMX_COLOR_FormatYUV420Planar;
+                formatParams->xFramerate = 0;
+            }
+
+            return OMX_ErrorNone;
+        }
+
+        case OMX_IndexParamVideoProfileLevelQuerySupported:
+        {
+            OMX_VIDEO_PARAM_PROFILELEVELTYPE *profileLevel =
+                    (OMX_VIDEO_PARAM_PROFILELEVELTYPE *) params;
+
+            if (profileLevel->nPortIndex != 0) {  // Input port only
+                ALOGE("Invalid port index: %ld", profileLevel->nPortIndex);
+                return OMX_ErrorUnsupportedIndex;
+            }
+
+            ALOGE("MODE Is %d,idx %d",mMode,profileLevel->nProfileIndex);
+
+            size_t index = profileLevel->nProfileIndex;
+            if (mMode == MODE_H263) {
+                size_t nProfileLevels =
+                    sizeof(kH263ProfileLevels) / sizeof(kH263ProfileLevels[0]);
+                if (index >= nProfileLevels) {
+                    return OMX_ErrorNoMore;
+                }
+
+                profileLevel->eProfile = kH263ProfileLevels[index].mProfile;
+                profileLevel->eLevel = kH263ProfileLevels[index].mLevel;
+            } else {
+                size_t nProfileLevels =
+                    sizeof(kM4VProfileLevels) / sizeof(kM4VProfileLevels[0]);
+                if (index >= nProfileLevels) {
+                    return OMX_ErrorNoMore;
+                }
+
+                profileLevel->eProfile = kM4VProfileLevels[index].mProfile;
+                profileLevel->eLevel = kM4VProfileLevels[index].mLevel;
+            }
+            return OMX_ErrorNone;
+        }
+
+        default:
+            return SimpleSoftOMXComponent::internalGetParameter(index, params);
+    }
+}
+
+OMX_ERRORTYPE SoftMPEG4::internalSetParameter(
+        OMX_INDEXTYPE index, const OMX_PTR params) {
+    switch (index) {
+        case OMX_IndexParamStandardComponentRole:
+        {
+            const OMX_PARAM_COMPONENTROLETYPE *roleParams =
+                (const OMX_PARAM_COMPONENTROLETYPE *)params;
+
+            if (mMode == MODE_MPEG4) {
+                if (strncmp((const char *)roleParams->cRole,
+                            "video_decoder.mpeg4",
+                            OMX_MAX_STRINGNAME_SIZE - 1)) {
+                    return OMX_ErrorUndefined;
+                }
+            } else {
+                if (strncmp((const char *)roleParams->cRole,
+                            "video_decoder.h263",
+                            OMX_MAX_STRINGNAME_SIZE - 1)) {
+                    return OMX_ErrorUndefined;
+                }
+            }
+
+            return OMX_ErrorNone;
+        }
+
+        case OMX_IndexParamVideoPortFormat:
+        {
+            OMX_VIDEO_PARAM_PORTFORMATTYPE *formatParams =
+                (OMX_VIDEO_PARAM_PORTFORMATTYPE *)params;
+
+            if (formatParams->nPortIndex > 1) {
+                return OMX_ErrorUndefined;
+            }
+
+            if (formatParams->nIndex != 0) {
+                return OMX_ErrorNoMore;
+            }
+
+            return OMX_ErrorNone;
+        }
+
+        //for width&height info always get the error info
+        case OMX_IndexParamPortDefinition:
+        {
+            OMX_PARAM_PORTDEFINITIONTYPE *defParams = (OMX_PARAM_PORTDEFINITIONTYPE *)params;
+            OMX_VIDEO_PORTDEFINITIONTYPE* videodef =  &(defParams->format.video);
+            //update the width & height info
+            mWidth = videodef->nFrameWidth;
+            mHeight = videodef->nFrameHeight;
+            //update crop info
+            mCropLeft = 0;
+            mCropTop = 0;
+            mCropRight = mWidth - 1;
+            mCropBottom = mHeight - 1;
+
+            //update buffer size
+            defParams->nBufferSize =
+                (((defParams->format.video.nFrameWidth + 15) & -16)
+                * ((defParams->format.video.nFrameHeight + 15) & -16) * 3) / 2;
+
+            OMX_ERRORTYPE rtn = SimpleSoftOMXComponent::internalSetParameter(index, params);
+            return rtn;
+        }
+
+        default:
+            return SimpleSoftOMXComponent::internalSetParameter(index, params);
+    }
+}
+
+OMX_ERRORTYPE SoftMPEG4::getConfig(
+        OMX_INDEXTYPE index, OMX_PTR params) {
+    switch (index) {
+        case OMX_IndexConfigCommonOutputCrop:
+        {
+            OMX_CONFIG_RECTTYPE *rectParams = (OMX_CONFIG_RECTTYPE *)params;
+
+            if (rectParams->nPortIndex != 1) {
+                return OMX_ErrorUndefined;
+            }
+
+            rectParams->nLeft = mCropLeft;
+            rectParams->nTop = mCropTop;
+            rectParams->nWidth = mCropRight - mCropLeft + 1;
+            rectParams->nHeight = mCropBottom - mCropTop + 1;
+
+            return OMX_ErrorNone;
+        }
+
+        default:
+            return OMX_ErrorUnsupportedIndex;
+    }
 }
 
 void SoftMPEG4::onQueueFilled(OMX_U32 portIndex) {

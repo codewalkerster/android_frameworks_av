@@ -302,7 +302,7 @@ void AudioResamplerOrder1::resampleStereo16(int32_t* out, size_t outFrameCount,
 
     size_t inputIndex = mInputIndex;
     uint32_t phaseFraction = mPhaseFraction;
-    uint32_t phaseIncrement = mPhaseIncrement;
+    int32_t phaseIncrement = mPhaseIncrement;
     size_t outputIndex = 0;
     size_t outputSampleCount = outFrameCount * 2;
     size_t inFrameCount = (outFrameCount*mInSampleRate)/mSampleRate;
@@ -563,9 +563,9 @@ void AudioResamplerOrder1::AsmMono16Loop(int16_t *in, int32_t* maxOutPt, int32_t
     "   ldrsh r4, [r0]\n"               /* in[inputIndex] */\
     "   ldr r5, [r8]\n"                 /* out[outputIndex] */\
     "   ldrsh r0, [r0, #-2]\n"          /* in[inputIndex-1] */\
-    "   bic r6, r6, #0xC0000000\n"      /* phaseFraction & ... */\
+    "   bic r6, r6, #0xf0000000\n"      /* phaseFraction & ... */\
     "   sub r4, r4, r0\n"               /* in[inputIndex] - in[inputIndex-1] */\
-    "   mov r4, r4, lsl #2\n"           /* <<2 */\
+    "   mov r4, r4, lsl #4\n"           /* <<2 */\
     "   smulwt r4, r4, r6\n"            /* (x1-x0)*.. */\
     "   add r6, r6, r9\n"               /* phaseFraction + phaseIncrement */\
     "   add r0, r0, r4\n"               /* x0 - (..) */\
@@ -573,7 +573,7 @@ void AudioResamplerOrder1::AsmMono16Loop(int16_t *in, int32_t* maxOutPt, int32_t
     "   ldr r4, [r8, #4]\n"             /* out[outputIndex+1] */\
     "   str r5, [r8], #4\n"             /* out[outputIndex++] = ... */\
     "   mla r4, r0, r11, r4\n"          /* vr*interp + out[] */\
-    "   add r7, r7, r6, lsr #30\n"      /* inputIndex + phaseFraction>>30 */\
+    "   add r7, r7, r6, lsr #28\n"      /* inputIndex + phaseFraction>>30 */\
     "   str r4, [r8], #4\n"             /* out[outputIndex++] = ... */
 
         MO_ONE_FRAME    // frame 1
@@ -583,7 +583,7 @@ void AudioResamplerOrder1::AsmMono16Loop(int16_t *in, int32_t* maxOutPt, int32_t
         "   bcc 1b\n"
         "2:\n"
 
-        "   bic r6, r6, #0xC0000000\n"             // phaseFraction & ...
+        "   bic r6, r6, #0xf0000000\n"             // phaseFraction & ...
         // save modified values
         "   ldr r0, [sp, #" MO_PARAM5 " + 20]\n"    // &phaseFraction
         "   str r6, [r0]\n"                         // phaseFraction
@@ -667,7 +667,7 @@ void AudioResamplerOrder1::AsmStereo16Loop(int16_t *in, int32_t* maxOutPt, int32
         "   bcs 4f\n"
 
 #define ST_ONE_FRAME \
-    "   bic r6, r6, #0xC0000000\n"      /* phaseFraction & ... */\
+    "   bic r6, r6, #0xf0000000\n"      /* phaseFraction & ... */\
 \
     "   add r0, r1, r7, asl #2\n"       /* in + 2*inputIndex */\
 \
@@ -675,7 +675,7 @@ void AudioResamplerOrder1::AsmStereo16Loop(int16_t *in, int32_t* maxOutPt, int32
     "   ldr r5, [r8]\n"                 /* out[outputIndex] */\
     "   ldrsh r12, [r0, #-4]\n"         /* in[2*inputIndex-2] */\
     "   sub r4, r4, r12\n"              /* in[2*InputIndex] - in[2*InputIndex-2] */\
-    "   mov r4, r4, lsl #2\n"           /* <<2 */\
+    "   mov r4, r4, lsl #4\n"           /* <<2 */\
     "   smulwt r4, r4, r6\n"            /* (x1-x0)*.. */\
     "   add r12, r12, r4\n"             /* x0 - (..) */\
     "   mla r5, r12, r10, r5\n"         /* vl*interp + out[] */\
@@ -685,14 +685,14 @@ void AudioResamplerOrder1::AsmStereo16Loop(int16_t *in, int32_t* maxOutPt, int32
     "   ldrsh r12, [r0, #+2]\n"         /* in[2*inputIndex+1] */\
     "   ldrsh r0, [r0, #-2]\n"          /* in[2*inputIndex-1] */\
     "   sub r12, r12, r0\n"             /* in[2*InputIndex] - in[2*InputIndex-2] */\
-    "   mov r12, r12, lsl #2\n"         /* <<2 */\
+    "   mov r12, r12, lsl #4\n"         /* <<2 */\
     "   smulwt r12, r12, r6\n"          /* (x1-x0)*.. */\
     "   add r12, r0, r12\n"             /* x0 - (..) */\
     "   mla r4, r12, r11, r4\n"         /* vr*interp + out[] */\
     "   str r4, [r8], #4\n"             /* out[outputIndex++] = ... */\
 \
     "   add r6, r6, r9\n"               /* phaseFraction + phaseIncrement */\
-    "   add r7, r7, r6, lsr #30\n"      /* inputIndex + phaseFraction>>30 */
+    "   add r7, r7, r6, lsr #28\n"      /* inputIndex + phaseFraction>>30 */
 
     ST_ONE_FRAME    // frame 1
     ST_ONE_FRAME    // frame 1
@@ -701,7 +701,7 @@ void AudioResamplerOrder1::AsmStereo16Loop(int16_t *in, int32_t* maxOutPt, int32
         "   bcc 3b\n"
         "4:\n"
 
-        "   bic r6, r6, #0xC0000000\n"              // phaseFraction & ...
+        "   bic r6, r6, #0xf0000000\n"              // phaseFraction & ...
         // save modified values
         "   ldr r0, [sp, #" ST_PARAM5 " + 20]\n"    // &phaseFraction
         "   str r6, [r0]\n"                         // phaseFraction

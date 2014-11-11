@@ -38,8 +38,16 @@
 #include "MetadataRetrieverClient.h"
 #include "StagefrightMetadataRetriever.h"
 #include "MediaPlayerFactory.h"
+#if BUILD_WITH_AMLOGIC_PLAYER
+#include "AmlPlayerMetadataRetriever.h"
+#include "AmlPlayerMetadataRetriever0.h"
+
+#endif
 
 namespace android {
+
+extern player_type getPlayerType(const char* url);
+extern player_type getPlayerType(int fd, int64_t offset, int64_t length);
 
 MetadataRetrieverClient::MetadataRetrieverClient(pid_t pid)
 {
@@ -83,6 +91,23 @@ static sp<MediaMetadataRetrieverBase> createRetriever(player_type playerType)
 {
     sp<MediaMetadataRetrieverBase> p;
     switch (playerType) {
+#if BUILD_WITH_AMLOGIC_PLAYER
+        case AMSUPER_PLAYER:
+        case AMLOGIC_PLAYER:
+        {
+            char value[PROPERTY_VALUE_MAX];
+            property_get("media.amplayer.thumbnail", value, "false");
+            if ((!strcmp(value, "1") || !strcmp(value, "true")))
+                p = new AmlPlayerMetadataRetriever;
+            else if(property_get("media.amplayer.thumbnail0", value, NULL)
+                 && (!strcmp("1", value) || !strcasecmp("true", value))){
+				p = new AmlPlayerMetadataRetriever0;
+            }else{
+                p = new StagefrightMetadataRetriever;
+            }
+            break;
+        }
+#endif
         case STAGEFRIGHT_PLAYER:
         case NU_PLAYER:
         {
@@ -122,9 +147,18 @@ status_t MetadataRetrieverClient::setDataSource(
     // eventually encapsulate the result of this selection.  In this case, just
     // pass NULL to getPlayerType to indicate that there is no outer
     // IMediaPlayer to consider during selection.
-    player_type playerType =
-        MediaPlayerFactory::getPlayerType(NULL /* client */, url);
+    // TODO:
+    //player_type playerType =
+    //    MediaPlayerFactory::getPlayerType(NULL /* client */, url);
+	player_type playerType = getPlayerType(url);
     ALOGV("player type = %d", playerType);
+	
+    char value[PROPERTY_VALUE_MAX];
+    property_get("media.amplayer.thumbnail4http", value, "false");
+	if(strcasestr(url,"http://") && !(!strcmp(value, "1") || !strcmp(value, "true"))){
+		ALOGE("Can't support HTTP stream get thumbnail.\n");
+		return NO_INIT;
+	}
     sp<MediaMetadataRetrieverBase> p = createRetriever(playerType);
     if (p == NULL) return NO_INIT;
     status_t ret = p->setDataSource(url, headers);
@@ -158,11 +192,12 @@ status_t MetadataRetrieverClient::setDataSource(int fd, int64_t offset, int64_t 
         ALOGV("calculated length = %lld", length);
     }
 
-    player_type playerType =
-        MediaPlayerFactory::getPlayerType(NULL /* client */,
-                                          fd,
-                                          offset,
-                                          length);
+    //player_type playerType =
+    //    MediaPlayerFactory::getPlayerType(NULL /* client */,
+    //                                      fd,
+    //                                      offset,
+    //                                      length);
+	player_type playerType = getPlayerType(fd, offset, length);
     ALOGV("player type = %d", playerType);
     sp<MediaMetadataRetrieverBase> p = createRetriever(playerType);
     if (p == NULL) {

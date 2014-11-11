@@ -93,6 +93,7 @@ public:
 
     /* Signal the playback thread for a change in control block */
     virtual void        signal() = 0;
+    virtual void*       getTrack()=0;
 };
 
 // ----------------------------------------------------------------------------

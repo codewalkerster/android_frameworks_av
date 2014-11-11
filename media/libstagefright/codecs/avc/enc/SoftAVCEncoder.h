@@ -20,6 +20,8 @@
 #include <media/stagefright/MediaBuffer.h>
 #include <media/stagefright/foundation/ABase.h>
 #include <utils/Vector.h>
+#include <utils/threads.h>
+#include <semaphore.h>  
 
 #include "avcenc_api.h"
 #include "SimpleSoftOMXComponent.h"
@@ -27,6 +29,8 @@
 namespace android {
 
 struct MediaBuffer;
+
+#define MAX_THREAD_NUM  6
 
 struct SoftAVCEncoder : public MediaBufferObserver,
                         public SimpleSoftOMXComponent {
@@ -77,6 +81,25 @@ private:
         int32_t mFlags;
     } InputBufferInfo;
 
+    void* AVCThread_slot(int slot);
+    sem_t sem_slice[MAX_THREAD_NUM];
+    sem_t semdone[MAX_THREAD_NUM];
+    static void* beginSliceThread_0(void *cookie);
+    static void* beginSliceThread_1(void *cookie);
+    static void* beginSliceThread_2(void *cookie);
+    static void* beginSliceThread_3(void *cookie);
+    static void* beginSliceThread_4(void *cookie);
+    static void* beginSliceThread_5(void *cookie);
+    int m_thread_slot_num;    
+    int cur_slot_ptr ;  
+
+    pthread_t mThread[MAX_THREAD_NUM];
+
+    void* m_buffer[6];
+    void* m_nal_size[6];
+    void* m_nal_type[6];
+    int   m_status;
+
     int32_t  mVideoWidth;
     int32_t  mVideoHeight;
     int32_t  mVideoFrameRate;
@@ -90,12 +113,15 @@ private:
     int64_t  mNumInputFrames;
     int64_t  mPrevTimestampUs;
     bool     mStarted;
+    bool     mInited;
     bool     mSpsPpsHeaderReceived;
     bool     mReadyForNextFrame;
     bool     mSawInputEOS;
     bool     mSignalledError;
     bool     mIsIDRFrame;
-
+    bool	mHardwareFirst;
+    bool	mPlatformEncActived;
+	
     tagAVCHandle          *mHandle;
     tagAVCEncParam        *mEncParams;
     uint8_t               *mInputFrameData;

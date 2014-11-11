@@ -104,6 +104,19 @@ static const nsecs_t kMinGlobalEffectEnabletimeNs = seconds(7200);
 
 // ----------------------------------------------------------------------------
 
+#ifdef ADD_BATTERY_DATA
+// To collect the amplifier usage
+static void addBatteryData(uint32_t params) {
+    sp<IMediaPlayerService> service = IMediaDeathNotifier::getMediaPlayerService();
+    if (service == NULL) {
+        // it already logged
+        return;
+    }
+
+    service->addBatteryData(params);
+}
+#endif
+
 static int load_audio_interface(const char *if_name, audio_hw_device_t **dev)
 {
     const hw_module_t *mod;
@@ -216,6 +229,7 @@ static const char * const audio_interfaces[] = {
     AUDIO_HARDWARE_MODULE_ID_PRIMARY,
     AUDIO_HARDWARE_MODULE_ID_A2DP,
     AUDIO_HARDWARE_MODULE_ID_USB,
+    AUDIO_HARDWARE_MODULE_ID_HDMI,
 };
 #define ARRAY_SIZE(x) (sizeof((x))/sizeof(((x)[0])))
 
@@ -611,6 +625,25 @@ uint32_t AudioFlinger::latency(audio_io_handle_t output) const
         return 0;
     }
     return thread->latency();
+}
+uint32_t AudioFlinger::LatencyDupBuf_Get(audio_io_handle_t output) const
+{
+    Mutex::Autolock _l(mLock);
+    PlaybackThread *thread = checkPlaybackThread_l(output);
+    if (thread == NULL) {
+        ALOGW("GetFramesInDupBuf(): no playback thread found for output handle %d", output);
+        return 0;
+    }
+    return thread->LatencyDupBuf_Get();
+}
+uint32_t AudioFlinger::DupFrmCounter_Flush(audio_io_handle_t output,uint32_t*pFrmCnt,int FrmCounterEnable,uint32_t *track )const
+{
+    PlaybackThread *thread = checkPlaybackThread_l(output);
+    if (thread == NULL) {
+        ALOGW("GetFramesInDupBuf(): no playback thread found for output handle %d", output);
+        return 0;
+    }
+    return thread->DupFrmCounter_Flush(pFrmCnt,FrmCounterEnable,track );
 }
 
 status_t AudioFlinger::setMasterVolume(float value)

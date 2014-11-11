@@ -42,6 +42,7 @@ enum {
     SET_PARAMETERS,
     GET_TIMESTAMP,
     SIGNAL,
+    GET_TRACK,
 };
 
 class BpAudioTrack : public BpInterface<IAudioTrack>
@@ -189,6 +190,18 @@ public:
         data.writeInterfaceToken(IAudioTrack::getInterfaceDescriptor());
         remote()->transact(SIGNAL, data, &reply);
     }
+    virtual void* getTrack()
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(IAudioTrack::getInterfaceDescriptor());
+        status_t status = remote()->transact(GET_TRACK, data, &reply);
+        if (status == NO_ERROR) {
+            return (void*)reply.readInt32();
+        } else {
+            ALOGW("getTrack() error: %s", strerror(-status));
+        }
+        return (void*)NULL;;
+    }
 };
 
 IMPLEMENT_META_INTERFACE(AudioTrack, "android.media.IAudioTrack");
@@ -281,6 +294,11 @@ status_t BnAudioTrack::onTransact(
             signal();
             return NO_ERROR;
         } break;
+        case GET_TRACK:{
+             CHECK_INTERFACE(IAudioTrack, data, reply);
+             reply->writeInt32((int)getTrack());
+             return NO_ERROR;
+        }break;
         default:
             return BBinder::onTransact(code, data, reply, flags);
     }

@@ -98,6 +98,149 @@ status_t SoftAVC::initDecoder() {
     return UNKNOWN_ERROR;
 }
 
+OMX_ERRORTYPE SoftAVC::internalGetParameter(
+        OMX_INDEXTYPE index, OMX_PTR params) {
+    switch (index) {
+        case OMX_IndexParamVideoPortFormat:
+        {
+            OMX_VIDEO_PARAM_PORTFORMATTYPE *formatParams =
+                (OMX_VIDEO_PARAM_PORTFORMATTYPE *)params;
+
+            if (formatParams->nPortIndex > kOutputPortIndex) {
+                return OMX_ErrorUndefined;
+            }
+
+            if (formatParams->nIndex != 0) {
+                return OMX_ErrorNoMore;
+            }
+
+            if (formatParams->nPortIndex == kInputPortIndex) {
+                formatParams->eCompressionFormat = OMX_VIDEO_CodingAVC;
+                formatParams->eColorFormat = OMX_COLOR_FormatUnused;
+                formatParams->xFramerate = 0;
+            } else {
+                CHECK(formatParams->nPortIndex == kOutputPortIndex);
+
+                formatParams->eCompressionFormat = OMX_VIDEO_CodingUnused;
+                formatParams->eColorFormat = OMX_COLOR_FormatYUV420Planar;
+                formatParams->xFramerate = 0;
+            }
+
+            return OMX_ErrorNone;
+        }
+
+        case OMX_IndexParamVideoProfileLevelQuerySupported:
+        {
+            OMX_VIDEO_PARAM_PROFILELEVELTYPE *profileLevel =
+                    (OMX_VIDEO_PARAM_PROFILELEVELTYPE *) params;
+
+            if (profileLevel->nPortIndex != kInputPortIndex) {
+                ALOGE("Invalid port index: %ld", profileLevel->nPortIndex);
+                return OMX_ErrorUnsupportedIndex;
+            }
+
+            size_t index = profileLevel->nProfileIndex;
+            size_t nProfileLevels =
+                    sizeof(kProfileLevels) / sizeof(kProfileLevels[0]);
+            if (index >= nProfileLevels) {
+                return OMX_ErrorNoMore;
+            }
+
+            profileLevel->eProfile = kProfileLevels[index].mProfile;
+            profileLevel->eLevel = kProfileLevels[index].mLevel;
+            return OMX_ErrorNone;
+        }
+
+        default:
+            return SimpleSoftOMXComponent::internalGetParameter(index, params);
+    }
+}
+
+OMX_ERRORTYPE SoftAVC::internalSetParameter(
+        OMX_INDEXTYPE index, const OMX_PTR params) {
+    switch (index) {
+        case OMX_IndexParamStandardComponentRole:
+        {
+            const OMX_PARAM_COMPONENTROLETYPE *roleParams =
+                (const OMX_PARAM_COMPONENTROLETYPE *)params;
+
+            if (strncmp((const char *)roleParams->cRole,
+                        "video_decoder.avc",
+                        OMX_MAX_STRINGNAME_SIZE - 1)) {
+                return OMX_ErrorUndefined;
+            }
+
+            return OMX_ErrorNone;
+        }
+
+        case OMX_IndexParamVideoPortFormat:
+        {
+            OMX_VIDEO_PARAM_PORTFORMATTYPE *formatParams =
+                (OMX_VIDEO_PARAM_PORTFORMATTYPE *)params;
+
+            if (formatParams->nPortIndex > kOutputPortIndex) {
+                return OMX_ErrorUndefined;
+            }
+
+            if (formatParams->nIndex != 0) {
+                return OMX_ErrorNoMore;
+            }
+
+            return OMX_ErrorNone;
+        }
+
+        //for width&height info always get the error info
+        case OMX_IndexParamPortDefinition:
+        {
+            OMX_PARAM_PORTDEFINITIONTYPE *defParams = (OMX_PARAM_PORTDEFINITIONTYPE *)params;
+            OMX_VIDEO_PORTDEFINITIONTYPE* videodef = &(defParams->format.video);
+            //update the width & height info
+            mWidth = videodef->nFrameWidth;
+            mHeight = videodef->nFrameHeight;
+            mPictureSize = mWidth * mHeight * 3 / 2;
+            //update crop info
+            mCropLeft = 0;
+            mCropTop = 0;
+            mCropWidth = mWidth ;
+            mCropHeight = mHeight ;
+
+            //update buffer size
+            defParams->nBufferSize =
+                (defParams->format.video.nFrameWidth * defParams->format.video.nFrameHeight * 3) / 2;
+
+            OMX_ERRORTYPE rtn = SimpleSoftOMXComponent::internalSetParameter(index, params);
+            return rtn;
+        }
+
+        default:
+            return SimpleSoftOMXComponent::internalSetParameter(index, params);
+    }
+}
+
+OMX_ERRORTYPE SoftAVC::getConfig(
+        OMX_INDEXTYPE index, OMX_PTR params) {
+    switch (index) {
+        case OMX_IndexConfigCommonOutputCrop:
+        {
+            OMX_CONFIG_RECTTYPE *rectParams = (OMX_CONFIG_RECTTYPE *)params;
+
+            if (rectParams->nPortIndex != 1) {
+                return OMX_ErrorUndefined;
+            }
+
+            rectParams->nLeft = mCropLeft;
+            rectParams->nTop = mCropTop;
+            rectParams->nWidth = mCropWidth;
+            rectParams->nHeight = mCropHeight;
+
+            return OMX_ErrorNone;
+        }
+
+        default:
+            return OMX_ErrorUnsupportedIndex;
+    }
+}
+
 void SoftAVC::onQueueFilled(OMX_U32 portIndex) {
     if (mSignalledError || mOutputPortSettingsChange != NONE) {
         return;

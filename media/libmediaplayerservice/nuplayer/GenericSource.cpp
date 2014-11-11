@@ -13,6 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+	 
+//#define LOG_NDEBUG 0
+#define LOG_TAG "NuPlayer-GenericSource"
+#include <utils/Log.h>
 
 #include "GenericSource.h"
 
@@ -29,8 +33,8 @@
 #include <media/stagefright/MediaSource.h>
 #include <media/stagefright/MetaData.h>
 
-namespace android {
 
+namespace android {
 NuPlayer::GenericSource::GenericSource(
         const sp<AMessage> &notify,
         const char *url,
@@ -41,6 +45,7 @@ NuPlayer::GenericSource::GenericSource(
       mDurationUs(0ll),
       mAudioIsVorbis(false) {
     DataSource::RegisterDefaultSniffers();
+
 
     sp<DataSource> dataSource =
         DataSource::CreateFromURI(url, headers);
@@ -64,7 +69,15 @@ NuPlayer::GenericSource::GenericSource(
 
 void NuPlayer::GenericSource::initFromDataSource(
         const sp<DataSource> &dataSource) {
+        
+
+
+#ifdef USE_AM_SOFT_DEMUXER_CODEC
+    sp<MediaExtractor> extractor = MediaExtractor::CreateEx(dataSource,0);
+#else
     sp<MediaExtractor> extractor = MediaExtractor::Create(dataSource);
+#endif
+
 
     CHECK(extractor != NULL);
 
@@ -75,6 +88,7 @@ void NuPlayer::GenericSource::initFromDataSource(
         CHECK(meta->findCString(kKeyMIMEType, &mime));
 
         sp<MediaSource> track;
+        ALOGV("initFromDataSource tracked no=%d,mime=%s",i,mime);
 
         if (!strncasecmp(mime, "audio/", 6)) {
             if (mAudioTrack.mSource == NULL) {

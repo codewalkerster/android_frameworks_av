@@ -81,7 +81,7 @@ void SoftVorbis::initPorts() {
     def.eDir = OMX_DirInput;
     def.nBufferCountMin = kNumBuffers;
     def.nBufferCountActual = def.nBufferCountMin;
-    def.nBufferSize = 8192;
+    def.nBufferSize = 8192*3;//for Bug76041,Fishing_Joy.apk,specific->mSize/17225
     def.bEnabled = OMX_TRUE;
     def.bPopulated = OMX_FALSE;
     def.eDomain = OMX_PortDomainAudio;
@@ -269,16 +269,26 @@ void SoftVorbis::onQueueFilled(OMX_U32 portIndex) {
             mVi = new vorbis_info;
             vorbis_info_init(mVi);
 
-            CHECK_EQ(0, _vorbis_unpack_info(mVi, &bits));
+            //CHECK_EQ(0, _vorbis_unpack_info(mVi, &bits));
+            if(_vorbis_unpack_info(mVi, &bits)!=0 )
+				mInputBufferCount=-1;//force reinit.
         } else {
-            CHECK_EQ(0, _vorbis_unpack_books(mVi, &bits));
+            if(_vorbis_unpack_books(mVi, &bits) == 0)
+			{
+		        CHECK(mState == NULL);
+		        mState = new vorbis_dsp_state;
+		        if(vorbis_dsp_init(mState, mVi)!=0){
+					mInputBufferCount = 0;//will become 1 on erase..
+		            vorbis_dsp_clear(mState);
+		            delete mState;
+		            mState = NULL;
+		        }
 
-            CHECK(mState == NULL);
-            mState = new vorbis_dsp_state;
-            CHECK_EQ(0, vorbis_dsp_init(mState, mVi));
-
-            notify(OMX_EventPortSettingsChanged, 1, 0, NULL);
-            mOutputPortSettingsChange = AWAITING_DISABLED;
+		        notify(OMX_EventPortSettingsChanged, 1, 0, NULL);
+		        mOutputPortSettingsChange = AWAITING_DISABLED;
+            }else{
+                mInputBufferCount = 0;//force reinit,will become 1 on erase..
+            }
         }
 
         inQueue.erase(inQueue.begin());
@@ -404,7 +414,7 @@ void SoftVorbis::onPortFlushCompleted(OMX_U32 portIndex) {
     if (portIndex == 0 && mState != NULL) {
         // Make sure that the next buffer output does not still
         // depend on fragments from the last one decoded.
-
+        ALOGI("OGG_TRACE:%s %d !\n",__FUNCTION__,__LINE__);
         mNumFramesOutput = 0;
         vorbis_dsp_restart(mState);
     }

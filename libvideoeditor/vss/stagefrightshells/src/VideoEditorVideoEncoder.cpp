@@ -19,7 +19,7 @@
 * @brief  StageFright shell video encoder
 *************************************************************************
 */
-#define LOG_NDEBUG 1
+#define LOG_NDEBUG 0
 #define LOG_TAG "VIDEOEDITOR_VIDEOENCODER"
 
 /*******************
@@ -49,7 +49,7 @@
  ********************/
 
 // Force using hardware encoder
-#define VIDEOEDITOR_FORCECODEC kHardwareCodecsOnly
+#define VIDEOEDITOR_FORCECODEC kSoftwareCodecsOnly//kHardwareCodecsOnly
 
 #if !defined(VIDEOEDITOR_FORCECODEC)
     #error "Cannot force DSI retrieval if codec type is not fixed"
@@ -336,7 +336,10 @@ M4OSA_ERR VideoEditorVideoEncoder_getDSI(M4ENCODER_Context pContext,
 
     // Create the OMX codec
     // VIDEOEDITOR_FORCECODEC MUST be defined here
+#ifdef VIDEOEDITOR_FORCECODEC
     codecFlags |= OMXCodec::VIDEOEDITOR_FORCECODEC;
+#endif
+
     encoder = OMXCodec::Create(client.interface(), metaData, true,
         encoderSource, NULL, codecFlags);
     VIDEOEDITOR_CHECK(NULL != encoder.get(), M4ERR_STATE);

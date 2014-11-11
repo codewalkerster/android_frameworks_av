@@ -24,6 +24,7 @@
 #include <binder/IAppOpsCallback.h>
 #include <camera/ICameraService.h>
 #include <hardware/camera.h>
+#include <LoadXml.h>
 
 #include <camera/ICamera.h>
 #include <camera/ICameraClient.h>
@@ -36,6 +37,11 @@
 
 /* This needs to be increased if we can have more cameras */
 #define MAX_CAMERAS 2
+
+//ask the camera to return the mirrored frames to app,but not the original frames
+//for us, means not to do the flip in sureface and not do mirror flip in driver
+#define ENABLE_RETURN_MIRRORED_FRAMES  1
+
 
 namespace android {
 
@@ -69,11 +75,16 @@ public:
     /////////////////////////////////////////////////////////////////////
     // ICameraService
     virtual int32_t     getNumberOfCameras();
+    virtual bool        findApk();
+    virtual LoadXml*    getLoadXml();
     virtual status_t    getCameraInfo(int cameraId,
                                       struct CameraInfo* cameraInfo);
+
     virtual status_t    getCameraCharacteristics(int cameraId,
                                                  CameraMetadata* cameraInfo);
 
+    virtual void		usbCameraAttach(bool isAttach);
+    
     virtual status_t connect(const sp<ICameraClient>& cameraClient, int cameraId,
             const String16& clientPackageName, int clientUid,
             /*out*/
@@ -244,6 +255,11 @@ public:
                 int servicePid);
         ~Client();
 
+		// return our camera client
+        const sp<ICameraClient>&    getCameraClient() {
+            return mCameraClient;
+        }
+		
         // return our camera client
         const sp<ICameraClient>&    getRemoteCallback() {
             return mRemoteCallback;
@@ -260,8 +276,13 @@ public:
 
         virtual void         notifyError();
 
-        // Initialized in constructor
+		#ifdef ENABLE_RETURN_MIRRORED_FRAMES
+		bool					ChkIfDisplayErrorApp();
+		bool					m_bDisplayError;
+		#endif
 
+        sp<ICameraClient>               mCameraClient;
+		
         // - The app-side Binder interface to receive callbacks from us
         sp<ICameraClient>               mRemoteCallback;
 
@@ -340,6 +361,8 @@ private:
     Mutex               mClientLock[MAX_CAMERAS]; // prevent Client destruction inside callbacks
     int                 mNumberOfCameras;
 
+    LoadXml             gLoadXml;
+
     typedef wp<ProClient> weak_pro_client_ptr;
     Vector<weak_pro_client_ptr> mProClientList[MAX_CAMERAS];
 
@@ -347,7 +370,7 @@ private:
     sp<BasicClient>     findClientUnsafe(const wp<IBinder>& cameraClient, int& outIndex);
     sp<ProClient>       findProClientUnsafe(
                                      const wp<IBinder>& cameraCallbacksRemote);
-
+    
     // atomics to record whether the hardware is allocated to some client.
     volatile int32_t    mBusy[MAX_CAMERAS];
     void                setCameraBusy(int cameraId);

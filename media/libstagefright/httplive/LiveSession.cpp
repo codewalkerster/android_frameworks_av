@@ -22,6 +22,7 @@
 
 #include "M3UParser.h"
 #include "PlaylistFetcher.h"
+#include "include/HEVC_utils.h"
 
 #include "include/HTTPBase.h"
 #include "mpeg2ts/AnotherPacketSource.h"
@@ -43,13 +44,22 @@
 
 namespace android {
 
+const int64_t kNearEOSTimeoutUs = 2000000ll; // 2 secs
+const size_t kSizePerRead = 1500;
+
 LiveSession::LiveSession(
         const sp<AMessage> &notify, uint32_t flags, bool uidValid, uid_t uid)
     : mNotify(notify),
       mFlags(flags),
       mUIDValid(uidValid),
       mUID(uid),
+      mSeeked(false),
+      mNeedExit(false),
       mInPreparationPhase(true),
+      mCodecSpecificDataSend(false),
+      mCodecSpecificDataSize(0),
+      mCodecSpecificData(NULL),
+      mBufferPercent(0),
       mHTTPDataSource(
               HTTPBase::Create(
                   (mFlags & kFlagIncognito)
@@ -60,6 +70,8 @@ LiveSession::LiveSession(
       mCheckBandwidthGeneration(0),
       mLastDequeuedTimeUs(0ll),
       mRealTimeBaseUs(0ll),
+      mEOSTimeoutAudio(0),
+      mEOSTimeoutVideo(0),
       mReconfigurationInProgress(false),
       mDisconnectReplyID(0) {
     if (mUIDValid) {
@@ -77,6 +89,106 @@ LiveSession::LiveSession(
 }
 
 LiveSession::~LiveSession() {
+    if(mCodecSpecificData != NULL) {
+        free(mCodecSpecificData);
+        mCodecSpecificData = NULL;
+    }
+}
+
+bool LiveSession::haveSufficientDataOnAVTracks() {
+    // buffer 2secs data
+    static const int64_t kMinDurationUs = 2000000ll;
+
+    sp<AnotherPacketSource> audioTrack = mPacketSources.valueFor(STREAMTYPE_AUDIO);
+    sp<AnotherPacketSource> videoTrack = mPacketSources.valueFor(STREAMTYPE_VIDEO);
+
+    int64_t mediaDurationUs = 0;
+    getDuration(&mediaDurationUs);
+    if ((audioTrack != NULL && audioTrack->isFinished(mediaDurationUs))
+            || (videoTrack != NULL && videoTrack->isFinished(mediaDurationUs))) {
+        return true;
+    }
+
+    status_t err;
+    int64_t durationUs;
+    if (audioTrack != NULL
+            && (durationUs = audioTrack->getBufferedDurationUs(&err))
+                    < kMinDurationUs
+            && err == OK) {
+        ALOGV("audio track doesn't have enough data yet. (%.2f secs buffered)",
+              durationUs / 1E6);
+        return false;
+    }
+
+    if (videoTrack != NULL
+            && (durationUs = videoTrack->getBufferedDurationUs(&err))
+                    < kMinDurationUs
+            && err == OK) {
+        ALOGV("video track doesn't have enough data yet. (%.2f secs buffered)",
+              durationUs / 1E6);
+        return false;
+    }
+
+    return true;
+}
+
+void LiveSession::setEOSTimeout(bool audio, int64_t timeout) {
+    if (audio) {
+        mEOSTimeoutAudio = timeout;
+    } else {
+        mEOSTimeoutVideo = timeout;
+    }
+}
+
+status_t LiveSession::hasBufferAvailable(bool audio, bool * needBuffering) {
+    StreamType stream = audio ? STREAMTYPE_AUDIO : STREAMTYPE_VIDEO;
+    sp<AnotherPacketSource> t_source = mPacketSources.valueFor(stream);
+    if(t_source == NULL) {
+        return -EWOULDBLOCK;
+    }
+    status_t finalResult;
+    if(!t_source->hasBufferAvailable(&finalResult)) {
+        if (finalResult == OK) {
+            int64_t mediaDurationUs = 0;
+            getDuration(&mediaDurationUs);
+            StreamType otherStream = !audio ? STREAMTYPE_AUDIO : STREAMTYPE_VIDEO;
+            sp<AnotherPacketSource> otherSource = mPacketSources.valueFor(otherStream);
+            status_t otherFinalResult;
+
+            // If other source already signaled EOS, this source should also signal EOS
+            if (otherSource != NULL &&
+                    !otherSource->hasBufferAvailable(&otherFinalResult) &&
+                    otherFinalResult == ERROR_END_OF_STREAM) {
+                t_source->signalEOS(ERROR_END_OF_STREAM);
+                return ERROR_END_OF_STREAM;
+            }
+
+            // If this source has detected near end, give it some time to retrieve more
+            // data before signaling EOS
+            if (t_source->isFinished(mediaDurationUs)) {
+                int64_t eosTimeout = audio ? mEOSTimeoutAudio : mEOSTimeoutVideo;
+                if (eosTimeout == 0) {
+                    setEOSTimeout(audio, ALooper::GetNowUs());
+                } else if ((ALooper::GetNowUs() - eosTimeout) > kNearEOSTimeoutUs) {
+                    setEOSTimeout(audio, 0);
+                    t_source->signalEOS(ERROR_END_OF_STREAM);
+                    return ERROR_END_OF_STREAM;
+                }
+                return -EWOULDBLOCK;
+            }
+
+            if (!(otherSource != NULL && otherSource->isFinished(mediaDurationUs))) {
+                // We should not enter buffering mode
+                // if any of the sources already have detected EOS.
+                *needBuffering = true;
+            }
+
+            return -EWOULDBLOCK;
+        }
+        return finalResult;
+    }
+    setEOSTimeout(audio, 0);
+    return OK;
 }
 
 status_t LiveSession::dequeueAccessUnit(
@@ -92,7 +204,27 @@ status_t LiveSession::dequeueAccessUnit(
         return finalResult == OK ? -EAGAIN : finalResult;
     }
 
-    status_t err = packetSource->dequeueAccessUnit(accessUnit);
+    status_t err;
+    if(stream == STREAMTYPE_VIDEO) {
+	 // need to send CodecSpecificData, lost when seek instantly after start.
+        if(mSeeked == true && mCodecSpecificData != NULL && !mCodecSpecificDataSend) {
+	     int cast_size = HEVCCastSpecificData(mCodecSpecificData, mCodecSpecificDataSize);
+	     if(cast_size > 0) {
+	         mCodecSpecificDataSize = cast_size;
+	     }
+	     sp<ABuffer> tmpAU = new ABuffer(mCodecSpecificDataSize);
+	     memcpy(tmpAU->data(), mCodecSpecificData, mCodecSpecificDataSize);
+            (*accessUnit) = tmpAU;
+	     (*accessUnit)->meta()->setInt64("timeUs", 0ll);
+            mCodecSpecificDataSend = true;
+	     mSeeked = false;
+	     err = OK;
+	 } else {
+	     err = packetSource->dequeueAccessUnit(accessUnit);
+	 }
+    } else {
+        err = packetSource->dequeueAccessUnit(accessUnit);
+    }
 
     const char *streamStr;
     switch (stream) {
@@ -173,6 +305,7 @@ void LiveSession::connectAsync(
 }
 
 status_t LiveSession::disconnect() {
+    mNeedExit = true;
     sp<AMessage> msg = new AMessage(kWhatDisconnect, id());
 
     sp<AMessage> response;
@@ -182,6 +315,7 @@ status_t LiveSession::disconnect() {
 }
 
 status_t LiveSession::seekTo(int64_t timeUs) {
+    mSeeked = true;
     sp<AMessage> msg = new AMessage(kWhatSeek, id());
     msg->setInt64("timeUs", timeUs);
 
@@ -231,6 +365,18 @@ void LiveSession::onMessageReceived(const sp<AMessage> &msg) {
             CHECK(msg->findInt32("what", &what));
 
             switch (what) {
+		  case PlaylistFetcher::kWhatCodecSpecificData:
+		  {
+		      if(mCodecSpecificData == NULL) {
+		          sp<ABuffer> buffer;
+	                 msg->findBuffer("buffer", &buffer);
+			   mCodecSpecificData = (uint8_t *)malloc(buffer->size());
+			   mCodecSpecificDataSize = buffer->size();
+		          memcpy(mCodecSpecificData, buffer->data(), buffer->size());
+			   ALOGI("set CodecSpecificData, size : %d", mCodecSpecificDataSize);
+		      }
+		      break;
+		  }
                 case PlaylistFetcher::kWhatStarted:
                     break;
                 case PlaylistFetcher::kWhatPaused:
@@ -512,53 +658,95 @@ sp<PlaylistFetcher> LiveSession::addFetcher(const char *uri) {
     return info.mFetcher;
 }
 
+/*
+ * Illustration of parameters:
+ *
+ * 0      `range_offset`
+ * +------------+-------------------------------------------------------+--+--+
+ * |            |                                 | next block to fetch |  |  |
+ * |            | `source` handle => `out` buffer |                     |  |  |
+ * | `url` file |<--------- buffer size --------->|<--- `block_size` -->|  |  |
+ * |            |<----------- `range_length` / buffer capacity ----------->|  |
+ * |<------------------------------ file_size ------------------------------->|
+ *
+ * Special parameter values:
+ * - range_length == -1 means entire file
+ * - block_size == 0 means entire range
+ *
+ */
 status_t LiveSession::fetchFile(
         const char *url, sp<ABuffer> *out,
-        int64_t range_offset, int64_t range_length) {
+        int64_t range_offset, int64_t range_length,
+        uint32_t block_size, /* download block size */
+        sp<DataSource> *source, /* to return and reuse source */
+        String8 *actualUrl, bool isPlaylist) {
     *out = NULL;
 
-    sp<DataSource> source;
-
-    if (!strncasecmp(url, "file://", 7)) {
-        source = new FileSource(url + 7);
-    } else if (strncasecmp(url, "http://", 7)
-            && strncasecmp(url, "https://", 8)) {
-        return ERROR_UNSUPPORTED;
-    } else {
-        KeyedVector<String8, String8> headers = mExtraHeaders;
-        if (range_offset > 0 || range_length >= 0) {
-            headers.add(
-                    String8("Range"),
-                    String8(
-                        StringPrintf(
-                            "bytes=%lld-%s",
-                            range_offset,
-                            range_length < 0
-                                ? "" : StringPrintf("%lld", range_offset + range_length - 1).c_str()).c_str()));
-        }
-        status_t err = mHTTPDataSource->connect(url, &headers);
-
-        if (err != OK) {
-            return err;
-        }
-
-        source = mHTTPDataSource;
+    if(mNeedExit) {
+        return OK;
     }
 
     off64_t size;
-    status_t err = source->getSize(&size);
+    sp<DataSource> temp_source;
+    if (source == NULL) {
+        source = &temp_source;
+    }
 
-    if (err != OK) {
+    if (*source == NULL) {
+        if (!strncasecmp(url, "file://", 7)) {
+            *source = new FileSource(url + 7);
+        } else if (strncasecmp(url, "http://", 7)
+                && strncasecmp(url, "https://", 8)) {
+            return ERROR_UNSUPPORTED;
+        } else {
+            KeyedVector<String8, String8> headers = mExtraHeaders;
+            if (range_offset > 0 || range_length >= 0) {
+                headers.add(
+                        String8("Range"),
+                        String8(
+                            StringPrintf(
+                                "bytes=%lld-%s",
+                                range_offset,
+                                range_length < 0
+                                    ? "" : StringPrintf("%lld",
+                                            range_offset + range_length - 1).c_str()).c_str()));
+            }
+            status_t err = mHTTPDataSource->connect(url, &headers);
+
+            if (err != OK) {
+                return err;
+            }
+
+            *source = mHTTPDataSource;
+        }
+    }
+
+    status_t getSizeErr = (*source)->getSize(&size);
+    if (getSizeErr != OK) {
         size = 65536;
     }
 
-    sp<ABuffer> buffer = new ABuffer(size);
-    buffer->setRange(0, 0);
+    sp<ABuffer> buffer = *out != NULL ? *out : new ABuffer(size);
+    if (*out == NULL) {
+        buffer->setRange(0, 0);
+    }
 
+    // adjust range_length if only reading partial block
+    if (block_size > 0 && (range_length == -1 || buffer->size() + block_size < range_length)) {
+        range_length = buffer->size() + block_size;
+    }
     for (;;) {
-        size_t bufferRemaining = buffer->capacity() - buffer->size();
+	 // no block when quit.
+        if(mNeedExit) {
+            break;
+	 }
 
-        if (bufferRemaining == 0) {
+    size_t bufferRemaining = buffer->capacity() - buffer->size();
+	 if(!isPlaylist) {
+            mBufferPercent = (buffer->size() / (float)(buffer->capacity())) * 100;
+	 }
+
+        if (bufferRemaining == 0 && getSizeErr != OK) {
             bufferRemaining = 32768;
 
             ALOGV("increasing download buffer to %d bytes",
@@ -571,7 +759,7 @@ status_t LiveSession::fetchFile(
             buffer = copy;
         }
 
-        size_t maxBytesToRead = bufferRemaining;
+        size_t maxBytesToRead = (bufferRemaining < kSizePerRead) ? bufferRemaining : kSizePerRead;
         if (range_length >= 0) {
             int64_t bytesLeftInRange = range_length - buffer->size();
             if (bytesLeftInRange < maxBytesToRead) {
@@ -583,7 +771,9 @@ status_t LiveSession::fetchFile(
             }
         }
 
-        ssize_t n = source->readAt(
+        // The DataSource is responsible for informing us of error (n < 0) or eof (n == 0)
+        // to help us break out of the loop.
+        ssize_t n = (*source)->readAt(
                 buffer->size(), buffer->data() + buffer->size(),
                 maxBytesToRead);
 
@@ -599,6 +789,13 @@ status_t LiveSession::fetchFile(
     }
 
     *out = buffer;
+    mBufferPercent = 0;
+    if (actualUrl != NULL) {
+        *actualUrl = (*source)->getUri();
+        if (actualUrl->isEmpty()) {
+            *actualUrl = url;
+        }
+    }
 
     return OK;
 }
@@ -610,7 +807,8 @@ sp<M3UParser> LiveSession::fetchPlaylist(
     *unchanged = false;
 
     sp<ABuffer> buffer;
-    status_t err = fetchFile(url, &buffer);
+    String8 actualUrl;
+    status_t err = fetchFile(url, &buffer, 0, -1, 0, NULL, &actualUrl, true);
 
     if (err != OK) {
         return NULL;
@@ -644,7 +842,7 @@ sp<M3UParser> LiveSession::fetchPlaylist(
 #endif
 
     sp<M3UParser> playlist =
-        new M3UParser(url, buffer->data(), buffer->size());
+        new M3UParser(actualUrl.string(), buffer->data(), buffer->size());
 
     if (playlist->initCheck() != OK) {
         ALOGE("failed to parse .m3u8 playlist");
@@ -761,6 +959,16 @@ size_t LiveSession::getBandwidthIndex() {
     CHECK_GE(index, 0);
 
     return index;
+}
+
+void LiveSession::getBandwidthKbps(int32_t * bw) {
+    if(mHTTPDataSource != NULL) {
+        mHTTPDataSource->getEstimatedBandwidthKbps(bw);
+    }
+}
+
+int32_t LiveSession::getBufferingPercent() {
+    return mBufferPercent;
 }
 
 status_t LiveSession::onSeek(const sp<AMessage> &msg) {

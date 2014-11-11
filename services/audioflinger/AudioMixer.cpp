@@ -415,6 +415,13 @@ void AudioMixer::disable(int name)
     }
 }
 
+int AudioMixer::IsEnable(int name)
+{
+   name -= TRACK0;
+   ALOG_ASSERT(uint32_t(name) < MAX_NUM_TRACKS, "bad track name %d", name);
+   track_t& track = mState.tracks[name];
+   return track.enabled;
+}
 void AudioMixer::setParameter(int name, int target, int param, void *value)
 {
     name -= TRACK0;

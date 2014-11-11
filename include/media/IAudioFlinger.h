@@ -209,6 +209,8 @@ public:
     // and should be called at most once.  For a definition of what "low RAM" means, see
     // android.app.ActivityManager.isLowRamDevice().
     virtual status_t setLowRamDevice(bool isLowRamDevice) = 0;
+    virtual     uint32_t    LatencyDupBuf_Get(audio_io_handle_t output)const=0;
+    virtual     uint32_t    DupFrmCounter_Flush(audio_io_handle_t output,uint32_t*pFrmCnt,int FrmCounterEnable,uint32_t *track )const=0;
 };
 
 

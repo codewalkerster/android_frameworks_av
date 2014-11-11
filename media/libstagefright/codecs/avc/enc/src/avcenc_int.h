@@ -118,7 +118,9 @@ typedef enum
     AVCEnc_Encoding_PPS,
     AVCEnc_Analyzing_Frame,
     AVCEnc_WaitingForBuffer,  // pending state
+    AVCEnc_Encoding_Header,
     AVCEnc_Encoding_Frame,
+    AVCEnc_SLICE_MERGE,
 } AVCEnc_State ;
 
 /**

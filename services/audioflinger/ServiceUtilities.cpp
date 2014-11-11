@@ -17,6 +17,9 @@
 #include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
 #include <binder/PermissionCache.h>
+
+#include <cutils/properties.h>
+
 #include "ServiceUtilities.h"
 
 namespace android {
@@ -25,7 +28,29 @@ namespace android {
 // re-initialized if the process containing AudioFlinger service forks (which it doesn't).
 pid_t getpid_cached;
 
+#define _buildcharacteristics "ro.build.characteristics"
+
+#define _devbootcomplete "dev.bootcomplete"
+
+static String16 _permission("permission");
+
 bool recordingAllowed() {
+    char prop_value[PROPERTY_VALUE_MAX];
+
+    memset((void *)prop_value, 0, PROPERTY_VALUE_MAX);
+    property_get(_buildcharacteristics, prop_value, "null");
+    if (strcasecmp(prop_value, "TV") == 0) {
+        memset((void *)prop_value, 0, PROPERTY_VALUE_MAX);
+        property_get(_devbootcomplete, prop_value, "0");
+        if (strcasecmp(prop_value, "0") == 0) {
+            sp <IBinder> binder = defaultServiceManager()->checkService(_permission);
+            if (binder == NULL) {
+                ALOGE("If dev not boot complete and permission is not start, don't need check android.permission.RECORD_AUDIO");
+                return true;
+            }
+        }
+    }
+
     if (getpid_cached == IPCThreadState::self()->getCallingPid()) return true;
     static const String16 sRecordAudio("android.permission.RECORD_AUDIO");
     // don't use PermissionCache; this is not a system permission
@@ -51,6 +76,22 @@ bool captureHotwordAllowed() {
 }
 
 bool settingsAllowed() {
+    char prop_value[PROPERTY_VALUE_MAX];
+
+    memset((void *)prop_value, 0, PROPERTY_VALUE_MAX);
+    property_get(_buildcharacteristics, prop_value, "null");
+    if (strcasecmp(prop_value, "TV") == 0) {
+        memset((void *)prop_value, 0, PROPERTY_VALUE_MAX);
+        property_get(_devbootcomplete, prop_value, "0");
+        if (strcasecmp(prop_value, "0") == 0) {
+            sp <IBinder> binder = defaultServiceManager()->checkService(_permission);
+            if (binder == NULL) {
+                ALOGE("If dev not boot complete and permission is not start, don't need check android.permission.MODIFY_AUDIO_SETTINGS");
+                return true;
+            }
+        }
+    }
+
     if (getpid_cached == IPCThreadState::self()->getCallingPid()) return true;
     static const String16 sAudioSettings("android.permission.MODIFY_AUDIO_SETTINGS");
     // don't use PermissionCache; this is not a system permission

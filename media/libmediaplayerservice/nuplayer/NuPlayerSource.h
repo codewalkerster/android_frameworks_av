@@ -88,6 +88,14 @@ struct NuPlayer::Source : public AHandler {
         return false;
     }
 
+    virtual int32_t getBandwidth() {
+        return INVALID_OPERATION;
+    }
+
+    virtual int32_t getBufferingPercent() {
+        return INVALID_OPERATION;
+    }
+
 protected:
     virtual ~Source() {}
 

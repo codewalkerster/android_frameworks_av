@@ -30,6 +30,7 @@
 #include <media/stagefright/Utils.h>
 
 #include "include/avc_utils.h"
+#include "include/HEVC_utils.h"
 
 #include <netinet/in.h>
 
@@ -37,7 +38,8 @@ namespace android {
 
 ElementaryStreamQueue::ElementaryStreamQueue(Mode mode, uint32_t flags)
     : mMode(mode),
-      mFlags(flags) {
+      mFlags(flags),
+      mHevcFindKey(false) {
 }
 
 sp<MetaData> ElementaryStreamQueue::getFormat() {
@@ -125,6 +127,7 @@ status_t ElementaryStreamQueue::appendData(
     if (mBuffer == NULL || mBuffer->size() == 0) {
         switch (mMode) {
             case H264:
+            case H265:
             case MPEG_VIDEO:
             {
 #if 0
@@ -326,6 +329,8 @@ sp<ABuffer> ElementaryStreamQueue::dequeueAccessUnit() {
     switch (mMode) {
         case H264:
             return dequeueAccessUnitH264();
+        case H265:
+            return dequeueAccessUnitH265();
         case AAC:
             return dequeueAccessUnitAAC();
         case MPEG_VIDEO:
@@ -489,7 +494,6 @@ sp<ABuffer> ElementaryStreamQueue::dequeueAccessUnitAAC() {
     mBuffer->setRange(0, mBuffer->size() - offset);
 
     accessUnit->meta()->setInt64("timeUs", timeUs);
-
     return accessUnit;
 }
 
@@ -530,6 +534,86 @@ struct NALPosition {
     size_t nalOffset;
     size_t nalSize;
 };
+
+
+sp<ABuffer> ElementaryStreamQueue::dequeueAccessUnitH265() {
+
+	if (mFormat == NULL) {
+		 #if 0
+				ALOGV("MakeAVCCodecSpecificData 555 xxxx mMode %d", mMode);
+                sp<MetaData> meta = new MetaData;
+			    ///meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_AVC);
+				meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_HEVC);
+			    //meta->setData(kKeyAVCC, kTypeAVCC, csd->data(), csd->size());
+			    meta->setInt32(kKeyWidth, 1280);
+			    meta->setInt32(kKeyHeight, 720);
+				mFormat=meta;
+		 #else
+		 size_t stopOffset;
+		 sp<ABuffer> spsBuffer;
+		 size_t size=mBuffer->size();
+		 const uint8_t *data=mBuffer->data();
+		 const uint8_t *nalStart;
+    	 size_t nalSize;
+		 while((HEVC_getNextNALUnit(&data, &size, &nalStart, &nalSize, true) == OK)){
+        	if (((nalStart[0]>>1) & 0x3f) == 33) { //SPS
+				int ret;
+				struct hevc_info info;
+				ret=HEVC_decode_SPS(nalStart+2,nalSize-2,&info);  
+				if(ret == 0){
+					sp<MetaData> meta = new MetaData;
+				    ///meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_AVC);
+					meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_HEVC);
+				    //meta->setData(kKeyAVCC, kTypeAVCC, csd->data(), csd->size());
+				    meta->setInt32(kKeyWidth, info.mwidth);
+				    meta->setInt32(kKeyHeight, info.mheight);
+					mFormat=meta;
+				}
+        	}
+		 }
+		 #endif		
+    }
+
+    // source has been released when seek. metadata could be null here, assign it.
+    if(mFormat == NULL) {
+		sp<MetaData> meta = new MetaData;
+		meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_HEVC);
+		// set width&height temporarily, avoid play failed.
+		meta->setInt32(kKeyWidth, 0);
+		meta->setInt32(kKeyHeight, 0);
+		mFormat=meta;
+    }
+
+       int keyframe = 0;
+	if(mBuffer->size()>0){
+		if(!mHevcFindKey) {
+                  keyframe = HEVC_parse_keyframe(mBuffer->data(),mBuffer->size());
+                  if(keyframe == 1) {
+		        mHevcFindKey = true;
+		    } else {
+		        fetchTimestamp(mBuffer->size());
+		        mBuffer->setRange(0, mBuffer->size() -mBuffer->size());
+	               return NULL;
+		    }
+		}
+
+		sp<ABuffer> accessUnit = new ABuffer(mBuffer->size());
+		memcpy(accessUnit->data(),
+	                       mBuffer->data(),
+	                       mBuffer->size());
+
+		int64_t timeUs = fetchTimestamp(mBuffer->size());
+    	       CHECK_GE(timeUs, 0ll);
+   	 	accessUnit->meta()->setInt64("timeUs", timeUs);
+		if(keyframe == 1) {
+		    accessUnit->meta()->setInt32("findkeyframe", 1);
+		}
+		mBuffer->setRange(0, mBuffer->size() -mBuffer->size());
+		return accessUnit;
+	}
+	mBuffer->setRange(0, mBuffer->size() -mBuffer->size());
+	return NULL;
+}
 
 sp<ABuffer> ElementaryStreamQueue::dequeueAccessUnitH264() {
     const uint8_t *data = mBuffer->data();

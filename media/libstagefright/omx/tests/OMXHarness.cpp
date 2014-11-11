@@ -275,7 +275,9 @@ static sp<MediaSource> MakeSource(
 
 status_t Harness::testStateTransitions(
         const char *componentName, const char *componentRole) {
-    if (strncmp(componentName, "OMX.", 4)) {
+        
+    if ((strncmp(componentName, "AML.", 4))||        
+      (strncmp(componentName, "OMX.", 4)) ){
         // Non-OMX components, i.e. software decoders won't execute this
         // test.
         return OK;
@@ -458,10 +460,16 @@ static const char *GetMimeFromComponentRole(const char *componentRole) {
         { "audio_decoder.amrnb", "audio/3gpp" },
         { "audio_decoder.amrwb", "audio/amr-wb" },
         { "audio_decoder.aac", "audio/mp4a-latm" },
+        { "audio_decoder.adif", "audio/aac-adif" },
+        { "audio_decoder.latm", "audio/aac-latm" },
+        { "audio_decoder.adts", "audio/adts" },
         { "audio_decoder.mp3", "audio/mpeg" },
+        { "audio_decoder.mp2", MEDIA_MIMETYPE_AUDIO_MPEG_LAYER_II },
         { "audio_decoder.vorbis", "audio/vorbis" },
         { "audio_decoder.g711alaw", MEDIA_MIMETYPE_AUDIO_G711_ALAW },
         { "audio_decoder.g711mlaw", MEDIA_MIMETYPE_AUDIO_G711_MLAW },
+        { "audio_decoder.adpcmima", MEDIA_MIMETYPE_AUDIO_ADPCM_IMA},
+        { "audio_decoder.adpcmms", MEDIA_MIMETYPE_AUDIO_ADPCM_MS},
     };
 
     for (size_t i = 0; i < sizeof(kRoleToMime) / sizeof(kRoleToMime[0]); ++i) {
@@ -497,6 +505,8 @@ static const char *GetURLForMime(const char *mime) {
         { MEDIA_MIMETYPE_AUDIO_G711_ALAW, "file:///sdcard/M1F1-Alaw-AFsp.wav" },
         { MEDIA_MIMETYPE_AUDIO_G711_MLAW,
           "file:///sdcard/M1F1-mulaw-AFsp.wav" },
+        { MEDIA_MIMETYPE_AUDIO_ADPCM_IMA, "file:///sdcard/M1F1-ima-AFsp.wav" },
+        { MEDIA_MIMETYPE_AUDIO_ADPCM_MS, "file:///sdcard/M1F1-ms-AFsp.wav" },
     };
 
     for (size_t i = 0; i < sizeof(kMimeToURL) / sizeof(kMimeToURL[0]); ++i) {

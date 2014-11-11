@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-//#define LOG_NDEBUG 0
+#define LOG_NDEBUG 0
 #define LOG_TAG "PlaylistFetcher"
 #include <utils/Log.h>
 
@@ -44,6 +44,8 @@
 #include <openssl/md5.h>
 
 namespace android {
+
+#define AVSYNC_THRESHOLD 150000ll
 
 // static
 const int64_t PlaylistFetcher::kMinBufferedDurationUs = 10000000ll;
@@ -323,6 +325,16 @@ void PlaylistFetcher::stopAsync() {
 
 void PlaylistFetcher::onMessageReceived(const sp<AMessage> &msg) {
     switch (msg->what()) {
+	 case kWhatCodecSpecificData:
+	 {
+	     sp<ABuffer> buffer;
+	     msg->findBuffer("buffer", &buffer);
+	     sp<AMessage> notify = mNotify->dup();
+	     notify->setInt32("what", kWhatCodecSpecificData);
+	     notify->setBuffer("buffer", buffer);
+	     notify->post();
+	     break;
+	 }
         case kWhatStart:
         {
             status_t err = onStart(msg);
@@ -464,7 +476,7 @@ void PlaylistFetcher::onMonitorQueue() {
 
         int64_t bufferedDurationUs =
                 packetSource->getBufferedDurationUs(&finalResult);
-
+		 ALOGE("STREAMTYPE_SUBTITLES download bufferedDurationUs %d\n",bufferedDurationUs);
         downloadMore = (bufferedDurationUs < kMinBufferedDurationUs);
         finalResult = OK;
     } else {
@@ -484,7 +496,7 @@ void PlaylistFetcher::onMonitorQueue() {
                 first = false;
             }
         }
-
+		ALOGE("AV download minBufferedDurationUs %lld\n",minBufferedDurationUs);
         downloadMore =
             !first && (minBufferedDurationUs < kMinBufferedDurationUs);
     }
@@ -561,7 +573,7 @@ void PlaylistFetcher::onDownloadNext() {
             }
         }
 
-        mStartTimeUs = -1ll;
+        //mStartTimeUs = -1ll;
     }
 
     if (mSeqNumber < firstSeqNumberInPlaylist
@@ -745,6 +757,40 @@ status_t PlaylistFetcher::extractAndQueueAccessUnits(
             offset += 188;
         }
 
+        // need to seek, drop audio AU to sync
+        if(mStartTimeUs > 0) {
+	     // video source, to get keyframe timestamp first
+	     int64_t videoKeyframeTSUs = -1, audioCurUs = -1, diffUs = -1;
+	     status_t finalResult, ret = UNKNOWN_ERROR;
+            sp<AnotherPacketSource> video_source = static_cast<AnotherPacketSource *>(mTSParser->getSource(ATSParser::VIDEO).get());
+	     if(video_source != NULL) {
+	         ret = video_source->nextBufferTime(&videoKeyframeTSUs);
+		  ALOGI("Get video keyframe timestamp : %lld us \n", videoKeyframeTSUs);
+            }
+	     sp<AnotherPacketSource> audio_source = static_cast<AnotherPacketSource *>(mTSParser->getSource(ATSParser::AUDIO).get());
+	     // no keyframe in current ts slice sometimes, find next.
+            if(video_source == NULL && audio_source != NULL) {
+	         audio_source->clear();
+		  ALOGI("Find no video keyframe, go on next!\n");
+	         goto PASS_THROUGH;
+	     }
+	     if(audio_source != NULL && ret == OK) {
+	         bool exit_drop = false;
+		  sp<ABuffer> dropAU;
+	         while (audio_source->hasBufferAvailable(&finalResult)
+			 && audio_source->nextBufferTime(&audioCurUs) == OK && !exit_drop) {
+		      diffUs = abs(videoKeyframeTSUs - audioCurUs);
+		      if(diffUs > AVSYNC_THRESHOLD && audioCurUs < videoKeyframeTSUs) {
+		          audio_source->dequeueAccessUnit(&dropAU);
+		      } else {
+		          exit_drop = true;
+			   mStartTimeUs = -1ll;
+			   ALOGI("Drop audio to sync position, audio timestamp : %lld us \n", audioCurUs);
+		      }
+	         }
+	     }
+	 }
+
         for (size_t i = mPacketSources.size(); i-- > 0;) {
             sp<AnotherPacketSource> packetSource = mPacketSources.valueAt(i);
 
@@ -788,6 +834,17 @@ status_t PlaylistFetcher::extractAndQueueAccessUnits(
                     && source->dequeueAccessUnit(&accessUnit) == OK) {
                 // Note that we do NOT dequeue any discontinuities.
 
+               // send LiveSession the CodecSpecificData
+		 if(type == ATSParser::VIDEO) {
+		     int key = 0;
+	            accessUnit->meta()->findInt32("findkeyframe", &key);
+		     if(key == 1) {
+		         sp<AMessage> msg = new AMessage(kWhatCodecSpecificData, id());
+			  msg->setBuffer("buffer", accessUnit);
+                       msg->post();
+		     }
+		 }
+
                 packetSource->queueAccessUnit(accessUnit);
             }
 
@@ -796,6 +853,7 @@ status_t PlaylistFetcher::extractAndQueueAccessUnits(
             }
         }
 
+PASS_THROUGH:
         return OK;
     } else if (buffer->size() >= 7 && !memcmp("WEBVTT\n", buffer->data(), 7)) {
         if (mStreamTypeMask != LiveSession::STREAMTYPE_SUBTITLES) {

@@ -11,6 +11,10 @@ include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 
+ifeq ($(LIVEPLAY_SEEK), true)
+ LOCAL_CFLAGS += -DLIVEPLAY_SEEK
+endif
+
 LOCAL_SRC_FILES:= \
     AudioTrack.cpp \
     AudioTrackShared.cpp \

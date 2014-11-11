@@ -511,8 +511,7 @@ status_t NuMediaExtractor::getSampleTime(int64_t *sampleTimeUs) {
     }
 
     TrackInfo *info = &mSelectedTracks.editItemAt(minIndex);
-    *sampleTimeUs = info->mSampleTimeUs;
-
+    *sampleTimeUs = (info->mSampleTimeUs/1000ll) * 1000ll;
     return OK;
 }
 

@@ -19,6 +19,10 @@
 #include "BQ_2I_D32F32Cll_TRC_WRA_01_Private.h"
 #include "LVM_Macros.h"
 
+#ifdef __ARM_HAVE_NEON
+#include <arm_neon.h>
+#endif
+
 /**************************************************************************
  ASSUMPTIONS:
  COEFS-
@@ -44,6 +48,7 @@ void BQ_2I_D32F32C30_TRC_WRA_01 (           Biquad_Instance_t       *pInstance,
 
 
     {
+#if !(defined  __ARM_HAVE_NEON)
         LVM_INT32 ynL,ynR,templ,tempd;
         LVM_INT16 ii;
         PFilter_State pBiquadState = (PFilter_State) pInstance;
@@ -121,6 +126,57 @@ void BQ_2I_D32F32C30_TRC_WRA_01 (           Biquad_Instance_t       *pInstance,
 
 
         }
+#else
+        LVM_INT16 ii=0;
+	      
+		PFilter_State pBiquadState = (PFilter_State) pInstance;
+
+		int32x2_t A2 = vdup_n_s32(pBiquadState->coefs[0]);
+		int32x2_t A1 = vdup_n_s32(pBiquadState->coefs[1]);
+		int32x2_t A0 = vdup_n_s32(pBiquadState->coefs[2]);
+		int32x2_t B2 = vdup_n_s32(pBiquadState->coefs[3]);
+		int32x2_t B1 = vdup_n_s32(pBiquadState->coefs[4]);
+		
+		int32x2_t X_2 = vld1_s32(&pBiquadState->pDelays[2]);
+		int32x2_t X_1 = vld1_s32(&pBiquadState->pDelays[0]);
+		int32x2_t Y_2 = vld1_s32(&pBiquadState->pDelays[6]);
+		int32x2_t Y_1 = vld1_s32(&pBiquadState->pDelays[4]);
+
+		for(ii=0; ii<NrSamples; ii++){
+		  int32x2_t s = vld1_s32(pDataIn);
+		  int64x2_t r = vmull_s32(A2, X_2);
+		  r = vmlal_s32(r, A1, X_1);
+		  r = vmlal_s32(r, A0, s);
+		  r = vmlal_s32(r, B2, Y_2);
+		  r = vmlal_s32(r, B1, Y_1);
+		  int32_t ll =(int32_t)( vgetq_lane_s64(r, 0) >> 30);
+		  int32_t rr =(int32_t)( vgetq_lane_s64(r, 1) >> 30);
+		  pDataIn += 2;
+		  *pDataOut ++ = ll;
+		  *pDataOut ++ = rr;
+		  int32_t tmp1, tmp2;
+		  tmp1 = vget_lane_s32(X_1, 0);
+		  tmp2 = vget_lane_s32(X_1, 1);
+		  vset_lane_s32(tmp1, X_2, 0);
+		  vset_lane_s32(tmp2, X_2, 1);
+		  tmp1 = vget_lane_s32(Y_1, 0);
+		  tmp2 = vget_lane_s32(Y_1, 1);
+		  vset_lane_s32(tmp1, Y_2, 0);
+		  vset_lane_s32(tmp2, Y_2, 1);
+
+		  vset_lane_s32(ll, Y_1, 0);
+		  vset_lane_s32(rr, Y_1, 1);
+		  
+		  tmp1 = vget_lane_s32(s, 0);
+		  tmp2 = vget_lane_s32(s, 1);
+		  vset_lane_s32(tmp1, X_1, 0);
+		  vset_lane_s32(tmp2, X_1, 1);
+		}
+        vst1_s32(&pBiquadState->pDelays[2], X_2);
+        vst1_s32(&pBiquadState->pDelays[0], X_1);
+        vst1_s32(&pBiquadState->pDelays[6], Y_2);
+        vst1_s32(&pBiquadState->pDelays[4], Y_1);
+#endif         
 
     }
 

@@ -26,6 +26,7 @@
 #include <utils/Log.h>
 #include <private/media/AudioTrackShared.h>
 #include <media/IAudioFlinger.h>
+#include <cutils/properties.h>
 
 #define WAIT_PERIOD_MS                  10
 #define WAIT_STREAM_END_TIMEOUT_SEC     120
@@ -61,7 +62,7 @@ status_t AudioTrack::getMinFrameCount(
     if (AudioSystem::getOutputFrameCount(&afFrameCount, streamType) != NO_ERROR) {
         return NO_INIT;
     }
-    uint32_t afLatency;
+    uint32_t afLatency=1;
     if (AudioSystem::getOutputLatency(&afLatency, streamType) != NO_ERROR) {
         return NO_INIT;
     }
@@ -86,6 +87,8 @@ AudioTrack::AudioTrack()
       mIsTimed(false),
       mPreviousPriority(ANDROID_PRIORITY_NORMAL),
       mPreviousSchedulingGroup(SP_DEFAULT)
+      ,DupFrmReadedCnt(0)
+      ,FramCntEnable(0)
 {
 }
 
@@ -107,6 +110,8 @@ AudioTrack::AudioTrack(
       mIsTimed(false),
       mPreviousPriority(ANDROID_PRIORITY_NORMAL),
       mPreviousSchedulingGroup(SP_DEFAULT)
+      ,DupFrmReadedCnt(0)
+      ,FramCntEnable(0)
 {
     mStatus = set(streamType, sampleRate, format, channelMask,
             frameCount, flags, cbf, user, notificationFrames,
@@ -132,6 +137,8 @@ AudioTrack::AudioTrack(
       mIsTimed(false),
       mPreviousPriority(ANDROID_PRIORITY_NORMAL),
       mPreviousSchedulingGroup(SP_DEFAULT)
+      ,DupFrmReadedCnt(0)
+      ,FramCntEnable(0)
 {
     mStatus = set(streamType, sampleRate, format, channelMask,
             0 /*frameCount*/, flags, cbf, user, notificationFrames,
@@ -158,6 +165,64 @@ AudioTrack::~AudioTrack()
     }
 }
 
+uint32_t  AudioTrack::latency()
+{
+    uint32_t HalLatency = 0;
+    int front,rear;
+    uint32_t TrkLatency;
+    int frmfilled;
+    int FrmsInDupBuf=0;
+
+    const sp<IAudioFlinger>& audioFlinger = AudioSystem::get_audio_flinger();
+    int frmsDupReaded=0;
+    char value[128]={0};
+    int rec=-1;
+    AudioSystem::getLatency(mOutput, mStreamType, &HalLatency);
+
+    property_get("media.libplayer.latency_old",value,NULL);
+    if(!strcmp(value,"1")|| !strcmp(value,"true"))
+    {  //property used for debug and compare the result between old LatencyCalculateMethod and new LatencyCalculateMethod
+       return mLatency;
+    }else if((int)HalLatency<0){
+       //HalLatency=mFrameCount*1000/mSampleRate;
+       ALOGI("Unvalid HalLatency value/%d,return mLatency/%dms\n",HalLatency,mLatency);
+       return mLatency;
+    }
+
+    front = android_atomic_acquire_load(&mCblk->u.mStreaming.mFront);
+    rear = android_atomic_acquire_load(&mCblk->u.mStreaming.mRear);
+    frmfilled=rear-front;
+
+    if(mStreamType==AUDIO_STREAM_MUSIC)
+    {
+        FramCntEnable=1;
+        rec=audioFlinger->DupFrmCounter_Flush(mOutput,&DupFrmReadedCnt,FramCntEnable,(uint32_t *)mAudioTrack->getTrack());
+    }
+    
+    int duptrdFS=audioFlinger->sampleRate(mOutput);
+    if(mStreamType==AUDIO_STREAM_MUSIC && duptrdFS>0 && rec==0){
+        //duplicate output case
+        frmsDupReaded = DupFrmReadedCnt;
+        frmsDupReaded=(int64_t)frmsDupReaded*mSampleRate/duptrdFS;
+        FrmsInDupBuf=rear-frmsDupReaded;
+        TrkLatency=FrmsInDupBuf*1000 / mSampleRate;
+    }else{
+        //Dobly 8ch PCM directoutput case/pcm_rawouput cases
+        return mLatency;
+    }
+
+    //used for debug and compare latency result
+    property_get("media.libplayer.DupBufGet",value,NULL);
+    if(!strcmp(value,"1")|| !strcmp(value,"true"))
+    {
+        FrmsInDupBuf=audioFlinger->LatencyDupBuf_Get(mOutput);
+        TrkLatency=(FrmsInDupBuf+frmfilled)*1000 / mSampleRate;
+    }
+    ALOGV("HalLty=%d TrkLty=%d TLty/%d(rear/%d front/%d FrmsInDupBuf/%d frmsDupReaded/%d diff/%d)\n",
+               HalLatency,TrkLatency,HalLatency+TrkLatency,rear,front,FrmsInDupBuf,frmsDupReaded,rear-frmsDupReaded);
+    return HalLatency+TrkLatency;
+
+}
 status_t AudioTrack::set(
         audio_stream_type_t streamType,
         uint32_t sampleRate,
@@ -293,7 +358,12 @@ status_t AudioTrack::set(
     if (audio_is_linear_pcm(format)) {
         mFrameSize = channelCount * audio_bytes_per_sample(format);
         mFrameSizeAF = channelCount * sizeof(int16_t);
-    } else {
+    } 
+    else if(audio_is_raw_data(format)){
+        mFrameSize = channelCount * sizeof(int16_t);
+        mFrameSizeAF = channelCount * sizeof(int16_t);		
+    }
+    else {
         mFrameSize = sizeof(uint8_t);
         mFrameSizeAF = sizeof(uint8_t);
     }
@@ -445,6 +515,13 @@ status_t AudioTrack::start()
 void AudioTrack::stop()
 {
     AutoMutex lock(mLock);
+    if(mStreamType==AUDIO_STREAM_MUSIC && FramCntEnable)
+    {
+        const sp<IAudioFlinger>& audioFlinger = AudioSystem::get_audio_flinger();
+        FramCntEnable=0;
+        audioFlinger->DupFrmCounter_Flush(mOutput,&DupFrmReadedCnt,FramCntEnable,(uint32_t *)NULL);
+        DupFrmReadedCnt=0;
+    }    
     // FIXME pause then stop should not be a nop
     if (mState != STATE_ACTIVE) {
         return;
@@ -455,7 +532,6 @@ void AudioTrack::stop()
     } else {
         mState = STATE_STOPPED;
     }
-
     mProxy->interrupt();
     mAudioTrack->stop();
     // the playback head position will reset to 0, so if a marker is set, we need
@@ -585,7 +661,7 @@ status_t AudioTrack::setSampleRate(uint32_t rate)
         return NO_INIT;
     }
     // Resampler implementation limits input sampling rate to 2 x output sampling rate.
-    if (rate == 0 || rate > afSamplingRate*2 ) {
+    if (rate == 0 || rate > afSamplingRate*4 ) {
         return BAD_VALUE;
     }
 
@@ -829,7 +905,7 @@ status_t AudioTrack::createTrack_l(
 
     // Not all of these values are needed under all conditions, but it is easier to get them all
 
-    uint32_t afLatency;
+    uint32_t afLatency=1;
     status = AudioSystem::getLatency(output, streamType, &afLatency);
     if (status != NO_ERROR) {
         ALOGE("getLatency(%d) failed status %d", output, status);
@@ -875,7 +951,7 @@ status_t AudioTrack::createTrack_l(
 
     mNotificationFramesAct = mNotificationFramesReq;
 
-    if (!audio_is_linear_pcm(format)) {
+    if (!audio_is_linear_pcm(format)&&!audio_is_raw_data(format)) {
 
         if (sharedBuffer != 0) {
             // Same comment as below about ignoring frameCount parameter for set()
@@ -883,6 +959,7 @@ status_t AudioTrack::createTrack_l(
         } else if (frameCount == 0) {
             frameCount = afFrameCount;
         }
+        
         if (mNotificationFramesAct != frameCount) {
             mNotificationFramesAct = frameCount;
         }
@@ -1858,7 +1935,7 @@ void AudioTrack::AudioTrackThread::requestExit()
 
 void AudioTrack::AudioTrackThread::pause()
 {
-    AutoMutex _l(mMyLock);
+    AutoMutex _l(mMyLock);		
     mPaused = true;
 }
 

@@ -314,6 +314,9 @@ static const char *FourCC2MIME(uint32_t fourcc) {
         case FOURCC('a', 'v', 'c', '1'):
             return MEDIA_MIMETYPE_VIDEO_AVC;
 
+		case FOURCC('.', 'm', 'p', '3'):
+		    ALOGI("Set mp3 mimetype");
+			return MEDIA_MIMETYPE_AUDIO_MPEG;
         default:
             CHECK(!"should not be here.");
             return NULL;
@@ -1222,6 +1225,7 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
         case FOURCC('e', 'n', 'c', 'a'):
         case FOURCC('s', 'a', 'm', 'r'):
         case FOURCC('s', 'a', 'w', 'b'):
+		case FOURCC('.', 'm', 'p', '3'):
         {
             uint8_t buffer[8 + 20];
             if (chunk_data_size < (ssize_t)sizeof(buffer)) {
@@ -1245,11 +1249,19 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
                 mLastTrack->meta->setCString(kKeyMIMEType, FourCC2MIME(chunk_type));
                 AdjustChannelsAndRate(chunk_type, &num_channels, &sample_rate);
             }
-            ALOGV("*** coding='%s' %d channels, size %d, rate %d\n",
+
+#if 0
+            printf("*** coding='%s' %d channels, size %d, rate %d\n",
                    chunk, num_channels, sample_size, sample_rate);
+#endif
             mLastTrack->meta->setInt32(kKeyChannelCount, num_channels);
             mLastTrack->meta->setInt32(kKeySampleRate, sample_rate);
-
+            if(chunk_type==FOURCC('m', 'p', '4', 'a') && sample_rate>48000)
+            {
+               ALOGI("[%s %d] AAC sample_rate(%d)>48000,switch to minetype/%s ",__FUNCTION__,__LINE__,
+                       sample_rate,MEDIA_MIMETYPE_AUDIO_AAC_LATM);
+			   mLastTrack->meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_AAC_LATM);
+            }
             off64_t stop_offset = *offset + chunk_size;
             *offset = data_offset + sizeof(buffer);
             while (*offset < stop_offset) {
@@ -1260,7 +1272,9 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
             }
 
             if (*offset != stop_offset) {
-                return ERROR_MALFORMED;
+				ALOGI("[%s %d]NOTE: UNVALID metadata!!",__FUNCTION__,__LINE__);
+				*offset = stop_offset;
+                //return ERROR_MALFORMED;
             }
             break;
         }
@@ -1758,6 +1772,56 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
             }
 
             *offset += chunk_size;
+            break;
+        }
+		case FOURCC('a','l','a','c'):
+        {
+		    uint8_t buffer[8 + 20];
+            if (chunk_data_size < (ssize_t)sizeof(buffer)) {
+                 ALOGI("TRACE: ERR-> offset=%lld  line=%d\n", *offset, __LINE__);
+                return ERROR_MALFORMED;
+            }
+			
+            if (mDataSource->readAt(data_offset, buffer, sizeof(buffer)) < (ssize_t)sizeof(buffer)) {
+                 ALOGI("TRACE: ERR-> offset=%lld  line=%d\n", *offset, __LINE__);
+                return ERROR_IO;
+            }
+			
+            uint16_t data_ref_index = U16_AT(&buffer[6]);
+            uint16_t num_channels = U16_AT(&buffer[16]);
+            uint16_t sample_size = U16_AT(&buffer[18]);
+            uint32_t sample_rate = U32_AT(&buffer[24]) >> 16;
+            mLastTrack->meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_ALAC);
+			mLastTrack->meta->setInt32(kKeySampleRate, sample_rate);
+            mLastTrack->meta->setInt32(kKeyChannelCount, num_channels);
+            
+            off64_t stop_offset = *offset + chunk_size;
+            *offset = data_offset + sizeof(buffer);
+			
+			//------------------------------
+            int extra_size=stop_offset-(*offset);
+			int8_t *extra_buf = new int8_t[extra_size ];
+			ALOGI("TRACE: num_channels=%d sample_rate=%d extra_size=%d line=%d\n",
+				                             num_channels,sample_rate,extra_size,__LINE__);
+			if(mDataSource->readAt(*offset, extra_buf, extra_size)!=(ssize_t)extra_size)
+			{
+				delete[] buffer;
+                extra_buf = NULL;
+                ALOGI("TRACE: ERR-> offset=%lld  line=%d\n", *offset, __LINE__);
+                return ERROR_IO;
+
+			}
+			ALOGI("TRACE: extra_buf[0-3]:%x %x %x %x  \n",extra_buf[0],extra_buf[1],extra_buf[2],extra_buf[3]);
+			ALOGI("TRACE: extra_buf[4-7]:%c %c %c %c  \n",extra_buf[4],extra_buf[5],extra_buf[6],extra_buf[7]);
+			mLastTrack->meta->setData(kKeyExtraData,0,extra_buf,extra_size); 
+			mLastTrack->meta->setInt32(kKeyExtraDataSize,extra_size); 
+			
+           *offset += extra_size;
+            if (*offset != stop_offset) {
+				 ALOGI("TRACE: ERR-> offset=%lld  line=%d\n", *offset, __LINE__);
+                return ERROR_MALFORMED;
+            }
+			//------------------------------
             break;
         }
 
@@ -2337,8 +2401,14 @@ status_t MPEG4Extractor::updateAudioTrackInfoFromESDS_MPEG4Audio(
     CHECK(mLastTrack->meta->findInt32(kKeySampleRate, &prevSampleRate));
 
     if (prevSampleRate != sampleRate) {
-        ALOGV("mpeg4 audio sample rate different from previous setting. "
+        ALOGI("mpeg4 audio sample rate different from previous setting. "
              "was: %d, now: %d", prevSampleRate, sampleRate);
+		if(sampleRate>48000)
+		{     
+		     ALOGI("[%s %d] AAC sample_rate(%d)>48000,switch to minetype/%s ",__FUNCTION__,__LINE__,
+                       sampleRate,MEDIA_MIMETYPE_AUDIO_AAC_LATM);
+			   mLastTrack->meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_AAC_LATM);
+		}
     }
 
     mLastTrack->meta->setInt32(kKeySampleRate, sampleRate);
@@ -2347,7 +2417,7 @@ status_t MPEG4Extractor::updateAudioTrackInfoFromESDS_MPEG4Audio(
     CHECK(mLastTrack->meta->findInt32(kKeyChannelCount, &prevChannelCount));
 
     if (prevChannelCount != numChannels) {
-        ALOGV("mpeg4 audio channel count different from previous setting. "
+        ALOGI("mpeg4 audio channel count different from previous setting. "
              "was: %d, now: %d", prevChannelCount, numChannels);
     }
 
@@ -3603,7 +3673,7 @@ static bool LegacySniffMPEG4(
         || !memcmp(header, "ftypM4A ", 8) || !memcmp(header, "ftypf4v ", 8)
         || !memcmp(header, "ftypkddi", 8) || !memcmp(header, "ftypM4VP", 8)) {
         *mimeType = MEDIA_MIMETYPE_CONTAINER_MPEG4;
-        *confidence = 0.4;
+        *confidence = 0.4f;
 
         return true;
     }

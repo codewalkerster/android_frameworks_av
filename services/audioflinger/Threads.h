@@ -641,6 +641,14 @@ private:
     } mLatchD, mLatchQ;
     bool mLatchDValid;  // true means mLatchD is valid, and clock it into latch at next opportunity
     bool mLatchQValid;  // true means mLatchQ is valid
+public:
+    virtual     uint32_t    LatencyDupBuf_Get()const{return 0;}
+    virtual     int32_t    DupFrmCounter_Flush(uint32_t*pFrmCnt,int FrmCounterEnable,uint32_t *track){
+                                                         return -1;}
+    int32_t                 FrmCounterEnable;
+    uint32_t                *pFrmCnt;
+    int32_t                  FrmCntOffsetUpdateFlag;
+    uint32_t                *pFrmCntTrack;
 };
 
 class MixerThread : public PlaybackThread {
@@ -697,6 +705,7 @@ public:
                               ALOG_ASSERT(fastIndex < FastMixerState::kMaxFastTracks);
                               return mFastMixerDumpState.mTracks[fastIndex].mUnderruns;
                             }
+                int         ZeroBufferFlag;
 };
 
 class DirectOutputThread : public PlaybackThread {
@@ -834,6 +843,8 @@ private:
     SortedVector < sp<OutputTrack> >  mOutputTracks;
 public:
     virtual     bool        hasFastMixer() const { return false; }
+    virtual    uint32_t    LatencyDupBuf_Get()const;
+    virtual    int32_t    DupFrmCounter_Flush(uint32_t*pFrmCnt,int FrameCounterEnable,uint32_t *pTrack);
 };
 
 

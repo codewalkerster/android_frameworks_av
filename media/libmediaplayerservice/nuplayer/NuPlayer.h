@@ -63,6 +63,10 @@ struct NuPlayer : public AHandler {
     status_t getTrackInfo(Parcel* reply) const;
     status_t selectTrack(size_t trackIndex, bool select);
 
+    // hevc seek
+    bool isHEVC();
+    int64_t getLastSeekTimeUs();
+
 protected:
     virtual ~NuPlayer();
 
@@ -105,7 +109,17 @@ private:
         kWhatSourceNotify               = 'srcN',
         kWhatGetTrackInfo               = 'gTrI',
         kWhatSelectTrack                = 'selT',
+        kWhatPollBandwidth             = 'polB',
+        kWhatPollBufferingPercent       = 'polP',
     };
+
+    // hevc seek
+    int32_t mSeek;
+    bool mVideoIsHevc;
+    int64_t mLastVideoTimeUs;
+    int64_t mLastSeekTimeUs;
+    int32_t mPollBufferingPercentGeneration;
+    int32_t mBufferingPercent;
 
     wp<NuPlayerDriver> mDriver;
     bool mUIDValid;
@@ -173,6 +187,11 @@ private:
 
     void schedulePollDuration();
     void cancelPollDuration();
+
+    // buffering states
+    void pollBandwidth();
+    void pollBufferingPercent();
+    void cancelPollBufferingPercent();
 
     void processDeferredActions();
 

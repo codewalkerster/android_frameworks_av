@@ -41,9 +41,11 @@ SoftwareRenderer::SoftwareRenderer(
     int32_t tmp;
     CHECK(meta->findInt32(kKeyColorFormat, &tmp));
     mColorFormat = (OMX_COLOR_FORMATTYPE)tmp;
+	
 
     CHECK(meta->findInt32(kKeyWidth, &mWidth));
     CHECK(meta->findInt32(kKeyHeight, &mHeight));
+	ALOGI("SoftwareRenderer mWidth: %d mHeight: %d", mWidth,mHeight);
 
     if (!meta->findRect(
                 kKeyCropRect,
@@ -52,9 +54,11 @@ SoftwareRenderer::SoftwareRenderer(
         mCropRight = mWidth - 1;
         mCropBottom = mHeight - 1;
     }
+	
 
     mCropWidth = mCropRight - mCropLeft + 1;
     mCropHeight = mCropBottom - mCropTop + 1;
+	ALOGI("SoftwareRenderer mCropWidth: %d mCropHeight: %d", mCropWidth,mCropHeight);
 
     int32_t rotationDegrees;
     if (!meta->findInt32(kKeyRotation, &rotationDegrees)) {
@@ -111,6 +115,7 @@ SoftwareRenderer::SoftwareRenderer(
                 bufWidth,
                 bufHeight,
                 halFormat));
+	ALOGI("SoftwareRenderer bufWidth: %d bufHeight: %d", bufWidth,bufHeight);
 
     uint32_t transform;
     switch (rotationDegrees) {

@@ -91,6 +91,16 @@ class Metadata {
     static const Type kVideoWidth            = 29; // Integer
     static const Type kNumTracks             = 30; // Integer
     static const Type kDrmCrippled           = 31; // Boolean
+    // Amplayer extended types.
+    static const int kAmlTypeBase = 8192;  //extend first id.
+    static const Type kAudioTrackNum = kAmlTypeBase+1; //Integer,8193
+    static const Type kVideoTrackNum = kAmlTypeBase+2; //Integer,8194
+    static const Type kInnerSubtitleNum = kAmlTypeBase+3; //Interger,8195
+    static const Type kAudioCodecAllInfo = kAmlTypeBase+4; //String,8196
+    static const Type kVideoCodecAllInfo = kAmlTypeBase+5; //String,8197    
+    static const Type kInnerSubtitleAllInfo = kAmlTypeBase +6; //String,8198
+    static const Type kStreamType = kAmlTypeBase+7; //String,8199
+	static const Type kPlayerType = kAmlTypeBase+8; //int ,8200
 
     // @param p[inout] The parcel to append the metadata records
     // to. The global metadata header should have been set already.
@@ -115,6 +125,7 @@ class Metadata {
     bool appendBool(Type key, bool val);
     bool appendInt32(Type key, int32_t val);
 
+    bool appendCString(Type key,const char* val);
   private:
     Metadata(const Metadata&);
     Metadata& operator=(const Metadata&);

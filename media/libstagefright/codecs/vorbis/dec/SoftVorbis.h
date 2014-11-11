@@ -47,7 +47,7 @@ protected:
 
 private:
     enum {
-        kNumBuffers = 4,
+        kNumBuffers = 2,
         kMaxNumSamplesPerBuffer = 8192 * 2
     };
 

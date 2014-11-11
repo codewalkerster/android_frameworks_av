@@ -166,6 +166,158 @@ bool VBRISeeker::getOffsetForTime(int64_t *timeUs, off64_t *pos) {
 
     return true;
 }
+#define PARSE_SIZE  6*256*1024
+bool VBRISeeker::getVbrDuration(const sp<DataSource> &source, off64_t post_id3_pos,unsigned *p_bitrate,off64_t *ptstable) 
+{
+	unsigned char header[8];
+	int offset;
+	int tsec = -1;
+	int size ;
+	int flag = 0;
+	int layer = 3;
+	int bitrate_index;
+	int bitrate;
+	int sample_index;
+	int samplerate = 44100;
+	int pad_slot;
+	int N;
+	unsigned sync_word;	
+	int duration;
+	unsigned total_frame=0;
+	unsigned bitrate_sum = 0;
+	unsigned framenum = 0;
+	unsigned payload = 0;
+	off64_t total_size=0;
+       off64_t fileSize;
+       unsigned long const bitrate_table[5][15] = {
+  /* MPEG-1 */
+  { 0,  32000,  64000,  96000, 128000, 160000, 192000, 224000,  /* Layer I   */
+       256000, 288000, 320000, 352000, 384000, 416000, 448000 },
+  { 0,  32000,  48000,  56000,  64000,  80000,  96000, 112000,  /* Layer II  */
+       128000, 160000, 192000, 224000, 256000, 320000, 384000 },
+  { 0,  32000,  40000,  48000,  56000,  64000,  80000,  96000,  /* Layer III */
+       112000, 128000, 160000, 192000, 224000, 256000, 320000 },
+
+  /* MPEG-2 LSF */
+  { 0,  32000,  48000,  56000,  64000,  80000,  96000, 112000,  /* Layer I   */
+       128000, 144000, 160000, 176000, 192000, 224000, 256000 },
+  { 0,   8000,  16000,  24000,  32000,  40000,  48000,  56000,  /* Layers    */
+        64000,  80000,  96000, 112000, 128000, 144000, 160000 } /* II & III  */
+};	
+#define MAD_NSBSAMPLES(layer, flag)  \
+  (layer == 1 ? 12 :  \
+   ((layer == 3 &&  \
+     (flag & 0x1000)) ? 18 : 36))	   
+      unsigned samplerate_table[3] = { 44100, 48000, 32000 };
+	if(ptstable == NULL)
+		return false;
+	if (source->getSize(&fileSize) != OK){
+		ALOGI("get file size failed \n");
+		return false;   	
+	}
+	unsigned buffersize = (fileSize<PARSE_SIZE)?fileSize:PARSE_SIZE;
+	unsigned char *read_buf = new uint8_t[buffersize];
+	if(read_buf == NULL){
+		return false;   
+	}	
+	unsigned read_size = ((fileSize-post_id3_pos)>=buffersize)?buffersize:(fileSize-post_id3_pos);
+       ssize_t n = source->readAt(post_id3_pos, read_buf,read_size);
+       if (n < read_size) {
+		if(read_buf)
+			delete[] read_buf;
+		return false;       
+	}		
+	offset = 0;
+	ALOGI("getVbrDuration parse data size %d\n",read_size);
+	while(offset < read_size-7)
+	{
+		header[0] = read_buf[offset];
+		header[1] = read_buf[offset+1];			
+		if((header[0]==0xff) && ((header[1]&0xe0) == 0xe0))
+		{
+			// decode the header
+			header[2] = read_buf[ offset+2];
+			header[3] = read_buf[ offset+3];
+			sync_word = (header[3]) | (header[2]<<8) | (header[1]<<16) | (header[0]<<24);
+			flag = 0;
+			// 
+			if((sync_word&(1<<20)) == 0){
+				flag |= 0x4000;//MAD_FLAG_MPEG_2_5_EXT;
+				flag |= 0x1000;//MAD_FLAG_LSF_EXT;				
+			}
+			else{
+				if((sync_word&(1<<19)) == 0)
+					flag |= 0x1000;//MAD_FLAG_LSF_EXT;				
+			}
+
+			// layer
+			layer =4 - ((sync_word >> 17) & 3);
+			if(layer == 4)
+			{
+				offset ++;
+				continue;
+			}
+			// bitrate
+			bitrate_index = (sync_word >> 12) & 0xf;
+			if((bitrate_index == 15) || (bitrate_index==0))
+			{
+				offset++;
+				continue;
+			}
+
+			if (flag & 0x1000/*MAD_FLAG_LSF_EXT*/)
+				bitrate = bitrate_table[3 + (layer >> 1)][bitrate_index];
+			else
+				bitrate = bitrate_table[layer - 1][bitrate_index];
+			// samplerate
+			sample_index = (sync_word >> 10) & 3;
+			if(sample_index == 3)
+			{
+				offset ++;
+				continue;
+			}
+			samplerate = samplerate_table[sample_index];
+			if (flag & 0x1000/*MAD_FLAG_LSF_EXT*/) 
+			{
+				samplerate /= 2;
+			if (flag & 0x4000/*MAD_FLAG_MPEG_2_5_EXT*/)
+				samplerate /= 2;
+			}
+			pad_slot = (sync_word >> 9) & 1;
+			if (layer == 1)
+			{
+				N = ((12 * bitrate / samplerate) + pad_slot) * 4;
+			}
+			else 
+			{
+				unsigned int slots_per_frame;
+				slots_per_frame = (layer == 3 &&(flag & 0x1000/*MAD_FLAG_LSF_EXT*/)) ? 72 : 144;
+				N = (slots_per_frame * bitrate / samplerate) + pad_slot;
+			}
+			total_frame += 32*MAD_NSBSAMPLES(layer, flag);
+			if(tsec < (total_frame/samplerate)){
+				tsec = total_frame/samplerate;
+				ptstable[tsec] = offset;
+			}
+			payload += N;
+			offset +=  N;
+			framenum += 1;
+			bitrate_sum += bitrate/1000;
+		}
+		else
+		{
+			offset++;
+			continue;
+		}
+
+	}
+	if(p_bitrate)
+		*p_bitrate =bitrate_sum/framenum;
+	if(read_buf)
+		delete[] read_buf;	
+	return true;	
+}
+   
 
 }  // namespace android
 

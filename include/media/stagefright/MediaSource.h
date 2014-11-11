@@ -108,7 +108,9 @@ struct MediaSource : public virtual RefBase {
     virtual status_t setBuffers(const Vector<MediaBuffer *> &buffers) {
         return ERROR_UNSUPPORTED;
     }
-
+    virtual void adec_omx_lock_init(){};
+    virtual void adec_omx_lock_locked(){};
+    virtual void adec_omx_lock_unlocked(){};
 protected:
     virtual ~MediaSource();
 

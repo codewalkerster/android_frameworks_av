@@ -110,7 +110,10 @@ private:
 
     size_t mInitDoneCount;
 
+    int mSendVideoFirst;
+
     FILE *mLogFile;
+    int mDumpfd;
 
     void onSenderNotify(const sp<AMessage> &msg);
 

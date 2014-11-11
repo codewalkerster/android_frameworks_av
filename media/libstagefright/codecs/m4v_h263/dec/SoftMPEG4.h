@@ -36,7 +36,15 @@ struct SoftMPEG4 : public SoftVideoDecoderOMXComponent {
 
 protected:
     virtual ~SoftMPEG4();
+    
+    virtual OMX_ERRORTYPE internalGetParameter(
+            OMX_INDEXTYPE index, OMX_PTR params);
 
+    virtual OMX_ERRORTYPE internalSetParameter(
+            OMX_INDEXTYPE index, const OMX_PTR params);
+
+    virtual OMX_ERRORTYPE getConfig(OMX_INDEXTYPE index, OMX_PTR params);
+    
     virtual void onQueueFilled(OMX_U32 portIndex);
     virtual void onPortFlushCompleted(OMX_U32 portIndex);
     virtual void onReset();
@@ -56,6 +64,9 @@ private:
 
     size_t mInputBufferCount;
 
+    int32_t mWidth, mHeight;
+    int32_t mCropLeft, mCropTop, mCropRight, mCropBottom;
+    
     bool mSignalledError;
     bool mInitialized;
     bool mFramesConfigured;

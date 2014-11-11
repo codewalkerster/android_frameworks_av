@@ -116,7 +116,7 @@ Converter::~Converter() {
 }
 
 void Converter::shutdownAsync() {
-    ALOGV("shutdown");
+    ALOGI("shutdown");
     (new AMessage(kWhatShutdown, id()))->post();
 }
 
@@ -194,8 +194,22 @@ status_t Converter::initEncoder() {
     } else {
         mOutputFormat->setInt32("bitrate", videoBitrate);
         mOutputFormat->setInt32("bitrate-mode", OMX_Video_ControlRateConstant);
-        mOutputFormat->setInt32("frame-rate", 30);
+
         mOutputFormat->setInt32("i-frame-interval", 15);  // Iframes every 15 secs
+
+		int videoframerate = 30;
+
+		char val[PROPERTY_VALUE_MAX];
+		if(property_get("media.wfd.videoframerate", val, NULL))
+		{
+			sscanf(val,"%d",&videoframerate);
+			mOutputFormat->setInt32("frame-rate", videoframerate);
+
+		}
+		else
+			mOutputFormat->setInt32("frame-rate", videoframerate);
+		
+		ALOGE("video frame rate set to :%d", videoframerate);
 
         // Configure encoder to use intra macroblock refresh mode
         mOutputFormat->setInt32("intra-refresh-mode", OMX_VIDEO_IntraRefreshCyclic);
@@ -215,7 +229,7 @@ status_t Converter::initEncoder() {
         mOutputFormat->setInt32("intra-refresh-CIR-mbs", mbs);
     }
 
-    ALOGV("output format is '%s'", mOutputFormat->debugString(0).c_str());
+    ALOGI("output format is:\n%s", mOutputFormat->debugString(0).c_str());
 
     mNeedToManuallyPrependSPSPPS = false;
 
@@ -321,13 +335,25 @@ void Converter::onMessageReceived(const sp<AMessage> &msg) {
             CHECK(msg->findInt32("what", &what));
 
             if (!mIsPCMAudio && mEncoder == NULL) {
-                ALOGV("got msg '%s' after encoder shutdown.",
+                ALOGI("got msg '%s' after encoder shutdown.",
                       msg->debugString().c_str());
 
                 if (what == MediaPuller::kWhatAccessUnit) {
                     sp<ABuffer> accessUnit;
                     CHECK(msg->findBuffer("accessUnit", &accessUnit));
 
+/*
+                    void *mbuf;
+                    if (accessUnit->meta()->findPointer("mediaBuffer", &mbuf)
+                            && mbuf != NULL) {
+                        ALOGI("releasing mbuf %p", mbuf);
+
+                        accessUnit->meta()->setPointer("mediaBuffer", NULL);
+
+                        static_cast<MediaBuffer *>(mbuf)->release();
+                        mbuf = NULL;
+                    }
+*/
                     ReleaseMediaBufferReference(accessUnit);
                 }
                 break;
@@ -389,6 +415,17 @@ void Converter::onMessageReceived(const sp<AMessage> &msg) {
                 }
 #endif
 
+#if 1
+				//if(mInputBufferQueue.size() != 0)
+					//ALOGE("mInputBufferQueue.size():%d", mInputBufferQueue.size());
+				if(mInputBufferQueue.size() > 30)
+				{
+					ReleaseMediaBufferReference(accessUnit);
+					break;
+				}
+				//ALOGE("[%s %d] mInputBufferQueue.push_back", __FUNCTION__, __LINE__);
+
+#endif
                 mInputBufferQueue.push_back(accessUnit);
 
                 feedEncoderInputBuffers();
@@ -715,13 +752,14 @@ status_t Converter::doMoreWork() {
                 &bufferIndex, &offset, &size, &timeUs, &flags);
 
         if (err != OK) {
+#if 1
             if (err == INFO_FORMAT_CHANGED) {
                 continue;
             } else if (err == INFO_OUTPUT_BUFFERS_CHANGED) {
                 mEncoder->getOutputBuffers(&mEncoderOutputBuffers);
                 continue;
             }
-
+#endif
             if (err == -EAGAIN) {
                 err = OK;
             }
@@ -729,6 +767,7 @@ status_t Converter::doMoreWork() {
         }
 
         if (flags & MediaCodec::BUFFER_FLAG_EOS) {
+			ALOGE("onverter BUFFER_FLAG_EOS 1");
             sp<AMessage> notify = mNotify->dup();
             notify->setInt32("what", kWhatEOS);
             notify->post();
@@ -770,8 +809,17 @@ status_t Converter::doMoreWork() {
 
             buffer->meta()->setInt64("timeUs", timeUs);
 
-            ALOGV("[%s] time %lld us (%.2f secs)",
-                  mIsVideo ? "video" : "audio", timeUs, timeUs / 1E6);
+            if(mIsVideo == true)
+            {
+                int64_t timeNow64;
+                struct timeval timeNow;
+                gettimeofday(&timeNow, NULL);
+                timeNow64 = (int64_t)timeNow.tv_sec*1000*1000 + (int64_t)timeNow.tv_usec;
+                
+                //ALOGE("encodeOut num:%lld latency:%lldms size:%d IDR:%d", timeUs, (timeNow64 - timeUs)/1000, size, IsIDR(outbuf));
+            }
+            //ALOGI("[%s] time %lld us (%.2f secs)",
+                  //mIsVideo ? "video" : "audio", timeUs, timeUs / 1E6);
 
             memcpy(buffer->data(), outbuf->base() + offset, size);
 

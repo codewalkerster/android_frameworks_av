@@ -19,6 +19,10 @@
 #include "PK_2I_D32F32CssGss_TRC_WRA_01_Private.h"
 #include "LVM_Macros.h"
 
+#ifdef __ARM_HAVE_NEON
+#include <arm_neon.h>
+#endif
+
 /**************************************************************************
  ASSUMPTIONS:
  COEFS-
@@ -43,6 +47,7 @@ void PK_2I_D32F32C14G11_TRC_WRA_01 ( Biquad_Instance_t       *pInstance,
                                      LVM_INT32               *pDataOut,
                                      LVM_INT16               NrSamples)
     {
+#if !(defined  __ARM_HAVE_NEON)
         LVM_INT32 ynL,ynR,ynLO,ynRO,templ;
         LVM_INT16 ii;
         PFilter_State pBiquadState = (PFilter_State) pInstance;
@@ -116,6 +121,133 @@ void PK_2I_D32F32C14G11_TRC_WRA_01 ( Biquad_Instance_t       *pInstance,
             pDataOut++;
 
         }
+#elif 0
+        LVM_INT16 ii =0;
+        int32_t ynL, ynR;
+        int32x2_t in, yn;
+        int64x2_t r;
+        PFilter_State pBiquadState = (PFilter_State) pInstance;
+        
+        int32x2_t A0 = vdup_n_s32(pBiquadState->coefs[0]);
+        int32x2_t B2 = vdup_n_s32(pBiquadState->coefs[1]);
+        int32x2_t B1 = vdup_n_s32(pBiquadState->coefs[2]);
+        int32x2_t G  = vdup_n_s32(pBiquadState->coefs[3]);
+        
+        int32x2_t X_2 = vld1_s32(&pBiquadState->pDelays[2]); // X_2L, X_2R
+        int32x2_t Y_2 = vld1_s32(&pBiquadState->pDelays[6]); // Y_2L, Y_2R
+        int32x2_t Y_1 = vld1_s32(&pBiquadState->pDelays[4]); // Y_1L, Y_1R
+        int32x2_t X_1 = vld1_s32(&pBiquadState->pDelays[0]); // X_1L, X_1R
 
+        for(ii=0; ii<NrSamples; ii++){
+          in = vld1_s32(pDataIn);
+          r = vmull_s32(A0, in);
+          r = vmlsl_s32(r, A0, X_2);
+          r = vmlal_s32(r, B2, Y_2);
+          r = vmlal_s32(r, B1, Y_1);
+          
+          Y_2  = vdup_n_s32(0);
+          Y_2  = vadd_s32(Y_2, Y_1);       // Y_2 = Y_1
+          
+          X_2 = vdup_n_s32(0);
+          X_2 = vadd_s32(X_2, X_1);        // X_2 = X_1
+
+          r = vshrq_n_s64(r, 14);
+          ynL = (int32_t)vgetq_lane_s64(r, 0);
+          ynR = (int32_t)vgetq_lane_s64(r, 1);
+          
+          yn = vdup_n_s32(0);
+          vset_lane_s32(ynL,yn, 0);
+          vset_lane_s32(ynR,yn, 1);
+          r = vmull_s32(yn, G);
+          r = vshrq_n_s64(r, 11);
+          
+          ynL = (int32_t)vgetq_lane_s64(r, 0);
+          ynR = (int32_t)vgetq_lane_s64(r, 1);
+          
+          vset_lane_s32(ynL, Y_1, 0);       // Y_1 = ynL, ynR
+          vset_lane_s32(ynR, Y_1, 1);
+
+          X_1 = vdup_n_s32(0);
+          X_1 = vadd_s32(X_1, in);
+
+          pDataIn += 2;
+          //vst1_s32(pDataOut, Y_1);
+          //pDataOut += 2;
+          *pDataOut ++ = ynL;
+          *pDataOut ++ = ynR;
+          
+        }
+ 
+        vst1_s32(&pBiquadState->pDelays[2], X_2); // X_2L, X_2R
+        vst1_s32(&pBiquadState->pDelays[6], Y_2); // Y_2L, Y_2R
+        vst1_s32(&pBiquadState->pDelays[4], Y_1); // Y_1L, Y_1R
+        vst1_s32(&pBiquadState->pDelays[0], X_1); // X_1L, X_1R
+#else
+        LVM_INT16 ii =0;
+        PFilter_State pBiquadState = (PFilter_State) pInstance;
+        LVM_INT32* coefs = pBiquadState->coefs;
+        LVM_INT32* delays = pBiquadState->pDelays;
+        LVM_INT32 tmp;
+
+        LVM_INT32 A0 = pBiquadState->coefs[0];
+        LVM_INT32 B2 = pBiquadState->coefs[1];
+        LVM_INT32 B1 = pBiquadState->coefs[2];
+        LVM_INT32 G  = pBiquadState->coefs[3];
+        
+        int32x2_t X_2 = vld1_s32(&pBiquadState->pDelays[2]); // X_2L, X_2R
+        int32x2_t Y_2 = vld1_s32(&pBiquadState->pDelays[6]); // Y_2L, Y_2R
+        int32x2_t Y_1 = vld1_s32(&pBiquadState->pDelays[4]); // Y_1L, Y_1R
+        int32x2_t X_1 = vld1_s32(&pBiquadState->pDelays[0]); // X_1L, X_1R
+        
+        asm volatile(
+        "  vdup.32 d0, %[A0]                        \n\t"   // A0
+        "  vdup.32 d1, %[B2]                        \n\t"   // B2                        
+        "  vdup.32 d2, %[B1]                        \n\t"   // B1
+        "  vdup.32 d3, %[G]                         \n\t"   // G
+        "                                           \n\t"
+        "  vld1.32 d4, [%[delays]]!                 \n\t"    //  X_1
+        "  vld1.32 d5, [%[delays]]!                 \n\t"    //  X_2
+        "  vld1.32 d6, [%[delays]]!                 \n\t"    //  Y_1
+        "  vld1.32 d7, [%[delays]]!                 \n\t"    // Y_2
+        "loop:                                         \n\t"
+        "  vld1.32 d8, [%[pDataIn]]!                \n\t"
+        "                                           \n\t"
+        "  vmull.s32 q5, d0, d8                     \n\t" // ; A0*X
+        "  vmlsl.s32 q5, d0, d5                     \n\t"    // ; -A0*X_2
+        "  vmlal.s32 q5, d1, d7                     \n\t"   // ; B2*Y_2
+        "  vmlal.s32 q5, d2, d6                     \n\t"   // ; B1*Y_1
+        "                                           \n\t"
+        "  vmov.s32 d7, #0                           \n\t"
+        "  vadd.s32 d7, d7, d6                       \n\t"   // ; Y_2 = Y_1 
+        "  vmov.s32 d5, #0                           \n\t"
+        "  vadd.s32 d5, d5, d4                       \n\t"  // ; X_2 = X_1
+        "                                           \n\t"
+        "  vshrn.s32 d9, q5, #14                     \n\t"  // ; Y >>=  14
+        "                                           \n\t"
+        "  vmov.s32 d4, #0                           \n\t"
+        "  vadd.s32 d4, d4, d8                       \n\t"   // ; X_1 = *pDataIn
+        "                                           \n\t"
+        "  vmull.s32 q5, d9, d3                     \n\t"    // ; Y= Y*G 
+        "  vshrn.s32 d9, q5, #11                     \n\t"     // ; Y >>= 11
+        "                                           \n\t"
+        "  vadd.s32 d9, d9, d8                       \n\t"  // ; *pDataIn + Y 
+        "  vmov.s32 d6, #0                           \n\t"
+        "  vadd.s32 d6, d6, d9                       \n\t" // ; Y_1 = Y 
+        "                                           \n\t"
+        "  vst1.32 d9, [%[pDataOut]]!               \n\t"
+        "  add %[ii], %[ii], #1                      \n\t"
+        "  cmp %[ii], %[NrSamples]                  \n\t"
+        "  blt   loop                                 \n\t"
+        "                                           \n\t"
+        "  sub   %[delays], %[delays], #32          \n\t"
+        "  vst1.32 d4, [%[delays]]!                 \n\t"
+        "  vst1.32 d5, [%[delays]]!                 \n\t"
+        "  vst1.32 d6, [%[delays]]!                 \n\t"
+        "  vst1.32 d7, [%[delays]]!                 \n\t"
+        :[pDataOut]"+r"(pDataOut)
+        :[pDataIn]"r"(pDataIn),[A0]"r"(A0),[B2]"r"(B2),[B1]"r"(B1),[G]"r"(G),[ii]"r"(ii),[NrSamples]"r"(NrSamples),[delays]"r"(delays)
+        :"d0","d1","d2","d3","d4","d5","d6","d7","d8","d9","d10","d11"
+        );                      
+#endif
     }
 

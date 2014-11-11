@@ -285,4 +285,7 @@ private:
     bool                        mActive;
     DuplicatingThread* const mSourceThread; // for waitTimeMs() in write()
     AudioTrackClientProxy*      mClientProxy;
+public:
+    uint32_t LatencyDupBuf_Get();
+    void releaseBuffer(AudioBufferProvider::Buffer* buffer);
 };  // end of OutputTrack

@@ -152,7 +152,10 @@ void MediaPuller::onMessageReceived(const sp<AMessage> &msg) {
             }
 
             if (err != OK) {
-                if (err == ERROR_END_OF_STREAM) {
+				if(err == -EAGAIN){
+					schedulePull();
+					break;
+                }else if (err == ERROR_END_OF_STREAM) {
                     ALOGI("stream ended.");
                 } else {
                     ALOGE("error %d reading stream.", err);
@@ -171,9 +174,18 @@ void MediaPuller::onMessageReceived(const sp<AMessage> &msg) {
                        (const uint8_t *)mbuf->data() + mbuf->range_offset(),
                        mbuf->range_length());
 
-                accessUnit->meta()->setInt64("timeUs", timeUs);
+                if(mIsAudio) {
+                    int64_t timeNow64;
+                    struct timeval timeNow;
+                    gettimeofday(&timeNow, NULL);
+                    timeNow64 = (int64_t)timeNow.tv_sec*1000*1000 + (int64_t)timeNow.tv_usec;
+                    accessUnit->meta()->setInt64("timeUs", timeNow64);
+                } else {
+                    accessUnit->meta()->setInt64("timeUs", timeUs);
+                }
 
                 if (mIsAudio) {
+                    //ALOGE("media pull timeUs:%lld size:%d", timeUs, mbuf->range_length());
                     mbuf->release();
                     mbuf = NULL;
                 } else {
@@ -188,9 +200,10 @@ void MediaPuller::onMessageReceived(const sp<AMessage> &msg) {
                 notify->setBuffer("accessUnit", accessUnit);
                 notify->post();
 
-                if (mbuf != NULL) {
-                    ALOGV("posted mbuf %p", mbuf);
-                }
+                //if (mbuf != NULL) {
+                    
+                //}
+				//ALOGE("posted mbuf %p", mbuf);
 
                 schedulePull();
             }

@@ -73,7 +73,7 @@ CameraSourceTimeLapse::CameraSourceTimeLapse(
         bool storeMetaDataInVideoBuffers)
       : CameraSource(camera, proxy, cameraId, clientName, clientUid,
                 videoSize, videoFrameRate, surface,
-                storeMetaDataInVideoBuffers),
+                false /*storeMetaDataInVideoBuffers*/),
       mTimeBetweenTimeLapseVideoFramesUs(1E6/videoFrameRate),
       mLastTimeLapseFrameRealTimestampUs(0),
       mSkipCurrentFrame(false) {

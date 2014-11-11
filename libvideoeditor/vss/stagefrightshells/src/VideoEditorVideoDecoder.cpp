@@ -1374,6 +1374,12 @@ M4OSA_ERR VideoEditorVideoDecoder_decode(M4OSA_Context context,
         ALOGV("VideoEditorVideoDecoder_decode, frameCTS = %lf, DecodeUpTo = %lf",
             pDecShellContext->m_lastDecodedCTS, *pTime);
 
+        if (pDecoderBuffer != NULL) {
+            pDecoderBuffer->release();
+            pDecoderBuffer = NULL;
+            ALOGV("Must release it here, or the softmpeg4decoder will not really to decode");
+        }
+
         // Read the buffer from the stagefright decoder
         if (needSeek) {
             MediaSource::ReadOptions options;
@@ -1421,11 +1427,13 @@ M4OSA_ERR VideoEditorVideoDecoder_decode(M4OSA_Context context,
             continue;
         }
 
+/* MOVED TO THE LOOP BEGIN
         // Now we have a good next buffer, release the previous one.
         if (pDecoderBuffer != NULL) {
             pDecoderBuffer->release();
             pDecoderBuffer = NULL;
         }
+*/        
         pDecoderBuffer = pNextBuffer;
 
         // Record the timestamp of last decoded buffer
@@ -1752,15 +1760,18 @@ extern "C" {
 
 M4OSA_ERR VideoEditorVideoDecoder_getInterface_MPEG4(
         M4DECODER_VideoType *pDecoderType, M4OSA_Context *pDecInterface) {
-    return VideoEditorVideoDecoder_getInterface(M4DECODER_kVideoTypeMPEG4,
-        pDecoderType, pDecInterface);
+    //return VideoEditorVideoDecoder_getInterface(M4DECODER_kVideoTypeMPEG4,
+    //    pDecoderType, pDecInterface);
+    return VideoEditorVideoDecoder_getSoftwareInterface(M4DECODER_kVideoTypeMPEG4,
+         pDecoderType, pDecInterface);
 }
 
 M4OSA_ERR VideoEditorVideoDecoder_getInterface_H264(
         M4DECODER_VideoType *pDecoderType, M4OSA_Context *pDecInterface) {
-    return VideoEditorVideoDecoder_getInterface(M4DECODER_kVideoTypeAVC,
+    //return VideoEditorVideoDecoder_getInterface(M4DECODER_kVideoTypeAVC,
+    //    pDecoderType, pDecInterface);
+    return VideoEditorVideoDecoder_getSoftwareInterface(M4DECODER_kVideoTypeAVC,
         pDecoderType, pDecInterface);
-
 }
 
 M4OSA_ERR VideoEditorVideoDecoder_getSoftwareInterface_MPEG4(

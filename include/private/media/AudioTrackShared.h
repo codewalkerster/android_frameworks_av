@@ -31,8 +31,14 @@ namespace android {
 
 // ----------------------------------------------------------------------------
 
+// Maximum cumulated timeout milliseconds before restarting audioflinger thread
+#define MAX_STARTUP_TIMEOUT_MS  3000    // Longer timeout period at startup to cope with A2DP
+                                        // init time
+#define MAX_RUN_TIMEOUT_MS      1000
+#define WAIT_PERIOD_MS          1
 // for audio_track_cblk_t::mFlags
 #define CBLK_UNDERRUN   0x01 // set by server immediately on output underrun, cleared by client
+
 #define CBLK_FORCEREADY 0x02 // set: track is considered ready immediately by AudioFlinger,
                              // clear: track is ready when buffer full
 #define CBLK_INVALID    0x04 // track buffer invalidated by AudioFlinger, need to re-create

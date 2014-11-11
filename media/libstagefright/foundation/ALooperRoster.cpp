@@ -45,6 +45,7 @@ ALooper::handler_id ALooperRoster::registerHandler(
     info.mHandler = handler;
     ALooper::handler_id handlerID = mNextHandlerID++;
     mHandlers.add(handlerID, info);
+	ALOGW("ALooper::handler_id ALooperRoster::registerHandler %d\n",handlerID);
 
     handler->setID(handlerID);
 
@@ -53,6 +54,7 @@ ALooper::handler_id ALooperRoster::registerHandler(
 
 void ALooperRoster::unregisterHandler(ALooper::handler_id handlerID) {
     Mutex::Autolock autoLock(mLock);
+	ALOGI("ALooperRoster unregisterHandler handlerID=%x\n",handlerID);
 
     ssize_t index = mHandlers.indexOfKey(handlerID);
 
@@ -93,11 +95,13 @@ status_t ALooperRoster::postMessage(
 
 status_t ALooperRoster::postMessage_l(
         const sp<AMessage> &msg, int64_t delayUs) {
+
     ssize_t index = mHandlers.indexOfKey(msg->target());
 
     if (index < 0) {
         ALOGW("failed to post message '%s'. Target handler not registered.",
               msg->debugString().c_str());
+		         ALOGW("failed to post message 'msg->target() %d\n",msg->target());
         return -ENOENT;
     }
 

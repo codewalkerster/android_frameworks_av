@@ -422,11 +422,29 @@ public:
     /**
      * Dump state of the camera hardware
      */
-    status_t dump(int fd, const Vector<String16>& /*args*/) const
+    status_t dump(int fd, const Vector<String16>& args) const
     {
         ALOGV("%s(%s)", __FUNCTION__, mName.string());
-        if (mDevice->ops->dump)
+        if (mDevice->ops->dump){
+
+            String8 result;
+
+            // change logging level
+            int n = args.size();
+            for (int i = 0; i + 1 < n; i++) {
+                String16 verboseOption("-t");
+                if (args[i] == verboseOption) {
+                    String8 levelStr(args[i+1]);
+                    int level = atoi(levelStr.string());
+                    result = String8::format("\nSetting camerahal level to %d.\n", level);
+                    mDevice->priv = (void *)level;
+
+                    write(fd, result.string(), result.size());
+                }
+            }
+
             return mDevice->ops->dump(mDevice, fd);
+        }
         return OK; // It's fine if the HAL doesn't implement dump()
     }
 

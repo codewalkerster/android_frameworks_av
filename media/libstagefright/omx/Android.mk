@@ -1,6 +1,8 @@
 LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
+USE_AM_SOFT_DEMUXER_CODEC := true
+
 LOCAL_SRC_FILES:=                     \
         GraphicBufferSource.cpp       \
         OMX.cpp                       \
@@ -26,6 +28,10 @@ LOCAL_SHARED_LIBRARIES :=               \
         libcutils                       \
         libstagefright_foundation       \
         libdl
+
+ifeq ($(USE_AM_SOFT_DEMUXER_CODEC),true)
+LOCAL_CFLAGS += -DUSE_AM_SOFT_DEMUXER_CODEC
+endif
 
 LOCAL_MODULE:= libstagefright_omx
 

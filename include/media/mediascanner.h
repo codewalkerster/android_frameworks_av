@@ -65,6 +65,9 @@ private:
     char *mSkipList;
     int *mSkipIndex;
 
+    bool mBypassExternalStorage2;
+    char *mExternalStorage2;
+
     MediaScanResult doProcessDirectory(
             char *path, int pathRemaining, MediaScannerClient &client, bool noMedia);
     MediaScanResult doProcessDirectoryEntry(
@@ -92,6 +95,7 @@ public:
             long long fileSize, bool isDirectory, bool noMedia) = 0;
     virtual status_t handleStringTag(const char* name, const char* value) = 0;
     virtual status_t setMimeType(const char* mimeType) = 0;
+	virtual bool     needStopScan() {return false;}
 
 protected:
     void convertValues(uint32_t encoding);

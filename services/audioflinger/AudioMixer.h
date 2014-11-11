@@ -297,6 +297,8 @@ private:
     static uint64_t         sLocalTimeFreq;
     static pthread_once_t   sOnceControl;
     static void             sInitRoutine();
+public:
+    int         IsEnable(int name);
 };
 
 // ----------------------------------------------------------------------------

@@ -275,6 +275,17 @@ bool NuPlayerDriver::isPlaying() {
 status_t NuPlayerDriver::seekTo(int msec) {
     Mutex::Autolock autoLock(mLock);
 
+    if(mPlayer->isHEVC()) {
+        int64_t curUs = systemTime(SYSTEM_TIME_MONOTONIC) / 1000ll;
+        int64_t lastUs = mPlayer->getLastSeekTimeUs();
+        if(lastUs!=-1) {
+            if(abs(curUs - lastUs) < 500000ll) {
+                notifySeekComplete();
+	         return OK;
+            }
+         }
+    }
+
     int64_t seekTimeUs = msec * 1000ll;
 
     switch (mState) {

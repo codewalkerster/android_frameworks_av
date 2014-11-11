@@ -167,7 +167,7 @@ typedef struct tagAVCFrameIO
     uint  is_reference;
 
     /** In/Out: Coding timestamp in msec (not display timestamp) */
-    uint32 coding_timestamp;
+    uint64_t coding_timestamp;
 
     /* there could be something else here such as format, DON (decoding order number)
      if available thru SEI, etc. */
@@ -230,6 +230,33 @@ typedef void (*FunctionType_Free)(void *userData, void *mem);
 */
 typedef void (*FunctionType_DebugLog)(uint32 *userData, AVCLogType type, char *string1, int val1, int val2);
 
+
+/**
+This structure is used as a pointer for Platform Encode.
+*/
+
+typedef int (*PlatformFunc_Init)(void *Handle, void *encParam);
+typedef int (*PlatformFunc_SetInput)(void *Handle, void *input);
+typedef int (*PlatformFunc_EncodeNAL)(void *Handle, unsigned char *buffer, unsigned int *buf_nal_size, int *nal_type);
+typedef int (*PlatformFunc_Release)(void *Handle);
+
+typedef struct tagPlatformEncFuncPtr
+{
+    PlatformFunc_Init Initialize;
+    PlatformFunc_SetInput SetInput;
+    PlatformFunc_EncodeNAL EncodeNAL;
+    PlatformFunc_Release Release;
+} PlatformEncFuncPtr;
+
+typedef struct tagPlatformEnc
+{
+    const char* name;
+    PlatformEncFuncPtr* func;
+    bool available;
+    unsigned opened;
+    void* privdata;
+} PlatformEnc_t;
+
 /**
 This structure has to be allocated and maintained by the user of the library.
 This structure is used as a handle to the library object.
@@ -240,6 +267,8 @@ typedef struct tagAVCHandle
         is NULL at the beginning.
     */
     void        *AVCObject;
+    void	*AVCObject_slot[6];
+
 
     /** A pointer to user object which has the following member functions used for
     callback purpose.  !!! */
@@ -260,7 +289,10 @@ typedef struct tagAVCHandle
 
     /** Flag to enable debugging */
     uint32  debugEnable;
+    int total_slice_num;
 
+    void *mLibHandle;
+    PlatformEnc_t* platform_enc;
 } AVCHandle;
 
 

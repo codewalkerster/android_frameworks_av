@@ -35,6 +35,14 @@ struct SoftAVC : public SoftVideoDecoderOMXComponent {
 protected:
     virtual ~SoftAVC();
 
+    virtual OMX_ERRORTYPE internalGetParameter(
+            OMX_INDEXTYPE index, OMX_PTR params);
+
+    virtual OMX_ERRORTYPE internalSetParameter(
+            OMX_INDEXTYPE index, const OMX_PTR params);
+
+    virtual OMX_ERRORTYPE getConfig(OMX_INDEXTYPE index, OMX_PTR params);
+    
     virtual void onQueueFilled(OMX_U32 portIndex);
     virtual void onPortFlushCompleted(OMX_U32 portIndex);
     virtual void onReset();

@@ -19,7 +19,7 @@ LOCAL_STATIC_LIBRARIES += libmusicbundle
 
 LOCAL_SHARED_LIBRARIES := \
      libcutils \
-     libdl
+     libdl libutils liblog
 
 LOCAL_C_INCLUDES += \
 	$(LOCAL_PATH)/Bundle \

@@ -40,6 +40,7 @@ NuPlayer::HTTPLiveSource::HTTPLiveSource(
     : Source(notify),
       mURL(url),
       mUIDValid(uidValid),
+      mBuffering(true),
       mUID(uid),
       mFlags(0),
       mFinalResult(OK),
@@ -86,6 +87,10 @@ void NuPlayer::HTTPLiveSource::prepareAsync() {
 
     mLiveSession->connectAsync(
             mURL.c_str(), mExtraHeaders.isEmpty() ? NULL : &mExtraHeaders);
+
+    sp<AMessage> notifyStart = dupNotify();
+    notifyStart->setInt32("what", kWhatBufferingStart);
+    notifyStart->post();
 }
 
 void NuPlayer::HTTPLiveSource::start() {
@@ -111,10 +116,42 @@ status_t NuPlayer::HTTPLiveSource::feedMoreTSData() {
 
 status_t NuPlayer::HTTPLiveSource::dequeueAccessUnit(
         bool audio, sp<ABuffer> *accessUnit) {
+        if(mBuffering) {
+            if(!mLiveSession->haveSufficientDataOnAVTracks()) {
+                return -EWOULDBLOCK;
+            }
+            mBuffering = false;
+            sp<AMessage> notify = dupNotify();
+            notify->setInt32("what", kWhatBufferingEnd);
+            notify->post();
+            ALOGI("HTTPLiveSource buffering end!\n");
+        }
+    
+        bool needBuffering = false;
+        status_t finalResult = mLiveSession->hasBufferAvailable(audio, &needBuffering);
+        if(needBuffering) {
+            mBuffering = true;
+            sp<AMessage> notify = dupNotify();
+            notify->setInt32("what", kWhatBufferingStart);
+            notify->post();
+            ALOGI("HTTPLiveSource buffering start!\n");
+            return finalResult;
+        }
+
     return mLiveSession->dequeueAccessUnit(
             audio ? LiveSession::STREAMTYPE_AUDIO
                   : LiveSession::STREAMTYPE_VIDEO,
             accessUnit);
+}
+
+int32_t NuPlayer::HTTPLiveSource::getBandwidth() {
+    int32_t kbps = 0;
+    mLiveSession->getBandwidthKbps(&kbps);
+    return kbps;
+}
+
+int32_t NuPlayer::HTTPLiveSource::getBufferingPercent() {
+    return mLiveSession->getBufferingPercent();
 }
 
 status_t NuPlayer::HTTPLiveSource::getDuration(int64_t *durationUs) {
@@ -144,6 +181,7 @@ status_t NuPlayer::HTTPLiveSource::selectTrack(size_t trackIndex, bool select) {
 }
 
 status_t NuPlayer::HTTPLiveSource::seekTo(int64_t seekTimeUs) {
+    mBuffering = true;
     return mLiveSession->seekTo(seekTimeUs);
 }
 

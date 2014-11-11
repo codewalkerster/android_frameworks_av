@@ -43,6 +43,7 @@ struct PlaylistFetcher : public AHandler {
         kWhatTemporarilyDoneFetching,
         kWhatPrepared,
         kWhatPreparationFailed,
+        kWhatCodecSpecificData,
     };
 
     PlaylistFetcher(

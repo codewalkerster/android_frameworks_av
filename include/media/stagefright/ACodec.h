@@ -99,7 +99,6 @@ private:
     struct IdleToLoadedState;
     struct FlushingState;
     struct DeathNotifier;
-
     enum {
         kWhatSetup                   = 'setu',
         kWhatOMXMessage              = 'omx ',
@@ -176,7 +175,8 @@ private:
     sp<MemoryDealer> mDealer[2];
 
     sp<ANativeWindow> mNativeWindow;
-
+    void* mRender;
+    sp<ANativeWindow> mNativeWindowSW;
     Vector<BufferInfo> mBuffers[2];
     bool mPortEOS[2];
     status_t mInputEOSResult;
@@ -254,6 +254,8 @@ private:
 
     status_t setupAMRCodec(bool encoder, bool isWAMR, int32_t bitRate);
     status_t setupG711Codec(bool encoder, int32_t numChannels);
+
+	status_t setupAdpcmCodec(bool encoder, int32_t numChannels);
 
     status_t setupFlacCodec(
             bool encoder, int32_t numChannels, int32_t sampleRate, int32_t compressionLevel);

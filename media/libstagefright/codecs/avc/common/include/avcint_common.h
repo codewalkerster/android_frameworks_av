@@ -762,7 +762,7 @@ typedef struct tagCommonObj
     AVCFrameStore   *refFrameListLongTerm[32];
     int     refList0Size;
     int     refList1Size;
-
+	int thread_source;
     /* slice data semantics*/
     int mb_skip_run;    /* ue(v) */
     /*uint  mb_skip_flag;*/ /* ae(v) */

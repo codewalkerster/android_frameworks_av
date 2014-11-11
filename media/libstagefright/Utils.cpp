@@ -444,6 +444,12 @@ void convertMessageToMetaData(const sp<AMessage> &msg, sp<MetaData> &meta) {
                 size_t outsize = reassembleAVCC(csd0, csd1, avcc);
                 meta->setData(kKeyAVCC, kKeyAVCC, avcc, outsize);
             }
+            if(!strcasecmp(mime.c_str(), MEDIA_MIMETYPE_VIDEO_MPEG4))    {
+                int csd0size = csd0->size();
+                char esds[csd0size + 31];
+                reassembleESDS(csd0, esds);
+                meta->setData(kKeyESDS, kTypeESDS, esds, sizeof(esds));
+            }
         } else if (mime.startsWith("audio/")) {
             int csd0size = csd0->size();
             char esds[csd0size + 31];
@@ -523,6 +529,7 @@ static const struct mime_conv_t mimeLookup[] = {
     { MEDIA_MIMETYPE_AUDIO_AMR_WB,      AUDIO_FORMAT_AMR_WB },
     { MEDIA_MIMETYPE_AUDIO_AAC,         AUDIO_FORMAT_AAC },
     { MEDIA_MIMETYPE_AUDIO_VORBIS,      AUDIO_FORMAT_VORBIS },
+    { MEDIA_MIMETYPE_AUDIO_TRUEHD,      AUDIO_FORMAT_TRUEHD },
     { 0, AUDIO_FORMAT_INVALID }
 };
 

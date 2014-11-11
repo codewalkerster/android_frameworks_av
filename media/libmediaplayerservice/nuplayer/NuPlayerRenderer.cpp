@@ -23,6 +23,7 @@
 #include <media/stagefright/foundation/ABuffer.h>
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/foundation/AMessage.h>
+#define FRAME_DROP_FREQ 3
 
 namespace android {
 
@@ -408,12 +409,16 @@ void NuPlayer::Renderer::onDrainVideoQueue() {
 
     mVideoLateByUs = ALooper::GetNowUs() - realTimeUs;
     bool tooLate = (mVideoLateByUs > 40000);
+	
 
     if (tooLate) {
         ALOGV("video late by %lld us (%.2f secs)",
              mVideoLateByUs, mVideoLateByUs / 1E6);
+		tooLate=(mSinceLastDropped> FRAME_DROP_FREQ);
+		mSinceLastDropped++;
+		if(tooLate) mSinceLastDropped=0;
     } else {
-        ALOGV("rendering video at media time %.2f secs", mediaTimeUs / 1E6);
+        ALOGV("rendering video at media time %.2f secs", realTimeUs / 1E6);
     }
 
     entry->mNotifyConsumed->setInt32("render", !tooLate);

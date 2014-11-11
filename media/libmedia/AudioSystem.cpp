@@ -320,7 +320,7 @@ status_t AudioSystem::getLatency(audio_io_handle_t output,
 
     gLock.lock();
     outputDesc = AudioSystem::gOutputs.valueFor(output);
-    if (outputDesc == NULL) {
+    if (outputDesc == NULL || !(*latency)) {
         gLock.unlock();
         const sp<IAudioFlinger>& af = AudioSystem::get_audio_flinger();
         if (af == 0) return PERMISSION_DENIED;

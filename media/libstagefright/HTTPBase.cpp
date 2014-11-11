@@ -40,7 +40,7 @@ HTTPBase::HTTPBase()
       mTotalTransferBytes(0),
       mPrevBandwidthMeasureTimeUs(0),
       mPrevEstimatedBandWidthKbps(0),
-      mBandWidthCollectFreqMs(5000),
+      mBandWidthCollectFreqMs(kMinBandwidthCollectFreqMs),
       mUIDValid(false),
       mUID(0) {
 }
@@ -81,7 +81,7 @@ void HTTPBase::addBandwidthMeasurement(
     mTotalTransferBytes += numBytes;
 
     mBandwidthHistory.push_back(entry);
-    if (++mNumBandwidthHistoryItems > 100) {
+    if (++mNumBandwidthHistoryItems > 1) {
         BandwidthEntry *entry = &*mBandwidthHistory.begin();
         mTotalTransferTimeUs -= entry->mDelayUs;
         mTotalTransferBytes -= entry->mNumBytes;
@@ -105,7 +105,7 @@ void HTTPBase::addBandwidthMeasurement(
 bool HTTPBase::estimateBandwidth(int32_t *bandwidth_bps) {
     Mutex::Autolock autoLock(mLock);
 
-    if (mNumBandwidthHistoryItems < 2) {
+    if (mNumBandwidthHistoryItems < 1) {
         return false;
     }
 

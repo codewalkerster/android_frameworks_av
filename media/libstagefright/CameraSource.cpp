@@ -119,6 +119,8 @@ static int32_t getColorFormat(const char* colorFormat) {
          "CameraSource::getColorFormat", colorFormat);
 
     CHECK(!"Unknown color format");
+
+	return OMX_COLOR_FormatUnused;
 }
 
 CameraSource *CameraSource::Create(const String16 &clientName) {

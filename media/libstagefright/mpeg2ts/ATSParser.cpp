@@ -481,6 +481,12 @@ ATSParser::Stream::Stream(
                     (mProgram->parserFlags() & ALIGNED_VIDEO_DATA)
                         ? ElementaryStreamQueue::kFlag_AlignedData : 0);
             break;
+		case STREAMTYPE_H265:
+            mQueue = new ElementaryStreamQueue(
+                    ElementaryStreamQueue::H265,
+                    (mProgram->parserFlags() & ALIGNED_VIDEO_DATA)
+                        ? ElementaryStreamQueue::kFlag_AlignedData : 0);
+            break;	
         case STREAMTYPE_MPEG2_AUDIO_ADTS:
             mQueue = new ElementaryStreamQueue(ElementaryStreamQueue::AAC);
             break;
@@ -598,6 +604,7 @@ status_t ATSParser::Stream::parse(
 bool ATSParser::Stream::isVideo() const {
     switch (mStreamType) {
         case STREAMTYPE_H264:
+        case STREAMTYPE_H265:	
         case STREAMTYPE_MPEG1_VIDEO:
         case STREAMTYPE_MPEG2_VIDEO:
         case STREAMTYPE_MPEG4_VIDEO:
@@ -872,8 +879,10 @@ void ATSParser::Stream::onPayloadData(
     if (PTS_DTS_flags == 2 || PTS_DTS_flags == 3) {
         timeUs = mProgram->convertPTSToTimestamp(PTS);
     }
+	ALOGV("onPayloadData  appendData before mStreamType=0x%02x", mStreamType);
 
     status_t err = mQueue->appendData(data, size, timeUs);
+	ALOGV("onPayloadData  appendData mStreamType=0x%02x", mStreamType);
 
     if (err != OK) {
         return;
@@ -885,7 +894,7 @@ void ATSParser::Stream::onPayloadData(
             sp<MetaData> meta = mQueue->getFormat();
 
             if (meta != NULL) {
-                ALOGV("Stream PID 0x%08x of type 0x%02x now has data.",
+                ALOGI("Stream PID 0x%08x of type 0x%02x now has data.",
                      mElementaryPID, mStreamType);
 
                 mSource = new AnotherPacketSource(meta);

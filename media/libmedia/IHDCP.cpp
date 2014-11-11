@@ -29,7 +29,9 @@ enum {
     OBSERVER_NOTIFY = IBinder::FIRST_CALL_TRANSACTION,
     HDCP_SET_OBSERVER,
     HDCP_INIT_ASYNC,
+    HDCP_INIT_ASYNC_RX,
     HDCP_SHUTDOWN_ASYNC,
+    HDCP_SHUTDOWN_ASYNC_RX,
     HDCP_GET_CAPS,
     HDCP_ENCRYPT,
     HDCP_ENCRYPT_NATIVE,
@@ -79,6 +81,14 @@ struct BpHDCP : public BpInterface<IHDCP> {
         return reply.readInt32();
     }
 
+    virtual status_t initAsyncRx(unsigned port) {
+        Parcel data, reply;
+        data.writeInterfaceToken(IHDCP::getInterfaceDescriptor());
+        data.writeInt32(port);
+        remote()->transact(HDCP_INIT_ASYNC_RX, data, &reply);
+        return reply.readInt32();
+    }
+
     virtual status_t shutdownAsync() {
         Parcel data, reply;
         data.writeInterfaceToken(IHDCP::getInterfaceDescriptor());
@@ -86,6 +96,13 @@ struct BpHDCP : public BpInterface<IHDCP> {
         return reply.readInt32();
     }
 
+    virtual status_t shutdownAsyncRx() {
+        Parcel data, reply;
+        data.writeInterfaceToken(IHDCP::getInterfaceDescriptor());
+        remote()->transact(HDCP_SHUTDOWN_ASYNC_RX, data, &reply);
+        return reply.readInt32();
+    }
+    
     virtual uint32_t getCaps() {
         Parcel data, reply;
         data.writeInterfaceToken(IHDCP::getInterfaceDescriptor());
@@ -222,7 +239,17 @@ status_t BnHDCP::onTransact(
             return OK;
         }
 
-        case HDCP_SHUTDOWN_ASYNC:
+        case HDCP_INIT_ASYNC_RX:
+        {
+            CHECK_INTERFACE(IHDCP, data, reply);
+
+            unsigned port = data.readInt32();
+
+            reply->writeInt32(initAsyncRx(port));
+            return OK;
+        }
+
+       case HDCP_SHUTDOWN_ASYNC:
         {
             CHECK_INTERFACE(IHDCP, data, reply);
 
@@ -230,6 +257,14 @@ status_t BnHDCP::onTransact(
             return OK;
         }
 
+        case HDCP_SHUTDOWN_ASYNC_RX:
+        {
+            CHECK_INTERFACE(IHDCP, data, reply);
+
+            reply->writeInt32(shutdownAsyncRx());
+            return OK;
+        }
+        
         case HDCP_GET_CAPS:
         {
             CHECK_INTERFACE(IHDCP, data, reply);

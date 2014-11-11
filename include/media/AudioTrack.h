@@ -264,8 +264,7 @@ public:
      * This includes the latency due to AudioTrack buffer size, AudioMixer (if any)
      * and audio hardware driver.
      */
-            uint32_t    latency() const     { return mLatency; }
-
+            uint32_t    latency() ;//const     { return mLatency; }
     /* getters, see constructors and set() */
 
             audio_stream_type_t streamType() const { return mStreamType; }
@@ -755,6 +754,9 @@ private:
     uint32_t                mSequence;              // incremented for each new IAudioTrack attempt
     audio_io_handle_t       mOutput;                // cached output io handle
     int                     mClientUid;
+public:
+    uint32_t  DupFrmReadedCnt;
+    int32_t   FramCntEnable;
 };
 
 class TimedAudioTrack : public AudioTrack

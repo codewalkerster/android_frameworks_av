@@ -2501,7 +2501,7 @@ M4OSA_ERR M4VSS3GPP_intCreateVideoEncoder( M4VSS3GPP_InternalEditContext *pC )
         block effetcs) */
         EncParams.bInternalRegulation = M4OSA_FALSE;
         // Variable framerate is not supported by StageFright encoders
-        EncParams.FrameRate = M4ENCODER_k30_FPS;
+        EncParams.FrameRate = M4ENCODER_k15_FPS;// M4ENCODER_k30_FPS; we use 15fps now,for our encoded video is 15fps
     }
     else
     {

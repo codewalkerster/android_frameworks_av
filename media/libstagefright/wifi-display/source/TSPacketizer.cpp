@@ -20,6 +20,7 @@
 
 #include "TSPacketizer.h"
 #include "include/avc_utils.h"
+#include <cutils/properties.h>
 
 #include <media/stagefright/foundation/ABuffer.h>
 #include <media/stagefright/foundation/ADebug.h>
@@ -51,6 +52,7 @@ struct TSPacketizer::Track : public RefBase {
     bool lacksADTSHeader() const;
     bool isPCMAudio() const;
 
+    sp<ABuffer> prependStartCode(const sp<ABuffer> &accessUnit) const;
     sp<ABuffer> prependCSD(const sp<ABuffer> &accessUnit) const;
     sp<ABuffer> prependADTSHeader(const sp<ABuffer> &accessUnit) const;
 
@@ -171,6 +173,18 @@ bool TSPacketizer::Track::isPCMAudio() const {
 
 bool TSPacketizer::Track::lacksADTSHeader() const {
     return mAudioLacksATDSHeaders;
+}
+
+sp<ABuffer> TSPacketizer::Track::prependStartCode(
+        const sp<ABuffer> &accessUnit) const {
+
+    sp<ABuffer> dup = new ABuffer(accessUnit->size() + 4);
+
+	memcpy(dup->data(), "\x00\x00\x00\x01", 4);
+
+    memcpy(dup->data() + 4, accessUnit->data(), accessUnit->size());
+
+    return dup;
 }
 
 sp<ABuffer> TSPacketizer::Track::prependCSD(
@@ -462,6 +476,12 @@ status_t TSPacketizer::packetize(
     int64_t timeUs;
     CHECK(accessUnit->meta()->findInt64("timeUs", &timeUs));
 
+    char val[256];
+    if (property_get("media.wfd.disableAudioPts", val, NULL) && (!strcasecmp("true", val) || !strcmp("1", val))) {
+        if(trackIndex == 1)
+            timeUs = 0;
+    }
+
     packets->clear();
 
     if (trackIndex >= mTracks.size()) {
@@ -470,14 +490,18 @@ status_t TSPacketizer::packetize(
 
     const sp<Track> &track = mTracks.itemAt(trackIndex);
 
-    if (track->isH264() && (flags & PREPEND_SPS_PPS_TO_IDR_FRAMES)
-            && IsIDR(accessUnit)) {
+	bool startcode_ex = memcmp(accessUnit->data(), "\x00\x00\x00\x01", 4);
+
+	//ALOGE("packetize packetize:%d IsIDR:%d", startcode_ex, IsIDR(accessUnit));
+    if (track->isH264() && IsIDR(accessUnit)) {
         // prepend codec specific data, i.e. SPS and PPS.
         accessUnit = track->prependCSD(accessUnit);
     } else if (track->isAAC() && track->lacksADTSHeader()) {
         CHECK(!(flags & IS_ENCRYPTED));
         accessUnit = track->prependADTSHeader(accessUnit);
     }
+
+	//ALOGE("%s pts:%lld", track->isH264()?"video":"audio", timeUs);
 
     // 0x47
     // transport_error_indicator = b0
@@ -845,7 +869,14 @@ status_t TSPacketizer::packetize(
         // reserved = b111111
         // program_clock_reference_extension = b?????????
 
-        int64_t nowUs = ALooper::GetNowUs();
+        //int64_t nowUs = ALooper::GetNowUs();
+
+        int64_t timeNow64;
+        struct timeval timeNow;
+        gettimeofday(&timeNow, NULL);
+        int64_t nowUs = (int64_t)timeNow.tv_sec*1000*1000 + (int64_t)timeNow.tv_usec;
+
+        //ALOGE("packetize          num:%lld latency:%lldms", timeUs, (nowUs - timeUs)/1000);
 
         uint64_t PCR = nowUs * 27;  // PCR based on a 27MHz clock
         uint64_t PCR_base = PCR / 300;
@@ -1032,6 +1063,18 @@ uint32_t TSPacketizer::crc32(const uint8_t *start, size_t size) const {
     }
 
     return crc;
+}
+
+sp<ABuffer> TSPacketizer::prependStartCode(
+        size_t trackIndex, const sp<ABuffer> &accessUnit) const {
+    CHECK_LT(trackIndex, mTracks.size());
+    const sp<Track> &track = mTracks.itemAt(trackIndex);
+    if (track->isH264()) {
+        sp<ABuffer> accessUnit2 = track->prependStartCode(accessUnit);
+        return accessUnit2;
+    } else {
+        return accessUnit;
+    }
 }
 
 sp<ABuffer> TSPacketizer::prependCSD(

@@ -77,7 +77,7 @@ status_t RepeaterSource::start(MetaData *params) {
 status_t RepeaterSource::stop() {
     CHECK(mStarted);
 
-    ALOGV("stopping");
+    ALOGI("stopping");
 
     if (mLooper != NULL) {
         mLooper->stop();
@@ -87,14 +87,14 @@ status_t RepeaterSource::stop() {
     }
 
     if (mBuffer != NULL) {
-        ALOGV("releasing mbuf %p", mBuffer);
+        ALOGI("releasing mbuf %p", mBuffer);
         mBuffer->release();
         mBuffer = NULL;
     }
 
     status_t err = mSource->stop();
 
-    ALOGV("stopped");
+    ALOGI("stopped");
 
     mStarted = false;
 
@@ -121,7 +121,7 @@ status_t RepeaterSource::read(
                 mCondition.wait(mLock);
             }
 
-            ALOGV("now resuming.");
+            ALOGI("now resuming.");
             mStartTimeUs = ALooper::GetNowUs();
             bufferTimeUs = mStartTimeUs;
         } else {
@@ -165,7 +165,7 @@ status_t RepeaterSource::read(
 
         mStartTimeUs = -1ll;
         mFrameCount = 0;
-        ALOGV("now dormant");
+        ALOGI("now dormant");
     }
 
     return OK;
@@ -181,8 +181,15 @@ void RepeaterSource::onMessageReceived(const sp<AMessage> &msg) {
         {
             MediaBuffer *buffer;
             status_t err = mSource->read(&buffer);
-
-            ALOGV("read mbuf %p", buffer);
+            if(err == -EAGAIN){
+                ALOGI("no mbuf, error again");
+                if (buffer != NULL) {
+                    buffer->release();
+                    buffer = NULL;
+                }
+                break;
+            }
+            //ALOGI("read mbuf %p", buffer);
 
             Mutex::Autolock autoLock(mLock);
             if (mBuffer != NULL) {
@@ -207,7 +214,7 @@ void RepeaterSource::onMessageReceived(const sp<AMessage> &msg) {
 }
 
 void RepeaterSource::wakeUp() {
-    ALOGV("wakeUp");
+    ALOGI("wakeUp");
     Mutex::Autolock autoLock(mLock);
     if (mLastBufferUpdateUs < 0ll && mBuffer != NULL) {
         mLastBufferUpdateUs = ALooper::GetNowUs();

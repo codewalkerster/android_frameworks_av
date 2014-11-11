@@ -21,6 +21,9 @@ LOCAL_SHARED_LIBRARIES := \
         libstagefright \
         libstagefright_foundation \
         libutils \
+        libamffmpeg
+
+LOCAL_STATIC_LIBRARIES := libstagefright_hevcutils
 
 LOCAL_MODULE:= libstagefright_httplive
 

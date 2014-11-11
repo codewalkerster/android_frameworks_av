@@ -45,6 +45,12 @@
 #include "utils/CameraTraces.h"
 #include "CameraDeviceFactory.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include "LoadXml.h"
 namespace android {
 
 // ----------------------------------------------------------------------------
@@ -94,6 +100,7 @@ CameraService::CameraService()
 {
     ALOGI("CameraService started (pid=%d)", getpid());
     gCameraService = this;
+    gLoadXml.parseXMLFile();
 
     for (size_t i = 0; i < MAX_CAMERAS; ++i) {
         mStatusList[i] = ICameraServiceListener::STATUS_PRESENT;
@@ -140,8 +147,21 @@ CameraService::~CameraService() {
             ALOGE("camera %d is still in use in destructor!", i);
         }
     }
-
     gCameraService = NULL;
+}
+
+void CameraService::usbCameraAttach(bool isAttach){
+	mNumberOfCameras = mModule->get_number_of_cameras();
+    if (mNumberOfCameras > MAX_CAMERAS) {
+        ALOGE("Number of cameras(%d) > MAX_CAMERAS(%d).",
+                mNumberOfCameras, MAX_CAMERAS);
+        mNumberOfCameras = MAX_CAMERAS;
+    }
+    for (int i = 0; i < mNumberOfCameras; i++) {
+        setCameraFree(i);
+    }
+
+	ALOGI("USB camera attach isAttach:%d, number:%d", isAttach, mNumberOfCameras);
 }
 
 void CameraService::onDeviceStatusChanged(int cameraId,
@@ -207,6 +227,14 @@ void CameraService::onDeviceStatusChanged(int cameraId,
 
 int32_t CameraService::getNumberOfCameras() {
     return mNumberOfCameras;
+}
+bool CameraService::findApk() {
+    return gLoadXml.findApkOp(gLoadXml.getApkPackageName(getCallingPid()));
+}
+
+LoadXml* CameraService::getLoadXml()
+{
+    return &gLoadXml;
 }
 
 status_t CameraService::getCameraInfo(int cameraId,
@@ -930,6 +958,15 @@ CameraService::Client::Client(const sp<CameraService>& cameraService,
     cameraService->setCameraBusy(cameraId);
     cameraService->loadSound();
 
+#if 0 //def ENABLE_RETURN_MIRRORED_FRAMES
+    if(mCameraFacing == CAMERA_FACING_FRONT) {
+        m_bDisplayError = ChkIfDisplayErrorApp();
+        sendCommand(CAMERA_CMD_SET_DISPLAY_ORIENTATION, 0, 0);//to correct the display setting
+    }
+    else
+        m_bDisplayError = false;
+#endif
+    
     LOG1("Client::Client X (pid %d, id %d)", callingPid, cameraId);
 }
 

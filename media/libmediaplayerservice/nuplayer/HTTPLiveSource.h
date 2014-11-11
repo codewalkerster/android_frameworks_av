@@ -45,6 +45,10 @@ struct NuPlayer::HTTPLiveSource : public NuPlayer::Source {
     virtual status_t selectTrack(size_t trackIndex, bool select);
     virtual status_t seekTo(int64_t seekTimeUs);
 
+    // info notification
+    virtual int32_t getBandwidth();
+    virtual int32_t getBufferingPercent();
+
 protected:
     virtual ~HTTPLiveSource();
 
@@ -64,6 +68,7 @@ private:
     AString mURL;
     KeyedVector<String8, String8> mExtraHeaders;
     bool mUIDValid;
+    bool mBuffering;
     uid_t mUID;
     uint32_t mFlags;
     status_t mFinalResult;

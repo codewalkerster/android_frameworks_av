@@ -92,6 +92,7 @@ status_t StagefrightPlayer::start() {
 
 status_t StagefrightPlayer::stop() {
     ALOGV("stop");
+    mPlayer->stop();
 
     return pause();  // what's the difference?
 }
@@ -215,6 +216,14 @@ status_t StagefrightPlayer::getMetadata(
 
 status_t StagefrightPlayer::dump(int fd, const Vector<String16> &args) const {
     return mPlayer->dump(fd, args);
+}
+
+status_t StagefrightPlayer::setHEVCFlag(bool flag) {
+    return mPlayer->setHEVCFlag(flag);
+}
+
+bool StagefrightPlayer::getHEVCFlag() {
+    return mPlayer->getHEVCFlag();
 }
 
 }  // namespace android

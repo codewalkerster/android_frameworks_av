@@ -75,6 +75,7 @@ struct MyVorbisExtractor {
 
     status_t seekToTime(int64_t timeUs);
     status_t seekToOffset(off64_t offset);
+	int seekPacketAlign(off64_t pageOffset);
     status_t readNextPacket(MediaBuffer **buffer);
 
     status_t init();
@@ -117,7 +118,7 @@ private:
 
     ssize_t readPage(off64_t offset, Page *page);
     status_t findNextPage(off64_t startOffset, off64_t *pageOffset);
-
+    int findPrePage( off64_t prestartOffset, off64_t prestoptOffset);
     status_t verifyHeader(
             MediaBuffer *buffer, uint8_t type);
 
@@ -228,6 +229,24 @@ sp<MetaData> MyVorbisExtractor::getFormat() const {
     return mMeta;
 }
 
+int MyVorbisExtractor::findPrePage(
+        off64_t prestartOffset, off64_t prestoptOffset) 
+{
+    int i=-1; 
+
+    for (i=prestoptOffset-3 ; i>=prestartOffset; i--) 
+	{
+        char signature[4];
+		if(i<0)
+			return -1;
+        ssize_t n = mSource->readAt(i, &signature, 4);
+        if (n <0 ) 
+            return n;
+        if (!memcmp(signature, "OggS", 4)) 
+            return i;
+    }
+	return -1;
+}
 status_t MyVorbisExtractor::findNextPage(
         off64_t startOffset, off64_t *pageOffset) {
     *pageOffset = startOffset;
@@ -310,13 +329,21 @@ status_t MyVorbisExtractor::findPrevGranulePosition(
 }
 
 status_t MyVorbisExtractor::seekToTime(int64_t timeUs) {
+	status_t status_ret=0;
+	MediaBuffer *temp;
     if (mTableOfContents.isEmpty()) {
         // Perform approximate seeking based on avg. bitrate.
 
         off64_t pos = timeUs * approxBitrate() / 8000000ll;
 
-        ALOGV("seeking to offset %lld", pos);
-        return seekToOffset(pos);
+        ALOGI("OGG_SEEK:android_seeking to offset %lld\n", pos);
+        status_ret=seekToOffset(pos);
+		//-----------------------------------------------------------
+		//ALOGI("OGG_TRACE:read data peceding next packet after seek position!\n");
+		//status_ret=readNextPacket(&temp);
+		//temp=NULL;
+		return status_ret;
+		//-----------------------------------------------------------
     }
 
     size_t left = 0;
@@ -338,10 +365,72 @@ status_t MyVorbisExtractor::seekToTime(int64_t timeUs) {
 
     const TOCEntry &entry = mTableOfContents.itemAt(left);
 
-    ALOGV("seeking to entry %d / %d at offset %lld",
+    ALOGI("OGG_SEEK: andorid_seeking to entry %d / %d at offset %lld\n",
          left, mTableOfContents.size(), entry.mPageOffset);
 
-    return seekToOffset(entry.mPageOffset);
+    status_ret=seekToOffset(entry.mPageOffset);
+	//-----------------------------------------------------------
+	//ALOGI("OGG_TRACE:read data peceding next packet after seek position!\n");
+	//status_ret=readNextPacket(&temp);
+	//temp=NULL;
+	//-----------------------------------------------------------
+	return status_ret;
+}
+
+int MyVorbisExtractor::seekPacketAlign(off64_t pageOffset) 
+{
+	 Page Pagetmp;
+     off64_t pre_start_offset= pageOffset-1;
+     off64_t pre_stop_offset = pageOffset-1;
+	 off64_t pre_page_offset = -1;
+	 int i;
+	 int pkt_begin_find_flag=0;
+     for (;;) 
+	 {  
+	   	   pre_start_offset -=5000;//reference  the step in findPrevGranulePosition
+	   	   if(pre_start_offset<mFirstDataOffset)
+		   	  pre_start_offset=mFirstDataOffset;
+		   
+		   if((pre_stop_offset-3<pre_start_offset)&&pre_start_offset==mFirstDataOffset ){
+		   	   ALOGI("OGG_SEEK: %s %d  seek to file_start offset=%lld\n ",__FUNCTION__,__LINE__,pre_start_offset);
+		   	   break;
+		   }else
+	           pre_page_offset=findPrePage(pre_start_offset, pre_stop_offset);
+		   
+		  if(pre_page_offset<0 ){
+			 pre_stop_offset=pre_start_offset+2;
+			 continue;
+		  }else{
+		      ssize_t n = readPage(pre_page_offset, &Pagetmp);
+              if (n <= 0) break;//read failed
+              if(findPrevGranulePosition(pre_page_offset, &mPrevGranulePosition)!=OK)
+              {    ALOGI("OGG_SEEK: %s %d  our seek failed ,use andorid_seeking\n ",__FUNCTION__,__LINE__);
+			  	   break;
+              }
+              for(i=0;i<Pagetmp.mNumSegments;i++)
+			   {   
+                   if (Pagetmp.mLace[i]<255)//find pre_packet end
+                   {   memcpy(&mCurrentPage,&Pagetmp,sizeof(Page));
+				   	   mOffset = pre_page_offset;
+				   	   mCurrentPageSize = n;
+				   	   mFirstPacketInPage = true;
+					   ALOGI("OGG_SEEK: %s %d  CurGranulePosition=%lld PrevGranulePosition=%lld \n",__FUNCTION__,__LINE__,
+					   	                    mCurrentPage.mGranulePosition,mPrevGranulePosition);
+					   mCurrentPageSamples =mCurrentPage.mGranulePosition -mPrevGranulePosition;
+					   //mCurrentPageSamples=mPrevGranulePosition;
+				   	   //mCurrentPage.mNumSegments=Pagetmp.mNumSegments;
+				   	   mNextLaceIndex=i+1;
+					   pkt_begin_find_flag=1;
+					   break;
+                   }
+               }      
+               if(pkt_begin_find_flag==1){
+			   	   ALOGI("OOGG_SEEK: %s %d  find pkt_start success corespond_page_offset=%lld ",__FUNCTION__,__LINE__,pre_page_offset);
+			   	   break;
+               }
+		  }
+     } 
+	 return pkt_begin_find_flag;
 }
 
 status_t MyVorbisExtractor::seekToOffset(off64_t offset) {
@@ -350,14 +439,16 @@ status_t MyVorbisExtractor::seekToOffset(off64_t offset) {
         // don't ever seek to anywhere before that.
         offset = mFirstDataOffset;
     }
-
+    int  pkt_begin_find_flag=0;
     off64_t pageOffset;
     status_t err = findNextPage(offset, &pageOffset);
 
     if (err != OK) {
         return err;
     }
-
+	pkt_begin_find_flag=seekPacketAlign(pageOffset);
+	if(!pkt_begin_find_flag)
+	{
     // We found the page we wanted to seek to, but we'll also need
     // the page preceding it to determine how many valid samples are on
     // this page.
@@ -370,7 +461,7 @@ status_t MyVorbisExtractor::seekToOffset(off64_t offset) {
     mCurrentPageSamples = 0;
     mCurrentPage.mNumSegments = 0;
     mNextLaceIndex = 0;
-
+	}
     // XXX what if new page continues packet from last???
 
     return OK;

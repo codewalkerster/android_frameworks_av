@@ -21,6 +21,7 @@
 #include "MediaSender.h"
 #include "VideoFormats.h"
 #include "WifiDisplaySource.h"
+#include "VdinMediaSource.h"
 
 namespace android {
 
@@ -69,6 +70,8 @@ struct WifiDisplaySource::PlaybackSession : public AHandler {
     status_t pause();
 
     sp<IGraphicBufferProducer> getSurfaceTexture();
+    int32_t width() const;
+    int32_t height() const;
 
     void requestIDRFrame();
 
@@ -78,6 +81,8 @@ struct WifiDisplaySource::PlaybackSession : public AHandler {
         kWhatSessionEstablished,
         kWhatSessionDestroyed,
     };
+
+	void setVideoRotation(int deree);
 
 protected:
     virtual void onMessageReceived(const sp<AMessage> &msg);
@@ -118,12 +123,18 @@ private:
 
     int64_t mPrevTimeUs;
 
+    bool mAllTracksHavePacketizerIndex;
+    int32_t  mDebug;
+    AString mDebugFileName;
+
     sp<NuMediaExtractor> mExtractor;
     KeyedVector<size_t, size_t> mExtractorTrackToInternalTrack;
     bool mPullExtractorPending;
     int32_t mPullExtractorGeneration;
     int64_t mFirstSampleTimeRealUs;
     int64_t mFirstSampleTimeUs;
+
+	sp<VdinMediaSource> mVdinMediaSource;
 
     status_t setupMediaPacketizer(bool enableAudio, bool enableVideo);
 
@@ -146,6 +157,8 @@ private:
             unsigned contraintSet,
             size_t *numInputBuffers);
 
+    status_t addVideoSource();
+    
     status_t addVideoSource(
             VideoFormats::ResolutionType videoResolutionType,
             size_t videoResolutionIndex,

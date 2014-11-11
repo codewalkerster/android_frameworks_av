@@ -35,9 +35,11 @@ LOCAL_SRC_FILES:=               \
     device3/Camera3ZslStream.cpp \
     device3/StatusTracker.cpp \
     gui/RingBufferConsumer.cpp \
+    LoadXml.cpp      \
     utils/CameraTraces.cpp \
 
 LOCAL_SHARED_LIBRARIES:= \
+    libexpat \
     libui \
     liblog \
     libutils \
@@ -53,7 +55,8 @@ LOCAL_SHARED_LIBRARIES:= \
 
 LOCAL_C_INCLUDES += \
     system/media/camera/include \
-    external/jpeg
+    external/jpeg \
+    $(TOP)/external/expat/lib 
 
 
 LOCAL_CFLAGS += -Wall -Wextra

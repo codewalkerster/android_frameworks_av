@@ -23,7 +23,7 @@
 #include "api1/CameraClient.h"
 #include "device1/CameraHardwareInterface.h"
 #include "CameraService.h"
-
+#include "LoadXml.h"
 namespace android {
 
 #define LOG1(...) ALOGD_IF(gLogLevel >= 1, __VA_ARGS__);
@@ -422,10 +422,11 @@ status_t CameraClient::startRecordingMode() {
             return result;
         }
     }
-
+    mCameraService->playSound(CameraService::SOUND_RECORDING);
+    usleep(400000); // sleep 400ms to avoid videorecord sound record by camera
     // start recording mode
     enableMsgType(CAMERA_MSG_VIDEO_FRAME);
-    mCameraService->playSound(CameraService::SOUND_RECORDING);
+    //mCameraService->playSound(CameraService::SOUND_RECORDING);
     result = mHardware->startRecording();
     if (result != NO_ERROR) {
         ALOGE("mHardware->startRecording() failed with status %d", result);
@@ -595,10 +596,24 @@ status_t CameraClient::enableShutterSound(bool enable) {
 status_t CameraClient::sendCommand(int32_t cmd, int32_t arg1, int32_t arg2) {
     LOG1("sendCommand (pid %d)", getCallingPid());
     int orientation;
+    char* tempApkName=mCameraService->getLoadXml()->getApkPackageName(getCallingPid());
+    if(strcmp(tempApkName,"com.android.gallery3d")){
+        List_Or * temp=new List_Or();
+        if(mCameraService->getLoadXml()->findApkCp(tempApkName,temp)){
+            int tempPreviewOritation=atoi(temp->pro);
+            int tempCaptureOritation=atoi(temp->capo);
+            LOG1("temp_Previeworitation-------%d",tempPreviewOritation);
+            LOG1("temp_Captureoritation-------%d",tempCaptureOritation);
+            mHardware->sendCommand(CAMERA_APK_NAME, tempPreviewOritation, tempCaptureOritation); 
+        }
+        if(temp!=NULL){
+            delete temp;
+            temp=NULL;
+        }
+    }
     Mutex::Autolock lock(mLock);
     status_t result = checkPidAndHardware();
     if (result != NO_ERROR) return result;
-
     if (cmd == CAMERA_CMD_SET_DISPLAY_ORIENTATION) {
         // Mirror the preview if the camera is front-facing.
         orientation = getOrientation(arg1, mCameraFacing == CAMERA_FACING_FRONT);

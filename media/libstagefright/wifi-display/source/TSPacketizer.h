@@ -60,6 +60,8 @@ struct TSPacketizer : public RefBase {
     // encrypted mode.
     sp<ABuffer> prependCSD(
             size_t trackIndex, const sp<ABuffer> &accessUnit) const;
+    sp<ABuffer> prependStartCode(
+            size_t trackIndex, const sp<ABuffer> &accessUnit) const;
 
 protected:
     virtual ~TSPacketizer();

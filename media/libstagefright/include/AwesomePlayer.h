@@ -28,6 +28,7 @@
 #include <media/stagefright/MetaData.h>
 #include <utils/threads.h>
 #include <drm/DrmManagerClient.h>
+#include <player.h>
 
 namespace android {
 
@@ -71,7 +72,7 @@ struct AwesomePlayer {
     status_t setDataSource(const sp<IStreamSource> &source);
 
     void reset();
-
+    bool     PropIsEnable(const char* str, bool def);
     status_t prepare();
     status_t prepare_l();
     status_t prepareAsync();
@@ -79,6 +80,7 @@ struct AwesomePlayer {
 
     status_t play();
     status_t pause();
+    status_t stop();
 
     bool isPlaying() const;
 
@@ -104,6 +106,9 @@ struct AwesomePlayer {
     void postAudioTearDown();
     status_t dump(int fd, const Vector<String16> &args) const;
 
+    status_t setHEVCFlag(bool flag);
+    bool getHEVCFlag();
+	
 private:
     friend struct AwesomeEvent;
     friend struct PreviewPlayer;
@@ -171,6 +176,11 @@ private:
     bool mVideoRendererIsPreview;
     int32_t mMediaRenderingStartGeneration;
     int32_t mStartGeneration;
+
+    bool mHEVC;
+    bool m_openHEVC;
+    bool m_vpx;
+    bool mStop;
 
     ssize_t mActiveAudioTrackIndex;
     sp<MediaSource> mAudioTrack;
@@ -348,6 +358,9 @@ private:
     status_t setVideoScalingMode(int32_t mode);
     status_t setVideoScalingMode_l(int32_t mode);
     status_t getTrackInfo(Parcel* reply) const;
+    status_t updateMediaInfo(void);
+    status_t getMediaInfo(Parcel* reply);
+    aformat_t audioTypeConvert(enum CodecID id, pfile_type File_type);
 
     status_t selectAudioTrack_l(const sp<MediaSource>& source, size_t trackIndex);
 
@@ -359,6 +372,9 @@ private:
 
     AwesomePlayer(const AwesomePlayer &);
     AwesomePlayer &operator=(const AwesomePlayer &);
+public:
+    media_info_t        mStreamInfo;
+    ssize_t mActiveVideoTrackIndex;
 };
 
 }  // namespace android
