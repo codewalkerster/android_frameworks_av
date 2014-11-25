@@ -64,8 +64,8 @@ namespace android {
 	static status_t STATE_ERROR = 1;
 	static status_t STATE_OPEN = 2;
 
-#define  TRACE()	LOGV("[%s::%d]\n",__FUNCTION__,__LINE__)
-//#define  TRACE()	
+//#define  TRACE()	LOGV("[%s::%d]\n",__FUNCTION__,__LINE__)
+#define  TRACE()	
 #define IS_LOCAL_HTTP(uri) (uri && (strcasestr(uri,"://127.0.0.1") || strcasestr(uri,"://localhost")))
 #define IS_HTTP(uri) (uri && (strncmp(uri, "http", strlen("http")) == 0 || strncmp(uri, "shttp", strlen("shttp")) == 0 || strncmp(uri, "https", strlen("https")) == 0))
 bool IsManifestUrl( const char* url);
