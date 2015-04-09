@@ -121,7 +121,6 @@ SampleTable::SampleTable(const sp<DataSource> &source)
       mSampleSizeFieldSize(0),
       mDefaultSampleSize(0),
       mNumSampleSizes(0),
-      mHasTimeToSample(false),
       mTimeToSampleCount(0),
       mTimeToSample(),
       mSampleTimeEntries(NULL),
@@ -160,7 +159,7 @@ bool SampleTable::isValid() const {
     return mChunkOffsetOffset >= 0
         && mSampleToChunkOffset >= 0
         && mSampleSizeOffset >= 0
-        && mHasTimeToSample;
+        && !mTimeToSample.empty();
 }
 
 status_t SampleTable::setChunkOffsetParams(
@@ -327,7 +326,7 @@ status_t SampleTable::setSampleSizeParams(
 
 status_t SampleTable::setTimeToSampleParams(
         off64_t data_offset, size_t data_size) {
-    if (mHasTimeToSample || data_size < 8) {
+    if (!mTimeToSample.empty() || data_size < 8) {
         return ERROR_MALFORMED;
     }
 
@@ -354,6 +353,7 @@ status_t SampleTable::setTimeToSampleParams(
         ALOGE("  Error: Time-to-sample table size too large.");
         return ERROR_OUT_OF_RANGE;
     }
+    mTimeToSample.resize(mTimeToSampleCount * 2);
 
     // Note: At this point, we know that mTimeToSampleCount * 2 will not
     // overflow because of the above condition.
@@ -366,8 +366,6 @@ status_t SampleTable::setTimeToSampleParams(
     for (size_t i = 0; i < mTimeToSample.size(); ++i) {
         mTimeToSample.editItemAt(i) = ntohl(mTimeToSample[i]);
     }
-
-    mHasTimeToSample = true;
     return OK;
 }
 
