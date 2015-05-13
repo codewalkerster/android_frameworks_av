@@ -2511,6 +2511,21 @@ int64_t OMXCodec::getDecodingTimeUs() {
     return timeUs;
 }
 
+static void DropSpecialNal(MediaBuffer *buffer) {
+    if (buffer->range_length() < 4) {
+        return;
+    }
+
+    const uint8_t *ptr =
+        (const uint8_t *)buffer->data() + buffer->range_offset();
+
+    // Drop the special nal from encode comp.
+    if (!memcmp(ptr, "\x00\x00\x00\x1e", 4)) {
+        buffer->set_range(
+                buffer->range_offset(), 0);
+    }
+}
+
 void OMXCodec::on_message(const omx_message &msg) {
     if (mState == ERROR) {
         /*
@@ -2668,6 +2683,8 @@ void OMXCodec::on_message(const omx_message &msg) {
                 if (mIsEncoder && mIsVideo) {
                     int64_t decodingTimeUs = isCodecSpecific? 0: getDecodingTimeUs();
                     buffer->meta_data()->setInt64(kKeyDecodingTime, decodingTimeUs);
+                    if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_AVC, mMIME))
+                        DropSpecialNal(buffer);
                 }
 
                 if (mTargetTimeUs >= 0) {
