@@ -108,7 +108,7 @@ WmaAudioContext *wma_dec_init();
 int wma_dec_decode_frame(WmaAudioContext *avctx, unsigned char *inbuf, int input_size, signed short *outbuf, int *used);
 int wma_dec_free(WmaAudioContext *avctx);
 int wma_dec_get_property(WmaAudioContext *avctx, int property, int *value);
-int wma_dec_set_property(WmaAudioContext *avctx, int property, int value);
+int wma_dec_set_property(WmaAudioContext *avctx, int property, void *value);
 void wma_dec_reset(WmaAudioContext *avctx);
 
 #ifdef __cplusplus

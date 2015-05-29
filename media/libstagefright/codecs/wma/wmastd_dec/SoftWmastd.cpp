@@ -177,7 +177,7 @@ OMX_ERRORTYPE SoftWmastd::internalSetParameter(OMX_INDEXTYPE index,const OMX_PTR
 	        ALOGI("%s %d :exdatsize  =%d \n",__FUNCTION__,__LINE__,wfext.extradata_size);
             ALOGI("%s %d :block_align=%d \n",__FUNCTION__,__LINE__,wfext.nBlockAlign);
 	
-			wma_dec_set_property(wmactx,WMA_DEC_Set_Wavfmt,(int)(&wfext));
+			wma_dec_set_property(wmactx,WMA_DEC_Set_Wavfmt,&wfext);
 			init_flag=1;
             return OMX_ErrorNone;
         }
@@ -207,16 +207,16 @@ void SoftWmastd::onQueueFilled(OMX_U32 portIndex)
     }
     List<BufferInfo *> &inQueue = getPortQueue(0);
     List<BufferInfo *> &outQueue = getPortQueue(1);
-	int used,pktbuf_size,nb_sample,ret;
-	uint8_t *pktbuf=NULL;//less than 64k
-	
+    int used,pktbuf_size,nb_sample,ret;
+    uint8_t *pktbuf=NULL;//less than 64k
+
     while (!inQueue.empty() && !outQueue.empty()) {
         BufferInfo *inInfo = *inQueue.begin();
         OMX_BUFFERHEADERTYPE *inHeader = inInfo->mHeader;
 
         BufferInfo *outInfo = *outQueue.begin();
         OMX_BUFFERHEADERTYPE *outHeader = outInfo->mHeader;
-        
+
         if (inHeader->nFlags & OMX_BUFFERFLAG_EOS) {
             inQueue.erase(inQueue.begin());
             inInfo->mOwnedByUs = false;

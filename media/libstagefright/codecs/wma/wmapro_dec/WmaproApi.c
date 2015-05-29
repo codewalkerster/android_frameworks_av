@@ -73,7 +73,7 @@ int wmapro_dec_get_property(AudioContext *avctx, int property, int *value)
 }
 
 
-int wmapro_dec_set_property(AudioContext*avctx,int property,int value)
+int wmapro_dec_set_property(AudioContext*avctx,int property,void *value)
 {
 	waveformat_t *wfp = NULL;
 	psysfuncb_t *psysfuncb=NULL;

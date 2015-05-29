@@ -167,7 +167,7 @@ OMX_ERRORTYPE SoftWmapro::internalSetParameter(OMX_INDEXTYPE index,const OMX_PTR
 			wfext.nAvgBytesPerSec=AsfParams->nAvgBitratePerSec>>3;
 			wfext.extradata_size =AsfParams->extradata_size;
 			wfext.extradata      =(unsigned char*)AsfParams->extradata;
-			wmapro_dec_set_property(wmactx,WMAPRO_Set_WavFormat,(int)(&wfext));
+			wmapro_dec_set_property(wmactx,WMAPRO_Set_WavFormat,&wfext);
 			init_flag=1;
             return OMX_ErrorNone;
         }
@@ -190,8 +190,8 @@ void SoftWmapro::onQueueFilled(OMX_U32 portIndex)
     }
     List<BufferInfo *> &inQueue = getPortQueue(0);
     List<BufferInfo *> &outQueue = getPortQueue(1);
-	int used=0,pktbuf_size,nb_sample,ret,used_cnt=0;
-	uint8_t *pktbuf=NULL;//less than 64k
+    int used=0,pktbuf_size,nb_sample,ret,used_cnt=0;
+    uint8_t *pktbuf=NULL;//less than 64k
 	
     while (!inQueue.empty() && !outQueue.empty()) {
         BufferInfo *inInfo = *inQueue.begin();

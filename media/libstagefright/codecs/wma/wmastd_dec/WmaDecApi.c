@@ -95,7 +95,7 @@ int wma_dec_get_property(WmaAudioContext *avctx, int property, int *value)
     return WMA_DEC_ERR_NoErr;
 }
 
-int wma_dec_set_property(WmaAudioContext *avctx, int property, int value)
+int wma_dec_set_property(WmaAudioContext *avctx, int property, void *value)
 {  
     waveformatex_t *wfpt;
     waveformatex_t *wfp_av;

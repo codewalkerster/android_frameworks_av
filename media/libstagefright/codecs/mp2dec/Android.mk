@@ -1,5 +1,5 @@
 LOCAL_PATH := $(call my-dir)
-
+ifeq ($(TARGET_ARCH),arm)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE_TAGS := optional
@@ -88,3 +88,4 @@ LOCAL_MODULE := libstagefright_soft_mp2dec
 LOCAL_MODULE_TAGS := optional
 
 include $(BUILD_SHARED_LIBRARY)
+endif
