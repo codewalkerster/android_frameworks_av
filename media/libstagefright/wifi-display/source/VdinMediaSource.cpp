@@ -57,7 +57,7 @@ static const int64_t VDIN_MEDIA_SOURCE_TIMEOUT_NS = 3000000000LL;
 //#define AML_SCREEN_SOURCE              "screen_source"
 
 
-static void VdinDataCallBack(void *user, int *buffer){
+static void VdinDataCallBack(void *user, aml_screen_buffer_info_t *buffer){
     VdinMediaSource *source = static_cast<VdinMediaSource *>(user);
     source->dataCallBack(buffer);
     return;
@@ -263,7 +263,7 @@ status_t VdinMediaSource::read(MediaBuffer **buffer, const ReadOptions * /*optio
     Mutex::Autolock autoLock(mLock);
 
     int64_t cur_pts = 0;
-    unsigned buff_info[3] = {0,0,0};
+    FrameDataInfo frameDataInfo;
     int ret = 0;
     int count = 0;
     FrameBufferInfo* frame = NULL;
@@ -289,7 +289,7 @@ status_t VdinMediaSource::read(MediaBuffer **buffer, const ReadOptions * /*optio
         while (!mFramesReceived.empty()) {
             frame = *mFramesReceived.begin();
             mFramesReceived.erase(mFramesReceived.begin());
-            mScreenDev->ops.release_buffer(mScreenDev, (int *)frame->buf_ptr);
+            mScreenDev->ops.release_buffer(mScreenDev, frame->buf_ptr);
         }
         mFirstRead = true;
         return -EAGAIN;
@@ -298,18 +298,15 @@ status_t VdinMediaSource::read(MediaBuffer **buffer, const ReadOptions * /*optio
     frame = *mFramesReceived.begin();
     mFramesReceived.erase(mFramesReceived.begin());
 
-    MediaBuffer *tBuffer = new MediaBuffer((mCanvasMode == true)?(3*sizeof(unsigned)):(mWidth*mHeight*3/2));
+    MediaBuffer *tBuffer = new MediaBuffer((mCanvasMode == true)?(sizeof(FrameBufferInfo)):(mWidth*mHeight*3/2));
     if (mCanvasMode == false) {
-        ConvertYUV420SemiPlanarToYUV420Planar((uint8_t *)frame->buf_ptr, (uint8_t *)tBuffer->data(), mWidth, mHeight);
-#if USE_VDIN
-        mScreenDev->ops.release_buffer(mScreenDev, (int *)frame->buf_ptr);
-#endif
+        mScreenDev->ops.release_buffer(mScreenDev, frame->buf_ptr);
     }else{
-        buff_info[0] = kMetadataBufferTypeCanvasSource;
-        buff_info[1] = (unsigned)frame->buf_ptr;
-        buff_info[2] = (unsigned)frame->canvas;
+        frameDataInfo.MetadataBufferType = kMetadataBufferTypeCanvasSource;
+        frameDataInfo.buf_ptr            = frame->buf_ptr;
+        frameDataInfo.canvasNum          = frame->canvas;
         //ALOGV("dataCallBack buf_ptr:%x canvas:%x", frame->buf_ptr, frame->canvas);
-        memcpy((uint8_t *)tBuffer->data(), &buff_info[0],sizeof(buff_info));
+        memcpy((uint8_t *)tBuffer->data(), &frameDataInfo, sizeof(FrameDataInfo));
         cur_pts = (int64_t)frame->timestampUs;
     }
     *buffer = tBuffer;
@@ -334,10 +331,10 @@ void VdinMediaSource::signalBufferReturned(MediaBuffer *buffer) {
     Mutex::Autolock autoLock(mLock);
 
     if (mCanvasMode == true) {
-        unsigned buff_info[3] = {0,0,0};
-        memcpy(&buff_info[0],(uint8_t *)buffer->data(), sizeof(buff_info));
+        FrameDataInfo frameDataInfo;
+        memcpy(&frameDataInfo, (uint8_t *)buffer->data(), sizeof(FrameDataInfo));
 #if USE_VDIN
-        mScreenDev->ops.release_buffer(mScreenDev, (int *)buff_info[1]);
+        mScreenDev->ops.release_buffer(mScreenDev, frameDataInfo.buf_ptr);
 #endif
     }
 
@@ -346,14 +343,14 @@ void VdinMediaSource::signalBufferReturned(MediaBuffer *buffer) {
     ++mNumFramesEncoded;
 }
 
-int VdinMediaSource::dataCallBack(int *buffer) {
+int VdinMediaSource::dataCallBack(aml_screen_buffer_info_t *buffer) {
     int ret = NO_ERROR;
     if ((mStarted) && (mError == false)) {
-        if (buffer == NULL || (buffer[0] == 0)) {
+        if (buffer == NULL || (buffer->buffer_mem == 0)) {
             ALOGE("aquire_buffer fail, ptr:0x%x", buffer);
             return BAD_VALUE;
         }
-        if ((mCanvasMode == true) && (buffer[1] == 0)) {
+        if ((mCanvasMode == true) && (buffer->buffer_canvas == 0)) {
             mError = true;
             ALOGE("Could get canvas info from device!");
             return BAD_VALUE;
@@ -367,7 +364,7 @@ int VdinMediaSource::dataCallBack(int *buffer) {
             if (mStartTimeOffsetUs > 0) {
                 if (timestampUs-mStartTimeUs < mStartTimeOffsetUs) {
 #if USE_VDIN
-                    mScreenDev->ops.release_buffer(mScreenDev, (int *)buffer[0]);
+                    mScreenDev->ops.release_buffer(mScreenDev, buffer->buffer_mem);
 #endif
                     return NO_ERROR;
                 }
@@ -378,7 +375,7 @@ int VdinMediaSource::dataCallBack(int *buffer) {
         FrameBufferInfo* frame = new FrameBufferInfo;
         if (!frame) {
 #if USE_VDIN
-            mScreenDev->ops.release_buffer(mScreenDev, (int *)buffer[0]);
+            mScreenDev->ops.release_buffer(mScreenDev, buffer->buffer_mem);
 #endif
             mError = true;
             ALOGE("Could Alloc Frame!");
@@ -388,10 +385,10 @@ int VdinMediaSource::dataCallBack(int *buffer) {
         ++mNumFramesReceived;
         {
             Mutex::Autolock autoLock(mLock);
-            frame->buf_ptr = (unsigned char *)buffer[0];
-            frame->canvas = buffer[1];
+            frame->buf_ptr = buffer->buffer_mem;
+            frame->canvas = buffer->buffer_canvas;
             //frame->timestampUs = mStartTimeOffsetUs + (timestampUs - mFirstFrameTimestamp);
-            frame->timestampUs = (int64_t)buffer[2]*1000*1000 + (int64_t)buffer[3];
+            frame->timestampUs = (int64_t)buffer->tv_sec*1000*1000 + (int64_t)buffer->tv_usec;
             mFramesReceived.push_back(frame);
             mFrameAvailableCondition.signal();
         }

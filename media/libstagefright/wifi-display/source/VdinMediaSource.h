@@ -74,17 +74,23 @@ public:
     // To be called before start()
     status_t setUseAbsoluteTimestamps();
 
-    int dataCallBack(int *buffer);
+    int dataCallBack(aml_screen_buffer_info_t *buffer);
 
     void setVideoRotation(int degree);
 
 private:
 
     typedef struct FrameBufferInfo_s{
-        unsigned char* buf_ptr;
-        unsigned canvas;
+        void* buf_ptr;
+        int canvas;
         int64_t timestampUs;
     }FrameBufferInfo;
+
+    typedef struct FrameDataInfo_s{
+        int MetadataBufferType;
+        void *buf_ptr;
+        int canvasNum;
+    }FrameDataInfo;
 
     status_t reset(void);
 
