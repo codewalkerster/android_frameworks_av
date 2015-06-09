@@ -227,6 +227,8 @@ static status_t StatusFromOMXError(OMX_ERRORTYPE err) {
         case OMX_ErrorUnsupportedSetting:
         case OMX_ErrorUnsupportedIndex:
             return ERROR_UNSUPPORTED;
+        case OMX_ErrorNoMore:
+            return OMX_ErrorNoMore;
         default:
             return UNKNOWN_ERROR;
     }
