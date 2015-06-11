@@ -3107,8 +3107,10 @@ int decode_packet(AudioContext *avctx, void *data, int *data_size, uint8_t* buf,
     if (s->packet_done || s->packet_loss) {
     
         s->packet_done = 0;//只解大小至少为avctx->block_align的包
-        if (buf_size < avctx->block_align) /*sanity check for the buffer length */
-            return 0;	
+        if (buf_size < avctx->block_align) { /*sanity check for the buffer length */
+            ALOGI("[%s %d]WARNING:buf_size/%d < avctx->block_align/%d,discard it!\n",__FUNCTION__,__LINE__,buf_size,avctx->block_align);
+            return WMAPRO_ERR_InvalidData;
+        }
         s->next_packet_start = buf_size - avctx->block_align;
         buf_size = avctx->block_align;
         s->buf_bit_size = buf_size << 3;
