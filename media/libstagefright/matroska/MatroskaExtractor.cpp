@@ -1099,7 +1099,7 @@ bool SniffMatroska(
     }
 
     mimeType->setTo(MEDIA_MIMETYPE_CONTAINER_MATROSKA);
-    *confidence = 0.6;
+    *confidence = 0.01;
 
     return true;
 }
