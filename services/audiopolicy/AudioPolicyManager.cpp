@@ -878,6 +878,7 @@ sp<AudioPolicyManager::IOProfile> AudioPolicyManager::getProfileForDirectOutput(
                     NULL /*updatedSamplingRate*/, format, channelMask,
                     flags & AUDIO_OUTPUT_FLAG_COMPRESS_OFFLOAD ?
                         AUDIO_OUTPUT_FLAG_COMPRESS_OFFLOAD : AUDIO_OUTPUT_FLAG_DIRECT);
+            ALOGVV("found %d,type %d,type %d\n",found,	mAvailableOutputDevices.types() ,profile->mSupportedDevices.types());
             if (found && (mAvailableOutputDevices.types() & profile->mSupportedDevices.types())) {
                 return profile;
             }
@@ -1110,9 +1111,15 @@ audio_io_handle_t AudioPolicyManager::getOutputForDevice(
             if (!desc->isDuplicated() && (profile == desc->mProfile)) {
                 outputDesc = desc;
                 // reuse direct output if currently open and configured with same parameters
-                if ((samplingRate == outputDesc->mSamplingRate) &&
+                // reuse direct output if currently open and configured with same parameters
+                if ( (!audio_is_linear_pcm(format)) &&   \
+                        (!audio_is_linear_pcm(outputDesc->mFormat))   \
+                        &&(channelMask == outputDesc->mChannelMask)) {
+/*
+if ((samplingRate == outputDesc->mSamplingRate) &&
                         (format == outputDesc->mFormat) &&
                         (channelMask == outputDesc->mChannelMask)) {
+*/
                     outputDesc->mDirectOpenCount++;
                     ALOGV("getOutput() reusing direct output %d", mOutputs.keyAt(i));
                     return mOutputs.keyAt(i);
@@ -7415,7 +7422,6 @@ bool AudioPolicyManager::IOProfile::isCompatibleProfile(audio_devices_t device,
     const bool isPlaybackThread = mType == AUDIO_PORT_TYPE_MIX && mRole == AUDIO_PORT_ROLE_SOURCE;
     const bool isRecordThread = mType == AUDIO_PORT_TYPE_MIX && mRole == AUDIO_PORT_ROLE_SINK;
     ALOG_ASSERT(isPlaybackThread != isRecordThread);
-
     if (device != AUDIO_DEVICE_NONE && mSupportedDevices.getDevice(device, address) == 0) {
         return false;
     }
@@ -7433,7 +7439,7 @@ bool AudioPolicyManager::IOProfile::isCompatibleProfile(audio_devices_t device,
     }
 
     if (!audio_is_valid_format(format) || checkFormat(format) != NO_ERROR) {
-        return false;
+         return false;
     }
 
     if (isPlaybackThread && (!audio_is_output_channel(channelMask) ||
@@ -7442,7 +7448,7 @@ bool AudioPolicyManager::IOProfile::isCompatibleProfile(audio_devices_t device,
     }
     if (isRecordThread && (!audio_is_input_channel(channelMask) ||
             checkCompatibleChannelMask(channelMask) != NO_ERROR)) {
-        return false;
+            return false;
     }
 
     if (isPlaybackThread && (mFlags & flags) != flags) {
