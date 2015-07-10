@@ -188,6 +188,7 @@ private:
     Vector<BufferInfo> mBuffers[2];
     bool mPortEOS[2];
     status_t mInputEOSResult;
+    bool mLowLatencyMode;
 
     List<sp<AMessage> > mDeferredQueue;
 
