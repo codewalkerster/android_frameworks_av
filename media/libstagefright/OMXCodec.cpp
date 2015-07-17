@@ -1107,10 +1107,20 @@ void OMXCodec::setVideoInputFormat(
         compressionFormat = OMX_VIDEO_CodingMPEG4;
     } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_H263, mime)) {
         compressionFormat = OMX_VIDEO_CodingH263;
-	}else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_RM, mime)) {
-		compressionFormat = OMX_VIDEO_CodingRV;
-	} else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_WMV2, mime)) {
-		compressionFormat = OMX_VIDEO_CodingWMV;	
+    }else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_RM, mime)) {
+        compressionFormat = OMX_VIDEO_CodingRV;
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_WMV2, mime)) {
+        compressionFormat = OMX_VIDEO_CodingWMV;
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_MPEG2, mime)) {
+        compressionFormat = OMX_VIDEO_CodingMPEG2;
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_VC1, mime)) {
+        compressionFormat = static_cast<OMX_VIDEO_CODINGTYPE>(OMX_VIDEO_CodingVC1);
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_WVC1, mime)) {
+        compressionFormat = static_cast<OMX_VIDEO_CODINGTYPE>(OMX_VIDEO_CodingVC1);
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_WMV3, mime)) {
+        compressionFormat = static_cast<OMX_VIDEO_CODINGTYPE>(OMX_VIDEO_CodingWMV3);
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_MJPEG, mime)) {
+        compressionFormat = OMX_VIDEO_CodingMJPEG;
     } else {
         ALOGE("Not a supported video mime type: %s", mime);
         CHECK(!"Should not be here. Not a supported video mime type.");
@@ -1511,6 +1521,16 @@ status_t OMXCodec::setVideoOutputFormat(
         compressionFormat = OMX_VIDEO_CodingVP9;
     } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_MPEG2, mime)) {
         compressionFormat = OMX_VIDEO_CodingMPEG2;
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_MPEG2, mime)) {
+        compressionFormat = OMX_VIDEO_CodingMPEG2;
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_VC1, mime)) {
+        compressionFormat = static_cast<OMX_VIDEO_CODINGTYPE>(OMX_VIDEO_CodingVC1);
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_WVC1, mime)) {
+        compressionFormat = static_cast<OMX_VIDEO_CODINGTYPE>(OMX_VIDEO_CodingVC1);
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_WMV3, mime)) {
+        compressionFormat = static_cast<OMX_VIDEO_CODINGTYPE>(OMX_VIDEO_CodingWMV3);
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_MJPEG, mime)) {
+        compressionFormat = OMX_VIDEO_CodingMJPEG;
 #ifdef USE_AM_SOFT_DEMUXER_CODEC 
     } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_VP6, mime)  ||
                !strcasecmp(MEDIA_MIMETYPE_VIDEO_VP6A, mime) ||
@@ -4690,6 +4710,7 @@ static const char *videoCompressionFormatString(OMX_VIDEO_CODINGTYPE type) {
         "OMX_VIDEO_CodingRV",
         "OMX_VIDEO_CodingAVC",
         "OMX_VIDEO_CodingMJPEG",
+        "OMX_VIDEO_CodingVC1",
     };
 
     size_t numNames = sizeof(kNames) / sizeof(kNames[0]);

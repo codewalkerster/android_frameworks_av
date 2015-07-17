@@ -30,8 +30,9 @@
 #include <media/stagefright/MetaData.h>
 #include <media/stagefright/Utils.h>
 #include <utils/String8.h>
-
 #include <inttypes.h>
+
+#define MKTAG(a,b,c,d) ((d) | ((c) << 8) | ((b) << 16) | ((a) << 24))
 
 namespace android {
 
@@ -970,6 +971,36 @@ void MatroskaExtractor::addTracks() {
                     meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_VP8);
                 } else if (!strcmp("V_VP9", codecID)) {
                     meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_VP9);
+                } else if (!strcmp("V_MS/VFW/FOURCC", codecID)) {
+                    unsigned int fourcc = 0;;
+                    ALOGW("codecID=%s,codecPrivateSize=%d",codecID,codecPrivateSize);
+                    int extradata_offset = 0;
+                    if (codecPrivateSize >= 40 && codecPrivate != NULL) {
+                        fourcc = MKTAG(codecPrivate[16], codecPrivate[17],codecPrivate[18], codecPrivate[19]);
+                        ALOGW("codecPrivate[16]=%c,fourcc=%x",codecPrivate[16],fourcc);
+                        ALOGW("codecPrivate[17]=%c",codecPrivate[17]);
+                        ALOGW("codecPrivate[18]=%c",codecPrivate[18]);
+                        ALOGW("codecPrivate[19]=%c",codecPrivate[19]);
+                        extradata_offset = 40;
+                        addESDSFromCodecPrivate(
+                                meta, false, codecPrivate+extradata_offset, codecPrivateSize-extradata_offset);
+                    }
+                    if (fourcc == MKTAG('M', 'J', 'P', 'G')) {
+                        meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_MJPEG);
+                    } else if (fourcc == MKTAG('W', 'V', 'C', '1')) {
+                        meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_VC1);
+                    } else if (fourcc == MKTAG('W', 'M', 'V', '3')) {
+                        meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_WMV3);
+                    } else {
+                        ALOGW("%s is not supported.", codecID);
+                        continue;
+                    }
+                } else if (!strcmp("V_MPEG1", codecID)) {
+                        meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_MPEG2);
+                } else if (!strcmp("V_MPEG2", codecID)) {
+                        meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_MPEG2);
+                } else if (!strcmp("V_MPEG4/MS/V3", codecID)) {
+                        meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_MPEG4);
                 } else {
                     ALOGW("%s is not supported.", codecID);
                     continue;
