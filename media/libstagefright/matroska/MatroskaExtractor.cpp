@@ -136,6 +136,7 @@ private:
     enum Type {
         AVC,
         AAC,
+        RAW,
         OTHER
     };
 
@@ -236,6 +237,8 @@ MatroskaSource::MatroskaSource(
         ALOGV("mNALSizeLen = %zu", mNALSizeLen);
     } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AAC)) {
         mType = AAC;
+    } else if(!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_RAW)){
+        mType = RAW;
     }
 }
 
@@ -434,6 +437,7 @@ void BlockIterator::seek(
         }
     }
 
+    const mkvparser::Track *pAudioTrack = NULL;
     const mkvparser::CuePoint::TrackPosition *pTP = NULL;
     const mkvparser::Track *thisTrack = pTracks->GetTrackByNumber(mTrackNum);
     if (thisTrack->GetType() == 1) { // video
@@ -447,6 +451,12 @@ void BlockIterator::seek(
             if (pTrack && pTrack->GetType() == 1 && pCues->Find(seekTimeNs, pTrack, pCP, pTP)) {
                 ALOGV("Video track located at %zu", index);
                 break;
+            }
+            if (pTrack && pTrack->GetType() == 2 && pAudioTrack == NULL) {
+                if (pCues->Find(seekTimeNs, pTrack, pCP, pTP)) {
+                   ALOGV("valid audio track located at %d", index);
+                   pAudioTrack = pTrack;
+                }
             }
         }
     }
@@ -533,6 +543,27 @@ status_t MatroskaSource::readBlock() {
 
     int64_t timeUs = mBlockIter.blockTimeUs();
 
+    if (mType == RAW) {
+        unsigned char tempdata[32768] = {0};
+        int index = 0;
+
+        for (int i = 0; i < block->GetFrameCount(); ++i) {
+            const mkvparser::Block::Frame &frame = block->GetFrame(i);
+            long n = frame.Read(mExtractor->mReader, (unsigned char *)(tempdata + index));
+            if (n != 0) {
+                mPendingFrames.clear();
+                mBlockIter.advance();
+                return ERROR_IO;
+            }
+            index += frame.len;
+        }
+
+        MediaBuffer *mbuf = new MediaBuffer(index);
+        mbuf->meta_data()->setInt64(kKeyTime, timeUs);
+        mbuf->meta_data()->setInt32(kKeyIsSyncFrame, block->IsKey());
+        memcpy((char *)mbuf->data(), tempdata, index);
+        mPendingFrames.push_back(mbuf);
+    }else
     for (int i = 0; i < block->GetFrameCount(); ++i) {
         const mkvparser::Block::Frame &frame = block->GetFrame(i);
 
@@ -1035,6 +1066,8 @@ void MatroskaExtractor::addTracks() {
                     mSeekPreRollNs = track->GetSeekPreRoll();
                 } else if (!strcmp("A_MPEG/L3", codecID)) {
                     meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_MPEG);
+                } else if(!strcmp("A_PCM/INT/LIT", codecID)){
+                    meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_RAW);
                 } else {
                     ALOGW("%s is not supported.", codecID);
                     continue;
