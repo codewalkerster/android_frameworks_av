@@ -747,6 +747,10 @@ status_t ACodec::configureOutputBuffersFromNativeWindow(
     err = mNativeWindow->query(
             mNativeWindow.get(), NATIVE_WINDOW_MIN_UNDEQUEUED_BUFFERS,
             (int *)minUndequeuedBuffers);
+    if (mLowLatencyMode) {     //set BufferQueue async mode
+        *minUndequeuedBuffers += 1;
+        mNativeWindow->setSwapInterval(mNativeWindow.get(),0);
+    }
 
     if (err != 0) {
         ALOGE("NATIVE_WINDOW_MIN_UNDEQUEUED_BUFFERS query failed: %s (%d)",
@@ -1221,6 +1225,16 @@ status_t ACodec::configureCodec(
     if (err != OK) {
         return err;
     }
+
+
+    int32_t low_latency_mode = 0;
+    if (msg->findInt32("low-latency", &low_latency_mode)) {
+        OMX_BOOL enable = (OMX_BOOL) low_latency_mode;
+        err = mOMX->setParameter(
+            mNode, static_cast<OMX_INDEXTYPE>(OMX_IndexParamLowLatencyMode),
+            &enable, sizeof(enable));
+    }
+    mLowLatencyMode = low_latency_mode;
 
     int32_t bitRate = 0;
     // FLAC encoder doesn't need a bitrate, other encoders do
