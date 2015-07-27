@@ -2351,6 +2351,12 @@ static const struct VideoCodingMapEntry {
     { MEDIA_MIMETYPE_VIDEO_VP9, OMX_VIDEO_CodingVP9 },
     { MEDIA_MIMETYPE_VIDEO_HEVC, OMX_VIDEO_CodingHEVC },
     { MEDIA_MIMETYPE_VIDEO_RM, OMX_VIDEO_CodingRV},
+#ifdef USE_AM_SOFT_DEMUXER_CODEC
+    { MEDIA_MIMETYPE_VIDEO_VP6, OMX_VIDEO_CodingVPX },
+    { MEDIA_MIMETYPE_VIDEO_VP6F, OMX_VIDEO_CodingVPX },
+    { MEDIA_MIMETYPE_VIDEO_VP6A, OMX_VIDEO_CodingVPX },
+#endif
+
 };
 
 static status_t GetVideoCodingTypeFromMime(
