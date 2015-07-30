@@ -1236,6 +1236,14 @@ status_t ACodec::configureCodec(
     }
     mLowLatencyMode = low_latency_mode;
 
+    int32_t Is4k_osd = 0;
+    if (msg->findInt32("4k-osd", &Is4k_osd)) {
+        OMX_BOOL enable = (OMX_BOOL)Is4k_osd;
+        err = mOMX->setParameter(
+            mNode, static_cast<OMX_INDEXTYPE>(OMX_IndexParam4kosd),
+                &enable, sizeof(enable));
+    }
+
     int32_t bitRate = 0;
     // FLAC encoder doesn't need a bitrate, other encoders do
     if (encoder && strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_FLAC)
