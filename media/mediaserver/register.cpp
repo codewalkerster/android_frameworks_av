@@ -27,15 +27,15 @@ namespace android {
 static sp<SharedLibrary> libamlogicmedia;
 static bool  LoadAndInitAmlogicMediaFactory(void)
 {
-	sp<SharedLibrary> mLibrary;
-	int err;
-	String8 name("libmedia_amlogic.so");
-	mLibrary = new SharedLibrary(name);
+    sp<SharedLibrary> mLibrary;
+    int err;
+    String8 name("libmedia_amlogic.so");
+    mLibrary = new SharedLibrary(name);
     if (!*mLibrary) {
        ALOGE("load libmedia_amlogic.so for amlogicmedia failed:%s", mLibrary->lastError());
        return false;
     }
-	typedef int (*init_fun)(void);
+    typedef int (*init_fun)(void);
 
     init_fun init =
         (init_fun)mLibrary->lookup("_ZN7android23AmlogicMediaFactoryInitEv");
@@ -45,11 +45,11 @@ static bool  LoadAndInitAmlogicMediaFactory(void)
        mLibrary.clear();
        return false;
     }
-	err=init();
-	if(err != 0){
-		ALOGE("AmlogicMediaFactoryInit failed:%s", mLibrary->lastError());
-		return false;
-	}
+    err=init();
+    if (err != 0) {
+        ALOGE("AmlogicMediaFactoryInit failed:%s", mLibrary->lastError());
+        return false;
+    }
 
     init = (init_fun)mLibrary->lookup("_ZN7android35AmlogicMetadataRetrieverFactoryInitEv");
 
@@ -57,21 +57,48 @@ static bool  LoadAndInitAmlogicMediaFactory(void)
        ALOGE("AmlogicMetadataRetrieverFactoryInit failed:%s", mLibrary->lastError());
        return false;
     }
-	err=init();
-	if (err != 0) {
-		ALOGE("AmlogicMetadataRetrieverFactoryInit failed:%s", mLibrary->lastError());
-		return false;
-	}
+    err = init();
+    if (err != 0) {
+        ALOGE("AmlogicMetadataRetrieverFactoryInit failed:%s", mLibrary->lastError());
+        return false;
+    }
 
    libamlogicmedia =mLibrary;
    return true;
 }
 
+static bool LoadAndInitAmlogicScreenMediaSource()
+{
+    sp<SharedLibrary> mLibrary;
+    int err;
+    String8 name("libstagefright_screenmediasource.so");
+    mLibrary = new SharedLibrary(name);
+    if (!*mLibrary) {
+        ALOGE("load libstagefright_screenmediasource.so for libstagefright_screenmediasource failed:%s", mLibrary->lastError());
+        return false;
+    }
+    typedef int (*init_fun)(void);
+
+    init_fun init = (init_fun)mLibrary->lookup("_ZN7android28AmlogicScreenMediaSourceInitEv");
+
+    if (init == NULL) {
+        ALOGE("AmlogicScreenMediaSourceInit failed:%s", mLibrary->lastError());
+        mLibrary.clear();
+        return false;
+    }
+    err=init();
+    if (err != 0) {
+        ALOGE("AmlogicScreenMediaSourceInit failed:%s", mLibrary->lastError());
+        return false;
+    }
+    return true;
+}
 }
 
 void registerExtensions()
 {
-	android::LoadAndInitAmlogicMediaFactory();
+    android::LoadAndInitAmlogicMediaFactory();
+    android::LoadAndInitAmlogicScreenMediaSource();
 }
 
 

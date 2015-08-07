@@ -4335,11 +4335,23 @@ bool ACodec::BaseState::onOMXEmptyBufferDone(IOMX::buffer_id bufferID) {
     CHECK_EQ((int)info->mStatus, (int)BufferInfo::OWNED_BY_COMPONENT);
     info->mStatus = BufferInfo::OWNED_BY_US;
 
-    // We're in "store-metadata-in-buffers" mode, the underlying
-    // OMX component had access to data that's implicitly refcounted
-    // by this "MediaBuffer" object. Now that the OMX component has
-    // told us that it's done with the input buffer, we can decrement
-    // the mediaBuffer's reference count.
+    const sp<AMessage> &bufferMeta = info->mData->meta();
+    void *mediaBuffer;
+    if (bufferMeta->findPointer("mediaBuffer", &mediaBuffer)
+            && mediaBuffer != NULL) {
+        // We're in "store-metadata-in-buffers" mode, the underlying
+        // OMX component had access to data that's implicitly refcounted
+        // by this "mediaBuffer" object. Now that the OMX component has
+        // told us that it's done with the input buffer, we can decrement
+        // the mediaBuffer's reference count.
+
+        ALOGV("releasing mbuf %p", mediaBuffer);
+
+        ((MediaBuffer *)mediaBuffer)->release();
+        mediaBuffer = NULL;
+
+        bufferMeta->setPointer("mediaBuffer", NULL);
+    }
     info->mData->setMediaBufferBase(NULL);
 
     PortMode mode = getPortMode(kPortIndexInput);
