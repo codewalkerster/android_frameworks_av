@@ -30,7 +30,7 @@ struct MetaData;
 struct NuPlayerDriver;
 
 struct NuPlayer : public AHandler {
-    NuPlayer();
+    NuPlayer(NUPLAYER_STREAMTYPE type = NU_STREAM_NONE);
 
     void setUID(uid_t uid);
 
@@ -148,6 +148,8 @@ private:
 
     int32_t mPollDurationGeneration;
     int32_t mTimedTextGeneration;
+
+    NUPLAYER_STREAMTYPE mStreamType;
 
     enum FlushStatus {
         NONE,

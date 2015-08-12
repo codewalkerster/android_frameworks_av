@@ -582,7 +582,7 @@ status_t NuPlayer::Decoder::fetchInputData(sp<AMessage> &reply) {
                     formatChange = !seamlessFormatChange;
                 }
 
-                if (formatChange || timeChange) {
+                if (timeChange) {
                     sp<AMessage> msg = mNotify->dup();
                     msg->setInt32("what", kWhatInputDiscontinuity);
                     msg->setInt32("formatChange", formatChange);
@@ -592,8 +592,9 @@ status_t NuPlayer::Decoder::fetchInputData(sp<AMessage> &reply) {
                 if (formatChange /* not seamless */) {
                     // must change decoder
                     // return EOS and wait to be killed
-                    mFormatChangePending = true;
-                    return ERROR_END_OF_STREAM;
+                    //mFormatChangePending = true;
+                    //return ERROR_END_OF_STREAM;
+                    err = OK;
                 } else if (timeChange) {
                     // need to flush
                     // TODO: Ideally we shouldn't need a flush upon time

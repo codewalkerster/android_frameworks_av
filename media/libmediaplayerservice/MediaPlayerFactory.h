@@ -18,6 +18,7 @@
 #ifndef ANDROID_MEDIAPLAYERFACTORY_H
 #define ANDROID_MEDIAPLAYERFACTORY_H
 
+#include <media/IMediaHTTPService.h>
 #include <media/MediaPlayerInterface.h>
 #include <media/stagefright/foundation/ABase.h>
 
@@ -50,7 +51,8 @@ class MediaPlayerFactory {
                                     player_type type);
     static void unregisterFactory(player_type type);
     static player_type getPlayerType(const sp<IMediaPlayer>& client,
-                                     const char* url);
+                                     const char* url,
+                                     const sp<IMediaHTTPService>& httpservice);
     static player_type getPlayerType(const sp<IMediaPlayer>& client,
                                      int fd,
                                      int64_t offset,
@@ -63,6 +65,8 @@ class MediaPlayerFactory {
                                             notify_callback_f notifyFunc);
 
     static void registerBuiltinFactories();
+
+    static sp<IMediaHTTPService> sHttpService;
 
   private:
     typedef KeyedVector<player_type, IFactory*> tFactoryMap;

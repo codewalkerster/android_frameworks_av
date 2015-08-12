@@ -65,6 +65,7 @@ private:
     sp<IMediaHTTPService> mHTTPService;
     AString mURL;
     KeyedVector<String8, String8> mExtraHeaders;
+    bool mBuffering;
     uint32_t mFlags;
     status_t mFinalResult;
     off64_t mOffset;

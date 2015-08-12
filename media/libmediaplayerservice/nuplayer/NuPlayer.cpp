@@ -163,8 +163,9 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NuPlayer::NuPlayer()
+NuPlayer::NuPlayer(NUPLAYER_STREAMTYPE type)
     : mUIDValid(false),
+      mStreamType(type),
       mSourceFlags(0),
       mOffloadAudio(false),
       mAudioDecoderGeneration(0),
@@ -235,7 +236,7 @@ void NuPlayer::setDataSourceAsync(
     sp<AMessage> notify = new AMessage(kWhatSourceNotify, id());
 
     sp<Source> source;
-    if (IsHTTPLiveURL(url)) {
+    if (NU_STREAM_HLS == mStreamType || IsHTTPLiveURL(url)) {
         source = new HTTPLiveSource(notify, httpService, url, headers);
     } else if (!strncasecmp(url, "rtsp://", 7)) {
         source = new RTSPSource(

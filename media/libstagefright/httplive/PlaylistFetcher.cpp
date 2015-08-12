@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-//#define LOG_NDEBUG 0
+#define LOG_NDEBUG 0
 #define LOG_TAG "PlaylistFetcher"
 #include <utils/Log.h>
 
@@ -69,10 +69,13 @@ PlaylistFetcher::PlaylistFetcher(
       mStartTimeUsRelative(false),
       mLastPlaylistFetchTimeUs(-1ll),
       mSeqNumber(-1),
+      mDownloadedNum(0),
       mNumRetries(0),
       mStartup(true),
       mAdaptive(false),
+      mFetchingNotify(false),
       mPrepared(false),
+      mPostPrepared(false),
       mNextPTSTimeUs(-1ll),
       mMonitorQueueGeneration(0),
       mSubtitleGeneration(subtitleGeneration),
@@ -100,8 +103,13 @@ int64_t PlaylistFetcher::getSegmentStartTimeUs(int32_t seqNumber) const {
     int32_t lastSeqNumberInPlaylist =
         firstSeqNumberInPlaylist + (int32_t)mPlaylist->size() - 1;
 
-    CHECK_GE(seqNumber, firstSeqNumberInPlaylist);
-    CHECK_LE(seqNumber, lastSeqNumberInPlaylist);
+    if (seqNumber < firstSeqNumberInPlaylist
+        || seqNumber > lastSeqNumberInPlaylist) {
+        return 0ll;
+    }
+
+    //CHECK_GE(seqNumber, firstSeqNumberInPlaylist);
+    //CHECK_LE(seqNumber, lastSeqNumberInPlaylist);
 
     int64_t segmentStartUs = 0ll;
     for (int32_t index = 0;
@@ -380,6 +388,18 @@ void PlaylistFetcher::stopAsync(bool clear) {
     msg->post();
 }
 
+void PlaylistFetcher::changeURI(AString uri) {
+    mURI = uri;
+}
+
+uint32_t PlaylistFetcher::getStreamTypeMask() {
+    return mStreamTypeMask;
+}
+
+void PlaylistFetcher::setStreamTypeMask(uint32_t streamMask) {
+    mStreamTypeMask = streamMask;
+}
+
 void PlaylistFetcher::resumeUntilAsync(const sp<AMessage> &params) {
     AMessage* msg = new AMessage(kWhatResumeUntil, id());
     msg->setMessage("params", params);
@@ -388,6 +408,16 @@ void PlaylistFetcher::resumeUntilAsync(const sp<AMessage> &params) {
 
 void PlaylistFetcher::onMessageReceived(const sp<AMessage> &msg) {
     switch (msg->what()) {
+        case kWhatCodecSpecificData:
+        {
+            sp<ABuffer> buffer;
+            msg->findBuffer("buffer", &buffer);
+            sp<AMessage> notify = mNotify->dup();
+            notify->setInt32("what", kWhatCodecSpecificData);
+            notify->setBuffer("buffer", buffer);
+            notify->post();
+            break;
+        }
         case kWhatStart:
         {
             status_t err = onStart(msg);
@@ -405,6 +435,7 @@ void PlaylistFetcher::onMessageReceived(const sp<AMessage> &msg) {
 
             sp<AMessage> notify = mNotify->dup();
             notify->setInt32("what", kWhatPaused);
+            notify->setString("uri", mURI.c_str());
             notify->post();
             break;
         }
@@ -415,6 +446,8 @@ void PlaylistFetcher::onMessageReceived(const sp<AMessage> &msg) {
 
             sp<AMessage> notify = mNotify->dup();
             notify->setInt32("what", kWhatStopped);
+            notify->setString("uri", mURI.c_str());
+            notify->setPointer("looper", looper().get());
             notify->post();
             break;
         }
@@ -451,7 +484,7 @@ void PlaylistFetcher::onMessageReceived(const sp<AMessage> &msg) {
 
 status_t PlaylistFetcher::onStart(const sp<AMessage> &msg) {
     mPacketSources.clear();
-
+    mDownloadedNum = 0;
     uint32_t streamTypeMask;
     CHECK(msg->findInt32("streamTypeMask", (int32_t *)&streamTypeMask));
 
@@ -606,7 +639,7 @@ void PlaylistFetcher::queueDiscontinuity(
 
 void PlaylistFetcher::onMonitorQueue() {
     bool downloadMore = false;
-    refreshPlaylist();
+    //refreshPlaylist();
 
     int32_t targetDurationSecs;
     int64_t targetDurationUs = kMinBufferedDurationUs;
@@ -663,6 +696,7 @@ void PlaylistFetcher::onMonitorQueue() {
                 bufferedDurationUs, targetDurationUs);
         sp<AMessage> msg = mNotify->dup();
         msg->setInt32("what", kWhatTemporarilyDoneFetching);
+        msg->setString("uri", mURI.c_str());
         msg->post();
     }
 
@@ -680,8 +714,9 @@ void PlaylistFetcher::onMonitorQueue() {
 
         sp<AMessage> msg = mNotify->dup();
         msg->setInt32("what", kWhatTemporarilyDoneFetching);
+        msg->setString("uri", mURI.c_str());
         msg->post();
-
+        mFetchingNotify = true;
         int64_t delayUs = mPrepared ? kMaxMonitorDelayUs : targetDurationUs / 2;
         ALOGV("pausing for %" PRId64 ", buffered=%" PRId64 " > %" PRId64 "",
                 delayUs, bufferedDurationUs, durationToBufferUs);
@@ -692,7 +727,11 @@ void PlaylistFetcher::onMonitorQueue() {
 }
 
 status_t PlaylistFetcher::refreshPlaylist() {
-    if (delayUsToRefreshPlaylist() <= 0) {
+    bool needRefresh = false;
+    if (mSession->mBandwidthItems.size() > 1 && mDownloadedNum > 1) {
+        mSession->checkBandwidth(&needRefresh);
+    }
+    if (needRefresh || delayUsToRefreshPlaylist() <= 0) {
         bool unchanged;
         sp<M3UParser> playlist = mSession->fetchPlaylist(
                 mURI.c_str(), mPlaylistHash, &unchanged);
@@ -729,6 +768,7 @@ bool PlaylistFetcher::bufferStartsWithTsSyncByte(const sp<ABuffer>& buffer) {
 }
 
 void PlaylistFetcher::onDownloadNext() {
+    mDownloadedNum++;
     status_t err = refreshPlaylist();
     int32_t firstSeqNumberInPlaylist = 0;
     int32_t lastSeqNumberInPlaylist = 0;
@@ -878,11 +918,11 @@ void PlaylistFetcher::onDownloadNext() {
                 &uri,
                 &itemMeta));
 
-    int32_t val;
-    if (itemMeta->findInt32("discontinuity", &val) && val != 0) {
-        mDiscontinuitySeq++;
-        discontinuity = true;
-    }
+    //int32_t val;
+    //if (itemMeta->findInt32("discontinuity", &val) && val != 0) {
+    //    mDiscontinuitySeq++;
+    //    discontinuity = true;
+    //}
 
     int64_t range_offset, range_length;
     if (!itemMeta->findInt64("range-offset", &range_offset)
@@ -925,7 +965,12 @@ void PlaylistFetcher::onDownloadNext() {
             return;
         }
 
-        CHECK(buffer != NULL);
+        //CHECK(buffer != NULL);
+        if (buffer == NULL) {  // maybe interrupt play
+            status_t err = bytesRead;
+            notifyError(err);
+            return;
+        }
 
         size_t size = buffer->size();
         // Set decryption range.
@@ -996,6 +1041,7 @@ void PlaylistFetcher::onDownloadNext() {
             return;
         } else if (err != OK) {
             notifyError(err);
+            ALOGE("MPEG2TS extractor notify error : %d !\n", err);
             return;
         }
 
@@ -1220,6 +1266,7 @@ status_t PlaylistFetcher::extractAndQueueAccessUnitsFromTs(const sp<ABuffer> &bu
     buffer->setRange(buffer->offset() + offset, buffer->size() - offset);
 
     status_t err = OK;
+    size_t source_count = 0;
     for (size_t i = mPacketSources.size(); i-- > 0;) {
         sp<AnotherPacketSource> packetSource = mPacketSources.valueAt(i);
 
@@ -1256,6 +1303,7 @@ status_t PlaylistFetcher::extractAndQueueAccessUnitsFromTs(const sp<ABuffer> &bu
             continue;
         }
 
+        source_count++;
         int64_t timeUs;
         sp<ABuffer> accessUnit;
         status_t finalResult;
@@ -1392,6 +1440,19 @@ status_t PlaylistFetcher::extractAndQueueAccessUnitsFromTs(const sp<ABuffer> &bu
                 }
             }
 
+            // send LiveSession the CodecSpecificData
+            const char *mime;
+            source->getFormat()->findCString(kKeyMIMEType, &mime);
+            if (type == ATSParser::VIDEO && !strcasecmp(MEDIA_MIMETYPE_VIDEO_HEVC, mime)) {
+                int key = 0;
+                accessUnit->meta()->findInt32("findkeyframe", &key);
+                if (key == 1) {
+                    sp<AMessage> msg = new AMessage(kWhatCodecSpecificData, id());
+                    msg->setBuffer("buffer", accessUnit);
+                    msg->post();
+                }
+            }
+
             setAccessUnitProperties(accessUnit, source);
             packetSource->queueAccessUnit(accessUnit);
         }
@@ -1399,6 +1460,15 @@ status_t PlaylistFetcher::extractAndQueueAccessUnitsFromTs(const sp<ABuffer> &bu
         if (err != OK) {
             break;
         }
+    }
+
+    if (!mPostPrepared && source_count == mPacketSources.size()) {
+        ALOGI("packet source prepared!\n");
+        mPostPrepared = true;
+        sp<AMessage> msg = mNotify->dup();
+        msg->setInt32("what", kWhatTemporarilyDoneFetching);
+        msg->setString("uri", mURI.c_str());
+        msg->post();
     }
 
     if (err != OK) {

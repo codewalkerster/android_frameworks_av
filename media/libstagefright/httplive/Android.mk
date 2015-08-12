@@ -15,6 +15,8 @@ LOCAL_C_INCLUDES:= \
 
 LOCAL_CFLAGS += -Werror
 
+LOCAL_STATIC_LIBRARIES := libstagefright_hevcutils
+
 LOCAL_SHARED_LIBRARIES := \
         libbinder \
         libcrypto \
@@ -23,6 +25,7 @@ LOCAL_SHARED_LIBRARIES := \
         libstagefright \
         libstagefright_foundation \
         libutils \
+        libamffmpeg
 
 LOCAL_MODULE:= libstagefright_httplive
 

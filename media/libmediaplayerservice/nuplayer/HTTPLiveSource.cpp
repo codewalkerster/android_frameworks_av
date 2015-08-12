@@ -41,6 +41,7 @@ NuPlayer::HTTPLiveSource::HTTPLiveSource(
     : Source(notify),
       mHTTPService(httpService),
       mURL(url),
+      mBuffering(true),
       mFlags(0),
       mFinalResult(OK),
       mOffset(0),
@@ -92,6 +93,10 @@ void NuPlayer::HTTPLiveSource::prepareAsync() {
 
     mLiveSession->connectAsync(
             mURL.c_str(), mExtraHeaders.isEmpty() ? NULL : &mExtraHeaders);
+
+    sp<AMessage> notifyStart = dupNotify();
+    notifyStart->setInt32("what", kWhatBufferingStart);
+    notifyStart->post();
 }
 
 void NuPlayer::HTTPLiveSource::start() {
@@ -121,6 +126,28 @@ status_t NuPlayer::HTTPLiveSource::feedMoreTSData() {
 
 status_t NuPlayer::HTTPLiveSource::dequeueAccessUnit(
         bool audio, sp<ABuffer> *accessUnit) {
+        if (mBuffering) {
+            if (!mLiveSession->haveSufficientDataOnAVTracks()) {
+                return -EWOULDBLOCK;
+            }
+            mBuffering = false;
+            sp<AMessage> notify = dupNotify();
+            notify->setInt32("what", kWhatBufferingEnd);
+            notify->post();
+            ALOGI("HTTPLiveSource buffering end!\n");
+        }
+
+        bool needBuffering = false;
+        status_t finalResult = mLiveSession->hasBufferAvailable(audio, &needBuffering);
+        if (needBuffering) {
+            mBuffering = true;
+            sp<AMessage> notify = dupNotify();
+            notify->setInt32("what", kWhatBufferingStart);
+            notify->post();
+            ALOGI("HTTPLiveSource buffering start!\n");
+            return finalResult;
+        }
+
     return mLiveSession->dequeueAccessUnit(
             audio ? LiveSession::STREAMTYPE_AUDIO
                   : LiveSession::STREAMTYPE_VIDEO,
@@ -150,6 +177,7 @@ ssize_t NuPlayer::HTTPLiveSource::getSelectedTrack(media_track_type type) const 
 status_t NuPlayer::HTTPLiveSource::selectTrack(size_t trackIndex, bool select, int64_t /*timeUs*/) {
     status_t err = mLiveSession->selectTrack(trackIndex, select);
 
+#if 0
     if (err == OK) {
         mFetchSubtitleDataGeneration++;
         if (select) {
@@ -158,7 +186,7 @@ status_t NuPlayer::HTTPLiveSource::selectTrack(size_t trackIndex, bool select, i
             msg->post();
         }
     }
-
+#endif
     // LiveSession::selectTrack returns BAD_VALUE when selecting the currently
     // selected track, or unselecting a non-selected track. In this case it's an
     // no-op so we return OK.
@@ -219,11 +247,13 @@ void NuPlayer::HTTPLiveSource::onMessageReceived(const sp<AMessage> &msg) {
 void NuPlayer::HTTPLiveSource::onSessionNotify(const sp<AMessage> &msg) {
     int32_t what;
     CHECK(msg->findInt32("what", &what));
+    ALOGI("session notify : %d\n", what);
 
     switch (what) {
         case LiveSession::kWhatPrepared:
         {
             // notify the current size here if we have it, otherwise report an initial size of (0,0)
+            ALOGI("session notify prepared!\n");
             sp<AMessage> format = getFormat(false /* audio */);
             int32_t width;
             int32_t height;
@@ -253,6 +283,7 @@ void NuPlayer::HTTPLiveSource::onSessionNotify(const sp<AMessage> &msg) {
 
         case LiveSession::kWhatPreparationFailed:
         {
+            ALOGI("session notify preparation failed!\n");
             status_t err;
             CHECK(msg->findInt32("err", &err));
 
@@ -262,6 +293,7 @@ void NuPlayer::HTTPLiveSource::onSessionNotify(const sp<AMessage> &msg) {
 
         case LiveSession::kWhatStreamsChanged:
         {
+            ALOGI("session notify streams changed!\n");
             uint32_t changedMask;
             CHECK(msg->findInt32(
                         "changedMask", (int32_t *)&changedMask));

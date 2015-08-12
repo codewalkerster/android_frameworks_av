@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-//#define LOG_NDEBUG 0
+#define LOG_NDEBUG 0
 #define LOG_TAG "NuPlayerRenderer"
 #include <utils/Log.h>
 
@@ -617,7 +617,7 @@ size_t NuPlayer::Renderer::fillAudioBuffer(void *buffer, size_t size) {
             firstEntry = false;
             int64_t mediaTimeUs;
             CHECK(entry->mBuffer->meta()->findInt64("timeUs", &mediaTimeUs));
-            ALOGV("rendering audio at media time %.2f secs", mediaTimeUs / 1E6);
+            //ALOGV("[%s]rendering audio at media time %.2f secs", __FUNCTION__, mediaTimeUs / 1E6);
             setAudioFirstAnchorTimeIfNeeded(mediaTimeUs);
         }
 
@@ -705,7 +705,7 @@ bool NuPlayer::Renderer::onDrainAudioQueue() {
         if (entry->mOffset == 0) {
             int64_t mediaTimeUs;
             CHECK(entry->mBuffer->meta()->findInt64("timeUs", &mediaTimeUs));
-            ALOGV("rendering audio at media time %.2f secs", mediaTimeUs / 1E6);
+            //ALOGV("rendering audio at media time %.2f secs", mediaTimeUs / 1E6);
             onNewAudioMediaTime(mediaTimeUs);
         }
 
@@ -765,9 +765,16 @@ bool NuPlayer::Renderer::onDrainAudioQueue() {
 }
 
 int64_t NuPlayer::Renderer::getPendingAudioPlayoutDurationUs(int64_t nowUs) {
+#if 0
     int64_t writtenAudioDurationUs =
         mNumFramesWritten * 1000LL * mAudioSink->msecsPerFrame();
     return writtenAudioDurationUs - getPlayedOutAudioDurationUs(nowUs);
+#endif
+    uint32_t numFramesPlayed;
+    mAudioSink->getPosition(&numFramesPlayed);
+    uint32_t numFramesPendingPlayout = mNumFramesWritten - numFramesPlayed;
+    int64_t realTimeOffsetUs = (mAudioSink->latency() / 2 + numFramesPendingPlayout * mAudioSink->msecsPerFrame()) * 1000ll;
+    return realTimeOffsetUs;
 }
 
 int64_t NuPlayer::Renderer::getRealTimeUs(int64_t mediaTimeUs, int64_t nowUs) {
@@ -808,7 +815,6 @@ void NuPlayer::Renderer::postDrainVideoQueue_l() {
 
     sp<AMessage> msg = new AMessage(kWhatDrainVideoQueue, id());
     msg->setInt32("generation", mVideoQueueGeneration);
-
     if (entry.mBuffer == NULL) {
         // EOS doesn't carry a timestamp.
         msg->post();
@@ -823,18 +829,22 @@ void NuPlayer::Renderer::postDrainVideoQueue_l() {
         int64_t mediaTimeUs;
         CHECK(entry.mBuffer->meta()->findInt64("timeUs", &mediaTimeUs));
         realTimeUs = mediaTimeUs;
+        delayUs = mediaTimeUs - ALooper::GetNowUs();
     } else {
         int64_t mediaTimeUs;
         CHECK(entry.mBuffer->meta()->findInt64("timeUs", &mediaTimeUs));
 
         if (mAnchorTimeMediaUs < 0) {
-            setAnchorTime(mediaTimeUs, nowUs);
+            if (!mHasAudio) {
+                setAnchorTime(mediaTimeUs, nowUs);
+            }
             mPausePositionMediaTimeUs = mediaTimeUs;
             mAnchorMaxMediaUs = mediaTimeUs;
             realTimeUs = nowUs;
         } else {
             realTimeUs = getRealTimeUs(mediaTimeUs, nowUs);
         }
+
         if (!mHasAudio) {
             mAnchorMaxMediaUs = mediaTimeUs + 100000; // smooth out videos >= 10fps
         }
@@ -859,14 +869,15 @@ void NuPlayer::Renderer::postDrainVideoQueue_l() {
         }
     }
 
-    realTimeUs = mVideoScheduler->schedule(realTimeUs * 1000) / 1000;
-    int64_t twoVsyncsUs = 2 * (mVideoScheduler->getVsyncPeriod() / 1000);
+    //realTimeUs = mVideoScheduler->schedule(realTimeUs * 1000) / 1000;
+    //int64_t twoVsyncsUs = 2 * (mVideoScheduler->getVsyncPeriod() / 1000);
 
-    delayUs = realTimeUs - nowUs;
+    //delayUs = realTimeUs - nowUs;
 
-    ALOGW_IF(delayUs > 500000, "unusually high delayUs: %" PRId64, delayUs);
+    //ALOGW_IF(delayUs > 500000, "unusually high delayUs: %" PRId64, delayUs);
     // post 2 display refreshes before rendering is due
-    msg->post(delayUs > twoVsyncsUs ? delayUs - twoVsyncsUs : 0);
+    //msg->post(delayUs > twoVsyncsUs ? delayUs - twoVsyncsUs : 0);
+    msg->post(delayUs);
 
     mDrainVideoQueuePending = true;
 }
@@ -915,9 +926,9 @@ void NuPlayer::Renderer::onDrainVideoQueue() {
             ALOGV("video late by %lld us (%.2f secs)",
                  mVideoLateByUs, mVideoLateByUs / 1E6);
         } else {
-            ALOGV("rendering video at media time %.2f secs",
-                    (mFlags & FLAG_REAL_TIME ? realTimeUs :
-                    (realTimeUs + mAnchorTimeMediaUs - mAnchorTimeRealUs)) / 1E6);
+            //ALOGV("rendering video at media time %.2f secs",
+            //        (mFlags & FLAG_REAL_TIME ? realTimeUs :
+            //       (realTimeUs + mAnchorTimeMediaUs - mAnchorTimeRealUs)) / 1E6);
         }
     } else {
         setVideoLateByUs(0);
@@ -1358,11 +1369,11 @@ int64_t NuPlayer::Renderer::getPlayedOutAudioDurationUs(int64_t nowUs) {
         //     numFramesPlayedAt, by a time amount greater than numFramesPlayed.
         //
         // Both of these are transitory conditions.
-        ALOGV("getPlayedOutAudioDurationUs: negative duration %lld set to zero", (long long)durationUs);
+        //ALOGV("getPlayedOutAudioDurationUs: negative duration %lld set to zero", (long long)durationUs);
         durationUs = 0;
     }
-    ALOGV("getPlayedOutAudioDurationUs(%lld) nowUs(%lld) frames(%u) framesAt(%lld)",
-            (long long)durationUs, (long long)nowUs, numFramesPlayed, (long long)numFramesPlayedAt);
+    //ALOGV("getPlayedOutAudioDurationUs(%lld) nowUs(%lld) frames(%u) framesAt(%lld)",
+    //        (long long)durationUs, (long long)nowUs, numFramesPlayed, (long long)numFramesPlayedAt);
     return durationUs;
 }
 

@@ -33,12 +33,14 @@
 #include "TestPlayerStub.h"
 #include "StagefrightPlayer.h"
 #include "nuplayer/NuPlayerDriver.h"
+#include "StreamSniffer.h"
 
 namespace android {
 
 Mutex MediaPlayerFactory::sLock;
 MediaPlayerFactory::tFactoryMap MediaPlayerFactory::sFactoryMap;
 bool MediaPlayerFactory::sInitComplete = false;
+sp<IMediaHTTPService> MediaPlayerFactory::sHttpService = NULL;
 
 status_t MediaPlayerFactory::registerFactory_l(IFactory* factory,
                                                player_type type) {
@@ -115,7 +117,9 @@ void MediaPlayerFactory::unregisterFactory(player_type type) {
     return ret;
 
 player_type MediaPlayerFactory::getPlayerType(const sp<IMediaPlayer>& client,
-                                              const char* url) {
+                                              const char* url,
+                                              const sp<IMediaHTTPService>& httpservice) {
+    sHttpService = httpservice;
     GET_PLAYER_TYPE_IMPL(client, url);
 }
 
@@ -235,13 +239,17 @@ class StagefrightPlayerFactory :
 
 class NuPlayerFactory : public MediaPlayerFactory::IFactory {
   public:
+    static NUPLAYER_STREAMTYPE mNUStreamType;
     virtual float scoreFactory(const sp<IMediaPlayer>& /*client*/,
                                const char* url,
                                float curScore) {
-        static const float kOurScore = 0.8;
+        static const float kOurScore = 1.0;
 
         if (kOurScore <= curScore)
             return 0.0;
+
+        // use nuplayer to play hls.
+        // add other stream type afterwards.
 
         if (!strncasecmp("http://", url, 7)
                 || !strncasecmp("https://", url, 8)
@@ -255,14 +263,30 @@ class NuPlayerFactory : public MediaPlayerFactory::IFactory {
                 return kOurScore;
             }
 
+            // skip over DASH & MS-SS.
+            if ((len >= 4 && !strcasecmp(".mpd", &url[len - 4]))
+                || (strstr(url, ".ism/") || strstr(url, ".isml/"))) {
+                return 0.0;
+            }
+
+            StreamSniffer sniffer(url, MediaPlayerFactory::sHttpService);
+            if (StreamSniffer::STREAM_HLS == sniffer.sniffStreamType(1024)) {
+                mNUStreamType = NU_STREAM_HLS;
+                return kOurScore;
+            }
+
+#if 0
             if ((len >= 4 && !strcasecmp(".sdp", &url[len - 4])) || strstr(url, ".sdp?")) {
                 return kOurScore;
             }
+#endif
         }
 
+#if 0
         if (!strncasecmp("rtsp://", url, 7)) {
             return kOurScore;
         }
+#endif
 
         return 0.0;
     }
@@ -275,9 +299,11 @@ class NuPlayerFactory : public MediaPlayerFactory::IFactory {
 
     virtual sp<MediaPlayerBase> createPlayer() {
         ALOGV(" create NuPlayer");
-        return new NuPlayerDriver;
+        return new NuPlayerDriver(mNUStreamType);
     }
 };
+
+NUPLAYER_STREAMTYPE NuPlayerFactory::mNUStreamType = NU_STREAM_NONE;
 
 class SonivoxPlayerFactory : public MediaPlayerFactory::IFactory {
   public:

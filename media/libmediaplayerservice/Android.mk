@@ -24,6 +24,7 @@ LOCAL_SRC_FILES:=               \
     TestPlayerStub.cpp          \
     VideoFrameScheduler.cpp     \
     MetadataRetrieverFactory.cpp     \
+    StreamSniffer.cpp           \
 
 LOCAL_SHARED_LIBRARIES :=       \
     libbinder                   \

@@ -133,7 +133,7 @@ status_t MetadataRetrieverClient::setDataSource(
     // pass NULL to getPlayerType to indicate that there is no outer
     // IMediaPlayer to consider during selection.
     player_type playerType =
-        MediaPlayerFactory::getPlayerType(NULL /* client */, url);
+        MediaPlayerFactory::getPlayerType(NULL /* client */, url, httpService);
     ALOGV("player type = %d", playerType);
     sp<MediaMetadataRetrieverBase> p = createRetriever(playerType);
     if (p == NULL) return NO_INIT;
