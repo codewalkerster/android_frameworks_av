@@ -81,14 +81,14 @@ public:
 private:
 
     typedef struct FrameBufferInfo_s{
-        void* buf_ptr;
+        long* buf_ptr;
         int canvas;
         int64_t timestampUs;
     }FrameBufferInfo;
 
     typedef struct FrameDataInfo_s{
         int MetadataBufferType;
-        void *buf_ptr;
+        long *buf_ptr;
         int canvasNum;
     }FrameDataInfo;
 
