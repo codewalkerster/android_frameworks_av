@@ -47,6 +47,7 @@ struct PlaylistFetcher : public AHandler {
         kWhatPrepared,
         kWhatPreparationFailed,
         kWhatStartedAt,
+        kWhatCodecSpecificData,
     };
 
     PlaylistFetcher(
@@ -70,6 +71,10 @@ struct PlaylistFetcher : public AHandler {
     void pauseAsync();
 
     void stopAsync(bool clear = true);
+
+    void changeURI(AString uri);
+    uint32_t getStreamTypeMask();
+    void setStreamTypeMask(uint32_t streamMask);
 
     void resumeUntilAsync(const sp<AMessage> &params);
 
@@ -128,10 +133,13 @@ private:
     int64_t mLastPlaylistFetchTimeUs;
     sp<M3UParser> mPlaylist;
     int32_t mSeqNumber;
+    int32_t mDownloadedNum;
     int32_t mNumRetries;
     bool mStartup;
     bool mAdaptive;
+    bool mFetchingNotify;
     bool mPrepared;
+    bool mPostPrepared;
     int64_t mNextPTSTimeUs;
 
     int32_t mMonitorQueueGeneration;

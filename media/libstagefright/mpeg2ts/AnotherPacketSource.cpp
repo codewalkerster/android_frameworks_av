@@ -287,7 +287,7 @@ void AnotherPacketSource::queueDiscontinuity(
 }
 
 void AnotherPacketSource::signalEOS(status_t result) {
-    CHECK(result != OK);
+    //CHECK(result != OK);
 
     Mutex::Autolock autoLock(mLock);
     mEOSResult = result;

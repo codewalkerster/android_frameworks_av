@@ -133,13 +133,15 @@ LOCAL_STATIC_LIBRARIES := \
         libstagefright_mpeg2ts \
         libstagefright_id3 \
         libFLAC \
-        libmedia_helper
+        libmedia_helper \
+        libstagefright_hevcutils
 
 LOCAL_SHARED_LIBRARIES += \
         libstagefright_enc_common \
         libstagefright_avc_common \
         libstagefright_foundation \
-        libdl
+        libdl \
+        libamffmpeg
 
 LOCAL_STATIC_LIBRARIES += \
 	libstagefright_adifdec

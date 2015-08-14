@@ -732,7 +732,7 @@ status_t MediaPlayerService::Client::setDataSource(
         close(fd);
         return mStatus;
     } else {
-        player_type playerType = MediaPlayerFactory::getPlayerType(this, url);
+        player_type playerType = MediaPlayerFactory::getPlayerType(this, url, httpService);
         sp<MediaPlayerBase> p = setDataSource_pre(playerType);
         if (p == NULL) {
             return NO_INIT;
@@ -1304,7 +1304,7 @@ status_t MediaPlayerService::decode(
     }
 
     player_type playerType =
-        MediaPlayerFactory::getPlayerType(NULL /* client */, url);
+        MediaPlayerFactory::getPlayerType(NULL /* client */, url, httpService);
     ALOGV("player type = %d", playerType);
 
     // create the right type of player

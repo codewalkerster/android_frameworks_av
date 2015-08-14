@@ -57,6 +57,13 @@ struct LiveSession : public AHandler {
         STREAMTYPE_VIDEO        = 1 << kVideoIndex,
         STREAMTYPE_SUBTITLES    = 1 << kSubtitleIndex,
     };
+
+    enum FetcherStatus {
+        STATUS_ACTIVE,
+        STATUS_PAUSED,
+        STATUS_STOPPED,
+    };
+
     status_t dequeueAccessUnit(StreamType stream, sp<ABuffer> *accessUnit);
 
     status_t getStreamFormat(StreamType stream, sp<AMessage> *format);
@@ -78,6 +85,9 @@ struct LiveSession : public AHandler {
 
     bool isSeekable() const;
     bool hasDynamicDuration() const;
+    bool haveSufficientDataOnAVTracks();
+    status_t hasBufferAvailable(bool audio, bool * needBuffering);
+    void setEOSTimeout(bool audio, int64_t timeout);
 
     enum {
         kWhatStreamsChanged,
@@ -124,6 +134,7 @@ private:
     struct FetcherInfo {
         sp<PlaylistFetcher> mFetcher;
         int64_t mDurationUs;
+        FetcherStatus mStatus;
         bool mIsPrepared;
         bool mToBeRemoved;
     };
@@ -156,15 +167,26 @@ private:
     uint32_t mFlags;
     sp<IMediaHTTPService> mHTTPService;
 
+    bool mCodecSpecificDataSend;
+    bool mSeeked;
+    bool mNeedExit;
     bool mInPreparationPhase;
     bool mBuffering[kMaxStreams];
+
+    static const String8 kHTTPUserAgentDefault;
+
+    uint8_t * mCodecSpecificData;
+    uint32_t mCodecSpecificDataSize;
 
     sp<HTTPBase> mHTTPDataSource;
     KeyedVector<String8, String8> mExtraHeaders;
 
+    AString mLastPlayListURL;
     AString mMasterURL;
 
     Vector<BandwidthItem> mBandwidthItems;
+    Vector<sp<ALooper> > mFetcherLooper;
+
     ssize_t mCurBandwidthIndex;
 
     sp<M3UParser> mPlaylist;
@@ -191,6 +213,7 @@ private:
     // * a forced bandwidth switch termination in cancelSwitch on the live looper.
     Mutex mSwapMutex;
 
+    int32_t mEstimatedBWbps;
     int32_t mCheckBandwidthGeneration;
     int32_t mSwitchGeneration;
     int32_t mSubtitleGeneration;
@@ -210,6 +233,10 @@ private:
     bool mFirstTimeUsValid;
     int64_t mFirstTimeUs;
     int64_t mLastSeekTimeUs;
+
+    int64_t mEOSTimeoutAudio;
+    int64_t mEOSTimeoutVideo;
+
     sp<AMessage> mSwitchDownMonitor;
     KeyedVector<size_t, int64_t> mDiscontinuityAbsStartTimesUs;
     KeyedVector<size_t, int64_t> mDiscontinuityOffsetTimesUs;
@@ -239,7 +266,7 @@ private:
             uint32_t block_size = 0,
             /* reuse DataSource if doing partial fetch */
             sp<DataSource> *source = NULL,
-            String8 *actualUrl = NULL);
+            String8 *actualUrl = NULL, bool isPlaylist = false);
 
     sp<M3UParser> fetchPlaylist(
             const char *url, uint8_t *curPlaylistHash, bool *unchanged);
@@ -261,8 +288,13 @@ private:
     void onSwitchDown();
     void tryToFinishBandwidthSwitch();
 
+    // no need to rebuild fetcher when bandwidth changed, this is light method.
+    void reconfigFetcher(size_t bandwidthIndex);
+
     void scheduleCheckBandwidthEvent();
     void cancelCheckBandwidthEvent();
+
+    void checkBandwidth(bool * needFetchPlaylist);
 
     // cancelBandwidthSwitch is atomic wrt swapPacketSource; call it to prevent packet sources
     // from being swapped out on stale discontinuities while manipulating
