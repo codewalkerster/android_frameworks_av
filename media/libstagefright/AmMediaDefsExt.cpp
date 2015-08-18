@@ -36,8 +36,8 @@ const char *MEDIA_MIMETYPE_VIDEO_VP6F = "video/x-vnd.on2.vp6f";
 const char *MEDIA_MIMETYPE_VIDEO_VP6A = "video/x-vnd.on2.vp6a";
 
 const char *MEDIA_MIMETYPE_AUDIO_DTS = "audio/dtshd";
-const char *MEDIA_MIMETYPE_AUDIO_MP1 = "audio/mp1";
-const char *MEDIA_MIMETYPE_AUDIO_MP2 = "audio/mp2";
+const char *MEDIA_MIMETYPE_AUDIO_MP1 = "audio/mpeg-L1";
+const char *MEDIA_MIMETYPE_AUDIO_MP2 = "audio/mpeg-L2";
 
 const char *MEDIA_MIMETYPE_TEXT_TTML = "application/ttml+xml";
 

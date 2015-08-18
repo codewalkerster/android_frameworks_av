@@ -663,7 +663,7 @@ bool SniffMP3(
     (*meta)->setInt64("post-id3-offset", post_id3_pos);
 
     *mimeType = MEDIA_MIMETYPE_AUDIO_MPEG;
-    *confidence = 0.2f;
+    *confidence = 0.0f;//now we disabled mp3Extractor here on android 5.0 ;
 
     return true;
 }
