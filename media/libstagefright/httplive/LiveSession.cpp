@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "LiveSession"
+#define LOG_TAG "NU-LiveSession"
 #include <utils/Log.h>
 
 #include "LiveSession.h"
@@ -66,6 +66,8 @@ LiveSession::LiveSession(
     : mNotify(notify),
       mFlags(flags),
       mHTTPService(httpService),
+      mBuffTimeSec(2),
+      mDebug(false),
       mCodecSpecificDataSend(false),
       mSeeked(false),
       mNeedExit(false),
@@ -91,6 +93,14 @@ LiveSession::LiveSession(
       mLastSeekTimeUs(0),
       mEOSTimeoutAudio(0),
       mEOSTimeoutVideo(0) {
+    char value[PROPERTY_VALUE_MAX];
+    if (property_get("media.hls.read_pts", value, NULL)
+        && (!strcmp(value, "1") || !strcasecmp(value, "true"))) {
+        mDebug = true;
+    }
+    if (property_get("media.hls.bufftime_s", value, NULL)) {
+        mBuffTimeSec = atoi(value);
+    }
 
     mStreams[kAudioIndex] = StreamItem("audio");
     mStreams[kVideoIndex] = StreamItem("video");
@@ -132,7 +142,7 @@ void LiveSession::swapPacketSource(StreamType stream) {
 
 bool LiveSession::haveSufficientDataOnAVTracks() {
     // buffer 2secs data
-    static const int64_t kMinDurationUs = 2000000ll;
+    static const int64_t kMinDurationUs = mBuffTimeSec * 1000000ll;
 
     sp<AnotherPacketSource> audioTrack = mPacketSources.valueFor(STREAMTYPE_AUDIO);
     sp<AnotherPacketSource> videoTrack = mPacketSources.valueFor(STREAMTYPE_VIDEO);
@@ -404,7 +414,6 @@ status_t LiveSession::dequeueAccessUnit(
             } else {
                 offsetTimeUs += strm.mLastSampleDurationUs;
             }
-
             mDiscontinuityOffsetTimesUs.add(seq, offsetTimeUs);
         }
     } else if (err == OK) {
@@ -445,7 +454,11 @@ status_t LiveSession::dequeueAccessUnit(
                 timeUs += mDiscontinuityOffsetTimesUs.valueFor(discontinuitySeq);
             }
 
-            ALOGV("[%s] read buffer at time %" PRId64 " us", streamStr, timeUs);
+            if (mDebug) {
+                ALOGI("[%s] read buffer at time %" PRId64 " us", streamStr, timeUs);
+            } else {
+                ALOGV("[%s] read buffer at time %" PRId64 " us", streamStr, timeUs);
+            }
             (*accessUnit)->meta()->setInt64("timeUs",  timeUs);
             mLastDequeuedTimeUs = timeUs;
             mRealTimeBaseUs = ALooper::GetNowUs() - timeUs;
@@ -1044,9 +1057,11 @@ ssize_t LiveSession::fetchFile(
             status_t err = mHTTPDataSource->connect(url, &headers);
 
             if (err != OK) {
-                ALOGE("HTTP source connect failed, err : %d !\n", err);
+                ALOGE("HTTP source connect failed, err : %d !", err);
                 return err;
             }
+
+            ALOGI("Last file download speed : %d bps", mEstimatedBWbps);
 
             *source = mHTTPDataSource;
         }

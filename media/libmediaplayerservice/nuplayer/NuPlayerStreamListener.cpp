@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "NuPlayerStreamListener"
+#define LOG_TAG "NU-NuPlayerStreamListener"
 #include <utils/Log.h>
 
 #include "NuPlayerStreamListener.h"

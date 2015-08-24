@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "GenericSource"
+#define LOG_TAG "NU-GenericSource"
 
 #include "GenericSource.h"
 

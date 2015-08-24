@@ -138,6 +138,7 @@ private:
     uint32_t mNumFramesWritten;
     sp<VideoFrameScheduler> mVideoScheduler;
 
+    bool mDebug;
     bool mDrainAudioQueuePending;
     bool mDrainVideoQueuePending;
     int32_t mAudioQueueGeneration;

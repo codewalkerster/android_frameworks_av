@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "AnotherPacketSource"
+#define LOG_TAG "NU-AnotherPacketSource"
 
 #include "AnotherPacketSource.h"
 

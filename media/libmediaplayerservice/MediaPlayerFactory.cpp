@@ -245,6 +245,12 @@ class NuPlayerFactory : public MediaPlayerFactory::IFactory {
                                float curScore) {
         static const float kOurScore = 1.0;
 
+        char value[PROPERTY_VALUE_MAX];
+        if (property_get("media.hls.disable-nuplayer", value, NULL)
+            && (!strcasecmp(value, "true") || !strcmp(value, "1"))) {
+            return 0.0;
+        }
+
         if (kOurScore <= curScore)
             return 0.0;
 

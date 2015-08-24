@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "StreamingSource"
+#define LOG_TAG "NU-StreamingSource"
 #include <utils/Log.h>
 
 #include "StreamingSource.h"

@@ -15,11 +15,12 @@
  */
 
 #define LOG_NDEBUG 0
-#define LOG_TAG "NuPlayerRenderer"
+#define LOG_TAG "NU-NuPlayerRenderer"
 #include <utils/Log.h>
 
 #include "NuPlayerRenderer.h"
 
+#include <cutils/properties.h>
 #include <media/stagefright/foundation/ABuffer.h>
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/foundation/AMessage.h>
@@ -59,6 +60,7 @@ NuPlayer::Renderer::Renderer(
       mNotify(notify),
       mFlags(flags),
       mNumFramesWritten(0),
+      mDebug(false),
       mDrainAudioQueuePending(false),
       mDrainVideoQueuePending(false),
       mAudioQueueGeneration(0),
@@ -90,6 +92,12 @@ NuPlayer::Renderer::Renderer(
       mTotalBuffersQueued(0),
       mLastAudioBufferDrained(0),
       mWakeLock(new AWakeLock()) {
+
+    char value[PROPERTY_VALUE_MAX];
+    if (property_get("media.hls.render_pts", value, NULL)
+        && (!strcmp(value, "1") || !strcasecmp(value, "true"))) {
+        mDebug = true;
+    }
 
 }
 
@@ -705,7 +713,9 @@ bool NuPlayer::Renderer::onDrainAudioQueue() {
         if (entry->mOffset == 0) {
             int64_t mediaTimeUs;
             CHECK(entry->mBuffer->meta()->findInt64("timeUs", &mediaTimeUs));
-            //ALOGV("rendering audio at media time %.2f secs", mediaTimeUs / 1E6);
+            if (mDebug) {
+                ALOGI("[audio] rendering at media time %lld us", mediaTimeUs);
+            }
             onNewAudioMediaTime(mediaTimeUs);
         }
 
@@ -926,9 +936,11 @@ void NuPlayer::Renderer::onDrainVideoQueue() {
             ALOGV("video late by %lld us (%.2f secs)",
                  mVideoLateByUs, mVideoLateByUs / 1E6);
         } else {
-            //ALOGV("rendering video at media time %.2f secs",
-            //        (mFlags & FLAG_REAL_TIME ? realTimeUs :
-            //       (realTimeUs + mAnchorTimeMediaUs - mAnchorTimeRealUs)) / 1E6);
+            if (mDebug) {
+                ALOGI("[video] rendering at media time %lld us",
+                        (mFlags & FLAG_REAL_TIME ? realTimeUs :
+                       (realTimeUs + mAnchorTimeMediaUs - mAnchorTimeRealUs)));
+            }
         }
     } else {
         setVideoLateByUs(0);
@@ -1003,6 +1015,12 @@ void NuPlayer::Renderer::onQueueBuffer(const sp<AMessage> &msg) {
     entry.mOffset = 0;
     entry.mFinalResult = OK;
     entry.mBufferOrdinal = ++mTotalBuffersQueued;
+
+    if (mDebug) {
+        int64_t timeUs;
+        buffer->meta()->findInt64("timeUs", &timeUs);
+        ALOGI("[%s] queued buffer timeUs : %lld us \n", audio ? "audio" : "video", timeUs);
+    }
 
     Mutex::Autolock autoLock(mLock);
     if (audio) {

@@ -86,6 +86,10 @@ private:
     bool mResumePending;
     AString mComponentName;
 
+    int32_t mDumpMode;
+    FILE * mAudioHandle;
+    FILE * mVideoHandle;
+
     bool handleAnInputBuffer();
     bool handleAnOutputBuffer();
 

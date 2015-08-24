@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "M3UParser"
+#define LOG_TAG "NU-M3UParser"
 #include <utils/Log.h>
 
 #include "M3UParser.h"

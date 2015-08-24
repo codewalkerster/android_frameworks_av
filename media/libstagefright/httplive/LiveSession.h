@@ -167,6 +167,9 @@ private:
     uint32_t mFlags;
     sp<IMediaHTTPService> mHTTPService;
 
+    uint32_t mBuffTimeSec;
+
+    bool mDebug;
     bool mCodecSpecificDataSend;
     bool mSeeked;
     bool mNeedExit;

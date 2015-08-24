@@ -15,7 +15,7 @@
  */
 
 #define LOG_NDEBUG 0
-#define LOG_TAG "PlaylistFetcher"
+#define LOG_TAG "NU-PlaylistFetcher"
 #include <utils/Log.h>
 
 #include "PlaylistFetcher.h"
@@ -29,6 +29,7 @@
 #include "include/ID3.h"
 #include "mpeg2ts/AnotherPacketSource.h"
 
+#include <cutils/properties.h>
 #include <media/IStreamSource.h>
 #include <media/stagefright/foundation/ABitReader.h>
 #include <media/stagefright/foundation/ABuffer.h>
@@ -53,12 +54,16 @@ const int64_t PlaylistFetcher::kMaxMonitorDelayUs = 3000000ll;
 const int32_t PlaylistFetcher::kDownloadBlockSize = 47 * 1024;
 const int32_t PlaylistFetcher::kNumSkipFrames = 5;
 
+const AString PlaylistFetcher::DumpPath = "/data/tmp/";
+
 PlaylistFetcher::PlaylistFetcher(
         const sp<AMessage> &notify,
         const sp<LiveSession> &session,
         const char *uri,
         int32_t subtitleGeneration)
-    : mNotify(notify),
+    : mDumpMode(-1),
+      mDumpHandle(NULL),
+      mNotify(notify),
       mStartTimeUsNotify(notify->dup()),
       mSession(session),
       mURI(uri),
@@ -86,9 +91,22 @@ PlaylistFetcher::PlaylistFetcher(
     memset(mPlaylistHash, 0, sizeof(mPlaylistHash));
     mStartTimeUsNotify->setInt32("what", kWhatStartedAt);
     mStartTimeUsNotify->setInt32("streamMask", 0);
+
+    char value[PROPERTY_VALUE_MAX];
+    if (property_get("media.hls.dumpmode", value, NULL)) {
+        mDumpMode = atoi(value);
+        if (mDumpMode == 1) {
+            AString dumppath = DumpPath;
+            dumppath.append("nuplayer_hls_dump.dat");
+            mDumpHandle = fopen(dumppath.c_str(), "ab+");
+        }
+    }
 }
 
 PlaylistFetcher::~PlaylistFetcher() {
+    if (mDumpHandle) {
+        fclose(mDumpHandle);
+    }
 }
 
 int64_t PlaylistFetcher::getSegmentStartTimeUs(int32_t seqNumber) const {
@@ -717,12 +735,8 @@ void PlaylistFetcher::onMonitorQueue() {
         msg->setString("uri", mURI.c_str());
         msg->post();
         mFetchingNotify = true;
-        int64_t delayUs = mPrepared ? kMaxMonitorDelayUs : targetDurationUs / 2;
-        ALOGV("pausing for %" PRId64 ", buffered=%" PRId64 " > %" PRId64 "",
-                delayUs, bufferedDurationUs, durationToBufferUs);
-        // :TRICKY: need to enforce minimum delay because the delay to
-        // refresh the playlist will become 0
-        postMonitorQueue(delayUs, mPrepared ? targetDurationUs * 2 : 0);
+        ALOGV("buffered=%" PRId64 " > %" PRId64 "", bufferedDurationUs, durationToBufferUs);
+        postMonitorQueue(bufferedDurationUs / 2, 1000000ll);
     }
 }
 
@@ -918,11 +932,11 @@ void PlaylistFetcher::onDownloadNext() {
                 &uri,
                 &itemMeta));
 
-    //int32_t val;
-    //if (itemMeta->findInt32("discontinuity", &val) && val != 0) {
-    //    mDiscontinuitySeq++;
-    //    discontinuity = true;
-    //}
+    int32_t val;
+    if (itemMeta->findInt32("discontinuity", &val) && val != 0) {
+        mDiscontinuitySeq++;
+        discontinuity = true;
+    }
 
     int64_t range_offset, range_length;
     if (!itemMeta->findInt64("range-offset", &range_offset)
@@ -954,14 +968,30 @@ void PlaylistFetcher::onDownloadNext() {
     // block-wise download
     bool startup = mStartup;
     ssize_t bytesRead;
+    char dumpFile[256] = {'\0'};
+    snprintf(dumpFile, sizeof(dumpFile), "%d.ts", mSeqNumber);
+    FILE * dumpHandle = fopen(dumpFile, "ab+");
     do {
         bytesRead = mSession->fetchFile(
                 uri.c_str(), &buffer, range_offset, range_length, kDownloadBlockSize, &source);
+
+        if (bytesRead > 0 && mDumpMode > 0) {
+            if (mDumpMode == 1 && mDumpHandle) {
+                fwrite(buffer->data(), 1, bytesRead, mDumpHandle);
+                fflush(mDumpHandle);
+            } else if (mDumpMode == 2 && dumpHandle) {
+                fwrite(buffer->data(), 1, bytesRead, dumpHandle);
+                fflush(dumpHandle);
+            }
+        }
 
         if (bytesRead < 0) {
             status_t err = bytesRead;
             ALOGE("failed to fetch .ts segment at url '%s'", uri.c_str());
             notifyError(err);
+            if (dumpHandle) {
+                fclose(dumpHandle);
+            }
             return;
         }
 
@@ -969,6 +999,9 @@ void PlaylistFetcher::onDownloadNext() {
         if (buffer == NULL) {  // maybe interrupt play
             status_t err = bytesRead;
             notifyError(err);
+            if (dumpHandle) {
+                fclose(dumpHandle);
+            }
             return;
         }
 
@@ -984,6 +1017,9 @@ void PlaylistFetcher::onDownloadNext() {
             ALOGE("decryptBuffer failed w/ error %d", err);
 
             notifyError(err);
+            if (dumpHandle) {
+                fclose(dumpHandle);
+            }
             return;
         }
 
@@ -995,13 +1031,15 @@ void PlaylistFetcher::onDownloadNext() {
                 // we don't have access to all the segment before the current
                 // one.
                 mNextPTSTimeUs = getSegmentStartTimeUs(mSeqNumber);
+                ALOGI("segment start time : %lld us on %s", mNextPTSTimeUs, startup ? "startup" : "discontinuity");
             }
 
             if (discontinuity) {
                 ALOGI("queueing discontinuity (explicit=%d)", discontinuity);
 
+                // do not queue discontinuity, prevent flushing decoder.
                 queueDiscontinuity(
-                        ATSParser::DISCONTINUITY_FORMATCHANGE,
+                        ATSParser::DISCONTINUITY_TIME,
                         NULL /* extra */);
 
                 discontinuity = false;
@@ -1034,18 +1072,31 @@ void PlaylistFetcher::onDownloadNext() {
                 packetSource->clear();
             }
             postMonitorQueue();
+            if (dumpHandle) {
+                fclose(dumpHandle);
+            }
             return;
         } else if (err == ERROR_OUT_OF_RANGE) {
             // reached stopping point
             stopAsync(/* clear = */ false);
+            if (dumpHandle) {
+                fclose(dumpHandle);
+            }
             return;
         } else if (err != OK) {
             notifyError(err);
             ALOGE("MPEG2TS extractor notify error : %d !\n", err);
+            if (dumpHandle) {
+                fclose(dumpHandle);
+            }
             return;
         }
 
     } while (bytesRead != 0);
+
+    if (dumpHandle) {
+        fclose(dumpHandle);
+    }
 
     if (bufferStartsWithTsSyncByte(buffer)) {
         // If we don't see a stream in the program table after fetching a full ts segment
@@ -1303,6 +1354,10 @@ status_t PlaylistFetcher::extractAndQueueAccessUnitsFromTs(const sp<ABuffer> &bu
             continue;
         }
 
+        if (packetSource->getFormat() == NULL) {
+            packetSource->setFormat(source->getFormat());
+        }
+
         source_count++;
         int64_t timeUs;
         sp<ABuffer> accessUnit;
@@ -1324,6 +1379,7 @@ status_t PlaylistFetcher::extractAndQueueAccessUnitsFromTs(const sp<ABuffer> &bu
                     }
                 }
 
+#if 0
                 if (timeUs < mStartTimeUs) {
                     // buffer up to the closest preceding IDR frame
                     ALOGV("timeUs %" PRId64 " us < mStartTimeUs %" PRId64 " us",
@@ -1344,6 +1400,7 @@ status_t PlaylistFetcher::extractAndQueueAccessUnitsFromTs(const sp<ABuffer> &bu
 
                     continue;
                 }
+#endif
             }
 
             CHECK(accessUnit->meta()->findInt64("timeUs", &timeUs));

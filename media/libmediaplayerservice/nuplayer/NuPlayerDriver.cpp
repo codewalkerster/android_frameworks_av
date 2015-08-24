@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "NuPlayerDriver"
+#define LOG_TAG "NU-NuPlayerDriver"
 #include <inttypes.h>
 #include <utils/Log.h>
 
@@ -401,6 +401,8 @@ status_t NuPlayerDriver::getCurrentPosition(int *msec) {
         mPositionUs = tempUs;
     }
     *msec = (int)divRound(tempUs, (int64_t)(1000));
+    ALOGI("[%s] position : %d msec", __FUNCTION__, *msec);
+
     return OK;
 }
 

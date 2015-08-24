@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "RTSPSource"
+#define LOG_TAG "NU-RTSPSource"
 #include <utils/Log.h>
 
 #include "RTSPSource.h"

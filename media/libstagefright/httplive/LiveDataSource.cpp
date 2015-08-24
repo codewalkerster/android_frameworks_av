@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "LiveDataSource"
+#define LOG_TAG "NU-LiveDataSource"
 #include <utils/Log.h>
 
 #include "LiveDataSource.h"

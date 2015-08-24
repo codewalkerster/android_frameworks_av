@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "ESQueue"
+#define LOG_TAG "NU-ESQueue"
 #include <media/stagefright/foundation/ADebug.h>
 
 #include "ESQueue.h"
@@ -854,23 +854,22 @@ sp<ABuffer> ElementaryStreamQueue::dequeueAccessUnitH265() {
 	if (mFormat == NULL) {
         size_t stopOffset;
         sp<ABuffer> spsBuffer;
-        size_t size=mBuffer->size();
-        const uint8_t *data=mBuffer->data();
+        size_t size = mBuffer->size();
+        const uint8_t *data = mBuffer->data();
         const uint8_t *nalStart;
         size_t nalSize;
         while ((HEVC_getNextNALUnit(&data, &size, &nalStart, &nalSize, true) == OK)) {
-            if (((nalStart[0]>>1) & 0x3f) == 33) { //SPS
+            if (((nalStart[0] >> 1) & 0x3f) == 33) { //SPS
                 int ret;
                 struct hevc_info info;
-                ret = HEVC_decode_SPS(nalStart+2, nalSize-2, &info);
+                ret = HEVC_decode_SPS(nalStart + 2, nalSize - 2, &info);
                 if (ret == 0) {
                     sp<MetaData> meta = new MetaData;
-                    ///meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_AVC);
                     meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_HEVC);
-                    //meta->setData(kKeyAVCC, kTypeAVCC, csd->data(), csd->size());
                     meta->setInt32(kKeyWidth, info.mwidth);
                     meta->setInt32(kKeyHeight, info.mheight);
                     mFormat = meta;
+                    ALOGI("found HEVC video codec config (%d x %d)", info.mwidth, info.mheight);
                 }
             }
         }
@@ -894,7 +893,7 @@ sp<ABuffer> ElementaryStreamQueue::dequeueAccessUnitH265() {
                 mHevcFindKey = true;
             } else {
                 fetchTimestamp(mBuffer->size());
-                mBuffer->setRange(0, mBuffer->size() -mBuffer->size());
+                mBuffer->setRange(0, mBuffer->size() - mBuffer->size());
                 return NULL;
             }
         }
@@ -908,10 +907,10 @@ sp<ABuffer> ElementaryStreamQueue::dequeueAccessUnitH265() {
         if (keyframe == 1) {
             accessUnit->meta()->setInt32("findkeyframe", 1);
         }
-        mBuffer->setRange(0, mBuffer->size() -mBuffer->size());
+        mBuffer->setRange(0, mBuffer->size() - mBuffer->size());
         return accessUnit;
     }
-    mBuffer->setRange(0, mBuffer->size() -mBuffer->size());
+    mBuffer->setRange(0, mBuffer->size() - mBuffer->size());
     return NULL;
 }
 
@@ -1014,6 +1013,12 @@ sp<ABuffer> ElementaryStreamQueue::dequeueAccessUnitH264() {
 
             if (mFormat == NULL) {
                 mFormat = MakeAVCCodecSpecificData(accessUnit);
+                if (mFormat != NULL) {
+                    int32_t width, height;
+                    mFormat->findInt32(kKeyWidth, &width);
+                    mFormat->findInt32(kKeyHeight, &height);
+                    ALOGI("found AVC video codec config (%d x %d)", width, height);
+                }
             }
 
             return accessUnit;

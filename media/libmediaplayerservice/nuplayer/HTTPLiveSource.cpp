@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "HTTPLiveSource"
+#define LOG_TAG "NU-HTTPLiveSource"
 #include <utils/Log.h>
 
 #include "HTTPLiveSource.h"
@@ -126,27 +126,27 @@ status_t NuPlayer::HTTPLiveSource::feedMoreTSData() {
 
 status_t NuPlayer::HTTPLiveSource::dequeueAccessUnit(
         bool audio, sp<ABuffer> *accessUnit) {
-        if (mBuffering) {
-            if (!mLiveSession->haveSufficientDataOnAVTracks()) {
-                return -EWOULDBLOCK;
-            }
-            mBuffering = false;
-            sp<AMessage> notify = dupNotify();
-            notify->setInt32("what", kWhatBufferingEnd);
-            notify->post();
-            ALOGI("HTTPLiveSource buffering end!\n");
+    if (mBuffering) {
+        if (!mLiveSession->haveSufficientDataOnAVTracks()) {
+            return -EWOULDBLOCK;
         }
+        mBuffering = false;
+        sp<AMessage> notify = dupNotify();
+        notify->setInt32("what", kWhatBufferingEnd);
+        notify->post();
+        ALOGI("HTTPLiveSource buffering end!\n");
+    }
 
-        bool needBuffering = false;
-        status_t finalResult = mLiveSession->hasBufferAvailable(audio, &needBuffering);
-        if (needBuffering) {
-            mBuffering = true;
-            sp<AMessage> notify = dupNotify();
-            notify->setInt32("what", kWhatBufferingStart);
-            notify->post();
-            ALOGI("HTTPLiveSource buffering start!\n");
-            return finalResult;
-        }
+    bool needBuffering = false;
+    status_t finalResult = mLiveSession->hasBufferAvailable(audio, &needBuffering);
+    if (needBuffering) {
+        mBuffering = true;
+        sp<AMessage> notify = dupNotify();
+        notify->setInt32("what", kWhatBufferingStart);
+        notify->post();
+        ALOGI("HTTPLiveSource buffering start!\n");
+        return finalResult;
+    }
 
     return mLiveSession->dequeueAccessUnit(
             audio ? LiveSession::STREAMTYPE_AUDIO

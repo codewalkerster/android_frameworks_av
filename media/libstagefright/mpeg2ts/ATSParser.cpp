@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "ATSParser"
+#define LOG_TAG "NU-ATSParser"
 #include <utils/Log.h>
 
 #include "ATSParser.h"
@@ -935,15 +935,17 @@ void ATSParser::Stream::onPayloadData(
             sp<MetaData> meta = mQueue->getFormat();
 
             if (meta != NULL) {
-                ALOGV("Stream PID 0x%08x of type 0x%02x now has data.",
+                ALOGI("Stream PID 0x%08x of type 0x%02x now has data.",
                      mElementaryPID, mStreamType);
 
+#if 0
                 const char *mime;
                 if (meta->findCString(kKeyMIMEType, &mime)
                         && !strcasecmp(mime, MEDIA_MIMETYPE_VIDEO_AVC)
                         && !IsIDR(accessUnit)) {
                     continue;
                 }
+#endif
                 mSource = new AnotherPacketSource(meta);
                 mSource->queueAccessUnit(accessUnit);
             }
