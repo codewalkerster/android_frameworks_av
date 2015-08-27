@@ -1753,7 +1753,7 @@ status_t MediaPlayerService::AudioOutput::open(
     mTrack = t;
 
     status_t res = NO_ERROR;
-    if ((flags & AUDIO_OUTPUT_FLAG_COMPRESS_OFFLOAD) == 0) {
+    if (((flags & AUDIO_OUTPUT_FLAG_COMPRESS_OFFLOAD) == 0)&& ((t->getFlags()& AUDIO_OUTPUT_FLAG_DIRECT) ==0 )) {
         res = t->setSampleRate(mPlaybackRatePermille * mSampleRateHz / 1000);
         if (res == NO_ERROR) {
             t->setAuxEffectSendLevel(mSendLevel);
