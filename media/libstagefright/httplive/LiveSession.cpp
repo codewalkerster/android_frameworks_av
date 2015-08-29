@@ -59,6 +59,7 @@ const size_t kSizePerRead = 1500;
 
 //static
 const String8 LiveSession::kHTTPUserAgentDefault("AppleCoreMedia/1.0.0.9A405 (iPad; U; CPU OS 5_0_1 like Mac OS X; zh_cn)");
+const AString LiveSession::DumpPath = "/data/tmp/";
 
 LiveSession::LiveSession(
         const sp<AMessage> &notify, uint32_t flags,
@@ -66,6 +67,7 @@ LiveSession::LiveSession(
     : mNotify(notify),
       mFlags(flags),
       mHTTPService(httpService),
+      mDumpFile(NULL),
       mBuffTimeSec(2),
       mDebug(false),
       mCodecSpecificDataSend(false),
@@ -101,6 +103,14 @@ LiveSession::LiveSession(
     if (property_get("media.hls.bufftime_s", value, NULL)) {
         mBuffTimeSec = atoi(value);
     }
+    if (property_get("media.hls.dumpmode", value, NULL)) {
+        int32_t dumpmode = atoi(value);
+        if (dumpmode == 1) {
+            AString dumppath = DumpPath;
+            dumppath.append("nuplayer_hls_dump.dat");
+            mDumpFile = fopen(dumppath.c_str(), "ab+");
+        }
+    }
 
     mStreams[kAudioIndex] = StreamItem("audio");
     mStreams[kVideoIndex] = StreamItem("video");
@@ -119,6 +129,9 @@ LiveSession::~LiveSession() {
     if (mCodecSpecificData != NULL) {
         free(mCodecSpecificData);
         mCodecSpecificData = NULL;
+    }
+    if (mDumpFile) {
+        fclose(mDumpFile);
     }
 }
 
@@ -1124,6 +1137,11 @@ ssize_t LiveSession::fetchFile(
         ssize_t n = (*source)->readAt(
                 buffer->size(), buffer->data() + buffer->size(),
                 maxBytesToRead);
+
+        if (mDumpFile && !isPlaylist && n > 0) {
+            fwrite(buffer->data() + buffer->size(), 1, n, mDumpFile);
+            fflush(mDumpFile);
+        }
 
         if (!isPlaylist) {
             mHTTPDataSource->estimateBandwidth(&mEstimatedBWbps);

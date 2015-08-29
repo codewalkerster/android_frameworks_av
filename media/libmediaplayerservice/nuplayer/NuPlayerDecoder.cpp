@@ -655,6 +655,7 @@ status_t NuPlayer::Decoder::fetchInputData(sp<AMessage> &reply) {
         }
 
         dropAccessUnit = false;
+#if 0
         if (!mIsAudio
                 && !mIsSecure
                 && mRenderer->getVideoLateByUs() > 100000ll
@@ -664,6 +665,7 @@ status_t NuPlayer::Decoder::fetchInputData(sp<AMessage> &reply) {
             ++mNumFramesDropped;
             ALOGI("decoder need to drop this AU, late : %lld us, dropped frames : %lld\n", mRenderer->getVideoLateByUs(), mNumFramesDropped);
         }
+#endif
     } while (dropAccessUnit);
 
     // ALOGV("returned a valid buffer of %s data", mIsAudio ? "mIsAudio" : "video");
@@ -779,7 +781,7 @@ bool NuPlayer::Decoder::onInputBufferFetched(const sp<AMessage> &msg) {
 
         int64_t timeUs = 0;
         uint32_t flags = 0;
-        CHECK(buffer->meta()->findInt64("timeUs", &timeUs));
+        buffer->meta()->findInt64("timeUs", &timeUs);
 
         int32_t eos, csd;
         // we do not expect SYNCFRAME for decoder

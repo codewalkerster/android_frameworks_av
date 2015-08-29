@@ -41,7 +41,7 @@ NuPlayer::HTTPLiveSource::HTTPLiveSource(
     : Source(notify),
       mHTTPService(httpService),
       mURL(url),
-      mBuffering(true),
+      mBuffering(false),
       mFlags(0),
       mFinalResult(OK),
       mOffset(0),
@@ -94,9 +94,6 @@ void NuPlayer::HTTPLiveSource::prepareAsync() {
     mLiveSession->connectAsync(
             mURL.c_str(), mExtraHeaders.isEmpty() ? NULL : &mExtraHeaders);
 
-    sp<AMessage> notifyStart = dupNotify();
-    notifyStart->setInt32("what", kWhatBufferingStart);
-    notifyStart->post();
 }
 
 void NuPlayer::HTTPLiveSource::start() {
@@ -134,6 +131,8 @@ status_t NuPlayer::HTTPLiveSource::dequeueAccessUnit(
         sp<AMessage> notify = dupNotify();
         notify->setInt32("what", kWhatBufferingEnd);
         notify->post();
+        notify->setInt32("what", kWhatResumeOnBufferingEnd);
+        notify->post();
         ALOGI("HTTPLiveSource buffering end!\n");
     }
 
@@ -142,6 +141,8 @@ status_t NuPlayer::HTTPLiveSource::dequeueAccessUnit(
     if (needBuffering) {
         mBuffering = true;
         sp<AMessage> notify = dupNotify();
+        notify->setInt32("what", kWhatPauseOnBufferingStart);
+        notify->post();
         notify->setInt32("what", kWhatBufferingStart);
         notify->post();
         ALOGI("HTTPLiveSource buffering start!\n");

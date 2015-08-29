@@ -100,10 +100,6 @@ private:
         kWhatDownloadNext   = 'dlnx',
     };
 
-    static const AString DumpPath;
-    int32_t mDumpMode; // 1: one whole file; 2: independent file
-    FILE * mDumpHandle;
-
     static const int64_t kMaxMonitorDelayUs;
     static const int32_t kNumSkipFrames;
 
