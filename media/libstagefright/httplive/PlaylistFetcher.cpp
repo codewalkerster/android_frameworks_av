@@ -54,12 +54,16 @@ const int64_t PlaylistFetcher::kMaxMonitorDelayUs = 3000000ll;
 const int32_t PlaylistFetcher::kDownloadBlockSize = 47 * 1024;
 const int32_t PlaylistFetcher::kNumSkipFrames = 5;
 
+const AString PlaylistFetcher::DumpPath = "/data/tmp/";
+
 PlaylistFetcher::PlaylistFetcher(
         const sp<AMessage> &notify,
         const sp<LiveSession> &session,
         const char *uri,
         int32_t subtitleGeneration)
-    : mNotify(notify),
+    : mDumpMode(-1),
+      mDumpHandle(NULL),
+      mNotify(notify),
       mStartTimeUsNotify(notify->dup()),
       mSession(session),
       mURI(uri),
@@ -87,9 +91,17 @@ PlaylistFetcher::PlaylistFetcher(
     memset(mPlaylistHash, 0, sizeof(mPlaylistHash));
     mStartTimeUsNotify->setInt32("what", kWhatStartedAt);
     mStartTimeUsNotify->setInt32("streamMask", 0);
+
+    char value[PROPERTY_VALUE_MAX];
+    if (property_get("media.hls.dumpmode", value, NULL)) {
+        mDumpMode = atoi(value);
+    }
 }
 
 PlaylistFetcher::~PlaylistFetcher() {
+    if (mDumpHandle) {
+        fclose(mDumpHandle);
+    }
 }
 
 int64_t PlaylistFetcher::getSegmentStartTimeUs(int32_t seqNumber) const {
@@ -951,14 +963,59 @@ void PlaylistFetcher::onDownloadNext() {
     // block-wise download
     bool startup = mStartup;
     ssize_t bytesRead;
+
+    FILE * dumpHandle = NULL;
+    if (mDumpMode == 1 && !mDumpHandle) {
+        AString dumppath = DumpPath;
+        if ((mStreamTypeMask & LiveSession::STREAMTYPE_AUDIO)
+            && (mStreamTypeMask & LiveSession::STREAMTYPE_VIDEO)) {
+            dumppath.append("nuplayer_hls_dump.dat");
+        } else if (mStreamTypeMask & LiveSession::STREAMTYPE_AUDIO) {
+            dumppath.append("nuplayer_hls_audio_dump.dat");
+        } else if (mStreamTypeMask & LiveSession::STREAMTYPE_VIDEO) {
+            dumppath.append("nuplayer_hls_video_dump.dat");
+        } else {
+            dumppath.append("nuplayer_hls_subtitle_dump.dat");
+        }
+        mDumpHandle = fopen(dumppath.c_str(), "ab+");
+    }
+    if (mDumpMode == 2) {
+        char dumpFile[256] = {'\0'};
+        if ((mStreamTypeMask & LiveSession::STREAMTYPE_AUDIO)
+            && (mStreamTypeMask & LiveSession::STREAMTYPE_VIDEO)) {
+            snprintf(dumpFile, sizeof(dumpFile), "%sdump_%d.ts", DumpPath.c_str(), mSeqNumber);
+        } else if (mStreamTypeMask & LiveSession::STREAMTYPE_AUDIO) {
+            snprintf(dumpFile, sizeof(dumpFile), "%sdump_audio_%d.ts", DumpPath.c_str(), mSeqNumber);
+        } else if (mStreamTypeMask & LiveSession::STREAMTYPE_VIDEO) {
+            snprintf(dumpFile, sizeof(dumpFile), "%sdump_video_%d.ts", DumpPath.c_str(), mSeqNumber);
+        } else {
+            snprintf(dumpFile, sizeof(dumpFile), "%sdump_subtitle_%d.ts", DumpPath.c_str(), mSeqNumber);
+        }
+        dumpHandle = fopen(dumpFile, "ab+");
+    }
+
     do {
         bytesRead = mSession->fetchFile(
                 uri.c_str(), &buffer, range_offset, range_length, kDownloadBlockSize, &source);
+
+        if (bytesRead > 0 && mDumpMode > 0) {
+            if (mDumpMode == 1 && mDumpHandle) {
+                fwrite(buffer->data() + (buffer->size() - bytesRead), 1, bytesRead, mDumpHandle);
+                fflush(mDumpHandle);
+            } else if (mDumpMode == 2 && dumpHandle) {
+                fwrite(buffer->data() + (buffer->size() - bytesRead), 1, bytesRead, dumpHandle);
+                fflush(dumpHandle);
+            }
+        }
+
 
         if (bytesRead < 0) {
             status_t err = bytesRead;
             ALOGE("failed to fetch .ts segment at url '%s'", uri.c_str());
             notifyError(err);
+            if (dumpHandle) {
+                fclose(dumpHandle);
+            }
             return;
         }
 
@@ -966,6 +1023,9 @@ void PlaylistFetcher::onDownloadNext() {
         if (buffer == NULL) {  // maybe interrupt play
             status_t err = bytesRead;
             notifyError(err);
+            if (dumpHandle) {
+                fclose(dumpHandle);
+            }
             return;
         }
 
@@ -981,6 +1041,9 @@ void PlaylistFetcher::onDownloadNext() {
             ALOGE("decryptBuffer failed w/ error %d", err);
 
             notifyError(err);
+            if (dumpHandle) {
+                fclose(dumpHandle);
+            }
             return;
         }
 
@@ -1033,18 +1096,31 @@ void PlaylistFetcher::onDownloadNext() {
                 packetSource->clear();
             }
             postMonitorQueue();
+            if (dumpHandle) {
+                fclose(dumpHandle);
+            }
             return;
         } else if (err == ERROR_OUT_OF_RANGE) {
             // reached stopping point
             stopAsync(/* clear = */ false);
+            if (dumpHandle) {
+                fclose(dumpHandle);
+            }
             return;
         } else if (err != OK) {
             notifyError(err);
             ALOGE("MPEG2TS extractor notify error : %d !\n", err);
+            if (dumpHandle) {
+                fclose(dumpHandle);
+            }
             return;
         }
 
     } while (bytesRead != 0);
+
+    if (dumpHandle) {
+        fclose(dumpHandle);
+    }
 
     if (bufferStartsWithTsSyncByte(buffer)) {
         // If we don't see a stream in the program table after fetching a full ts segment

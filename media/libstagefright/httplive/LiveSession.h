@@ -167,8 +167,6 @@ private:
     uint32_t mFlags;
     sp<IMediaHTTPService> mHTTPService;
 
-    FILE * mDumpFile;
-
     uint32_t mBuffTimeSec;
 
     bool mDebug;
@@ -179,7 +177,6 @@ private:
     bool mBuffering[kMaxStreams];
 
     static const String8 kHTTPUserAgentDefault;
-    static const AString DumpPath;
 
     uint8_t * mCodecSpecificData;
     uint32_t mCodecSpecificDataSize;
