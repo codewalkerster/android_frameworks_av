@@ -67,6 +67,8 @@ LiveSession::LiveSession(
       mFlags(flags),
       mHTTPService(httpService),
       mBuffTimeSec(2),
+      mFailureWaitSec(0),
+      mAbnormalWaitSec(0),
       mDebug(false),
       mCodecSpecificDataSend(false),
       mSeeked(false),
@@ -98,8 +100,17 @@ LiveSession::LiveSession(
         && (!strcmp(value, "1") || !strcasecmp(value, "true"))) {
         mDebug = true;
     }
-    if (property_get("media.hls.bufftime_s", value, NULL)) {
-        mBuffTimeSec = atoi(value);
+    char value1[PROPERTY_VALUE_MAX];
+    if (property_get("media.hls.bufftime_s", value1, NULL)) {
+        mBuffTimeSec = atoi(value1);
+    }
+    char value2[PROPERTY_VALUE_MAX];
+    if (property_get("media.hls.failure_wait_sec", value2, "30")) {
+        mFailureWaitSec = atoi(value2);
+    }
+    char value3[PROPERTY_VALUE_MAX];
+    if (property_get("media.hls.abnormal_wait_sec", value3, "3600")) {
+        mAbnormalWaitSec = atoi(value3);
     }
 
     mStreams[kAudioIndex] = StreamItem("audio");
@@ -113,6 +124,7 @@ LiveSession::LiveSession(
         mBuffering[i] = false;
     }
 
+    curl_global_init(CURL_GLOBAL_ALL);
 }
 
 LiveSession::~LiveSession() {
@@ -120,6 +132,7 @@ LiveSession::~LiveSession() {
         free(mCodecSpecificData);
         mCodecSpecificData = NULL;
     }
+    curl_global_cleanup();
 }
 
 sp<ABuffer> LiveSession::createFormatChangeBuffer(bool swap) {
@@ -857,7 +870,12 @@ void LiveSession::onConnect(const sp<AMessage> &msg) {
     mMasterURL = url;
 
     bool dummy;
-    mPlaylist = fetchPlaylist(url.c_str(), NULL /* curPlaylistHash */, &dummy);
+    status_t dummy_err;
+    CFContext * cfc_handle = NULL;
+    mPlaylist = fetchPlaylist(url.c_str(), NULL /* curPlaylistHash */, &dummy, dummy_err, &cfc_handle);
+    if (cfc_handle) {
+        curl_fetch_close(cfc_handle);
+    }
 
     if (mPlaylist == NULL) {
         ALOGE("unable to fetch master playlist %s.", uriDebugString(url).c_str());
@@ -990,6 +1008,101 @@ sp<PlaylistFetcher> LiveSession::addFetcher(const char *uri) {
     return info.mFetcher;
 }
 
+ssize_t LiveSession::readFromSource(CFContext * cfc, uint8_t * data, size_t size) {
+    int32_t ret = -1;
+    bool wait_flag = false;
+    uint32_t start_waittime_s = 0, waitSec = 0;
+    int64_t read_seek_size = 0, read_seek_left_size = 0;
+    char dummy[4096];
+    do {
+        // interrupt_cb()
+        if (read_seek_size && read_seek_left_size) {
+            int32_t tmp_size = read_seek_left_size > sizeof(dummy) ? sizeof(dummy) : read_seek_left_size;
+            ret = curl_fetch_read(cfc, dummy, tmp_size);
+            if (ret > 0) {
+                read_seek_left_size -= ret;
+                if (!read_seek_left_size) {
+                    read_seek_size = 0;
+                    ALOGI("read seek complete !");
+                }
+                continue;
+            }
+        } else {
+            ret = curl_fetch_read(cfc, (char *)data, size);
+        }
+        if (ret == C_ERROR_EAGAIN) {
+            usleep(10 * 1000);
+            continue;
+        }
+        if (ret >= 0 || ret == C_ERROR_UNKNOW) {
+            break;
+        }
+        if (ret < C_ERROR_EAGAIN) {
+            if (!retryCase(ret) || retryCase(ret) == 1) {
+                if (!wait_flag) {
+                    start_waittime_s = ALooper::GetNowUs() / 1000000;
+                    wait_flag = true;
+                    if (!retryCase(ret)) {
+                        waitSec = mFailureWaitSec;
+                    } else {
+                        waitSec = mAbnormalWaitSec;
+                    }
+                }
+                ALOGI("source read met error! ret : %d", ret);
+                if (ALooper::GetNowUs() / 1000000 - start_waittime_s <= waitSec) {
+                    if (cfc->filesize <= 0 && !read_seek_size) { // try to do read seek in chunked mode.
+                        read_seek_size = cfc->cwd->size;
+                        ALOGI("need to do read seek : %lld", read_seek_size);
+                    }
+                    if (read_seek_size) {
+                        read_seek_left_size = read_seek_size;
+                    }
+                    // too big! no need to do read seek.
+                    if (read_seek_size > 100 * 1024 * 1024) {
+                        ret = -ENETRESET;
+                        break;
+                    }
+                    curl_fetch_seek(cfc, cfc->cwd->size, SEEK_SET);
+                    usleep(100 * 1000);
+                } else {
+                    ret = -ENETRESET;
+                    break;
+                }
+            } else if (retryCase(ret) == 2) {
+                ret = -ENETRESET;
+                break;
+            } else {
+                ret = -ENETRESET;
+                break;
+            }
+        }
+    } while (!mNeedExit);
+
+    return ret;
+}
+
+int32_t LiveSession::retryCase(int32_t arg) {
+    int ret = -1;
+    switch (arg) {
+        case CURLERROR(56 + C_ERROR_PERFORM_BASE_ERROR):  // recv failure
+        case CURLERROR(18 + C_ERROR_PERFORM_BASE_ERROR):  // partial file
+        case CURLERROR(28 + C_ERROR_PERFORM_BASE_ERROR):  // operation timeout
+        case CURLERROR(C_ERROR_PERFORM_SELECT_ERROR):
+            ret = 0;
+            break;
+        case CURLERROR(7 + C_ERROR_PERFORM_BASE_ERROR): // couldn't connect
+        case CURLERROR(6 + C_ERROR_PERFORM_BASE_ERROR): // couldn't resolve host
+            ret = 1;
+            break;
+        case CURLERROR(33 + C_ERROR_PERFORM_BASE_ERROR): // CURLE_RANGE_ERROR
+            ret = 2;
+            break;
+        default:
+            break;
+    }
+    return ret;
+}
+
 /*
  * Illustration of parameters:
  *
@@ -1010,7 +1123,7 @@ ssize_t LiveSession::fetchFile(
         const char *url, sp<ABuffer> *out,
         int64_t range_offset, int64_t range_length,
         uint32_t block_size, /* download block size */
-        sp<DataSource> *source, /* to return and reuse source */
+        CFContext ** cfc, /* to return and reuse source */
         String8 *actualUrl, bool isPlaylist) {
 
     if (mNeedExit) {
@@ -1018,58 +1131,34 @@ ssize_t LiveSession::fetchFile(
     }
 
     off64_t size;
-    sp<DataSource> temp_source;
-    if (source == NULL) {
-        source = &temp_source;
-    }
 
-    if (*source == NULL) {
-        if (!strncasecmp(url, "file://", 7)) {
-            *source = new FileSource(url + 7);
-        } else if (strncasecmp(url, "http://", 7)
-                && strncasecmp(url, "https://", 8)) {
-            return ERROR_UNSUPPORTED;
-        } else {
-            KeyedVector<String8, String8> headers = mExtraHeaders;
-            if (range_offset > 0 || range_length >= 0) {
-                headers.add(
-                        String8("Range"),
-                        String8(
-                            StringPrintf(
-                                "bytes=%lld-%s",
-                                range_offset,
-                                range_length < 0
-                                    ? "" : StringPrintf("%lld",
-                                            range_offset + range_length - 1).c_str()).c_str()));
-            }
-
-            ssize_t i = headers.indexOfKey(String8("User-Agent"));
-            if (i < 0) {
-                headers.add(String8("User-Agent"), kHTTPUserAgentDefault);
-            }
-
-            //size_t numHistoryItems = kBandwidthHistoryBytes / PlaylistFetcher::kDownloadBlockSize + 1;
-            //if (numHistoryItems < 5) {
-            //    numHistoryItems = 5;
-            //}
-            mHTTPDataSource = new MediaHTTP(mHTTPService->makeHTTPConnection());
-            mHTTPDataSource->setBandwidthHistorySize(50);
-            status_t err = mHTTPDataSource->connect(url, &headers);
-
-            if (err != OK) {
-                ALOGE("HTTP source connect failed, err : %d !", err);
-                return err;
-            }
-
-            ALOGI("Last file download speed : %d bps", mEstimatedBWbps);
-
-            *source = mHTTPDataSource;
+    if (*cfc == NULL) {
+        String8 headers;
+        if (range_offset > 0 || range_length >= 0) {
+            headers.append(StringPrintf("Range: bytes=%lld-%s\r\n", range_offset, range_length < 0 ? "" : StringPrintf("%lld", range_offset + range_length - 1).c_str()).c_str());
         }
+        ssize_t i = mExtraHeaders.indexOfKey(String8("User-Agent"));
+        if (i >= 0) {
+            headers.append(StringPrintf("User-Agent: %s\r\n", mExtraHeaders.valueAt(i).string()).c_str());
+        }
+        CFContext * temp_cfc = curl_fetch_init(url, headers.string(), 0);
+        if (!temp_cfc) {
+            ALOGE("curl fetch init failed!");
+            return UNKNOWN_ERROR;
+        }
+        //curl_fetch_register_interrupt(temp_cfc, interrupt_cb);
+        if (curl_fetch_open(temp_cfc)) {
+            ALOGE("curl fetch open failed! http code : %d", temp_cfc->http_code);
+            curl_fetch_close(temp_cfc);
+            temp_cfc = NULL;
+            return ERROR_CANNOT_CONNECT;
+        }
+        *cfc = temp_cfc;
     }
 
-    status_t getSizeErr = (*source)->getSize(&size);
-    if (getSizeErr != OK) {
-        size = 65536;
+    size = (*cfc)->filesize;
+    if (size <= 0) {
+        size = 1 * 1024 * 1024;
     }
 
     sp<ABuffer> buffer = *out != NULL ? *out : new ABuffer(size);
@@ -1090,7 +1179,7 @@ ssize_t LiveSession::fetchFile(
 
         size_t bufferRemaining = buffer->capacity() - buffer->size();
 
-        if (bufferRemaining == 0 && getSizeErr != OK) {
+        if (bufferRemaining == 0) {
             size_t bufferIncrement = buffer->size() / 2;
             if (bufferIncrement < 32768) {
                 bufferIncrement = 32768;
@@ -1119,15 +1208,7 @@ ssize_t LiveSession::fetchFile(
             }
         }
 
-        // The DataSource is responsible for informing us of error (n < 0) or eof (n == 0)
-        // to help us break out of the loop.
-        ssize_t n = (*source)->readAt(
-                buffer->size(), buffer->data() + buffer->size(),
-                maxBytesToRead);
-
-        if (!isPlaylist) {
-            mHTTPDataSource->estimateBandwidth(&mEstimatedBWbps);
-        }
+        ssize_t n = readFromSource(*cfc, buffer->data() + buffer->size(), maxBytesToRead);
 
         if (n < 0) {
             ALOGE("HTTP source read failed, err : %d !\n", n);
@@ -1144,17 +1225,31 @@ ssize_t LiveSession::fetchFile(
 
     *out = buffer;
     if (actualUrl != NULL) {
-        *actualUrl = (*source)->getUri();
+        if ((*cfc)->relocation) {
+            *actualUrl = (*cfc)->relocation;
+            ALOGI("actual url : %s", (*cfc)->relocation);
+        }
         if (actualUrl->isEmpty()) {
             *actualUrl = url;
         }
+    }
+
+    if (!bytesRead && !isPlaylist) {
+        double tmp_info = 0.0;
+        int32_t err_ret = curl_fetch_get_info(*cfc, C_INFO_SPEED_DOWNLOAD, 0, (void *)&tmp_info);
+        if (!err_ret) {
+            mEstimatedBWbps = (int32_t)(tmp_info * 8);
+        } else {
+            mEstimatedBWbps = 0;
+        }
+        ALOGI("download speed : %d bps", mEstimatedBWbps);
     }
 
     return bytesRead;
 }
 
 sp<M3UParser> LiveSession::fetchPlaylist(
-        const char *url, uint8_t *curPlaylistHash, bool *unchanged) {
+        const char *url, uint8_t *curPlaylistHash, bool *unchanged, status_t &err_ret, CFContext ** cfc) {
     ALOGI("fetchPlaylist '%s'", url);
 
     *unchanged = false;
@@ -1162,9 +1257,10 @@ sp<M3UParser> LiveSession::fetchPlaylist(
     sp<ABuffer> buffer;
     String8 actualUrl;
 
-    ssize_t err = fetchFile(url, &buffer, 0, -1, 0, NULL, &actualUrl, true);
+    ssize_t err = fetchFile(url, &buffer, 0, -1, 0, cfc, &actualUrl, true);
 
     if (err <= 0) {
+        err_ret = err;
         ALOGE("failed to fetch playlist, err : %d\n", err);
         return NULL;
     }

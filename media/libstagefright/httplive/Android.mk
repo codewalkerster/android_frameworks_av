@@ -11,11 +11,13 @@ LOCAL_SRC_FILES:=               \
 LOCAL_C_INCLUDES:= \
 	$(TOP)/frameworks/av/media/libstagefright \
 	$(TOP)/frameworks/native/include/media/openmax \
-	$(TOP)/external/openssl/include
+	$(TOP)/external/openssl/include \
+    $(TOP)/external/curl/include \
+    $(TOP)/vendor/amlogic/frameworks/av/LibPlayer/third_parts/libcurl-ffmpeg/include
 
 LOCAL_CFLAGS += -Werror
 
-LOCAL_STATIC_LIBRARIES := libstagefright_hevcutils
+LOCAL_STATIC_LIBRARIES := libstagefright_hevcutils libcurl_base libcurl_common
 
 LOCAL_SHARED_LIBRARIES := \
         libbinder \
@@ -25,7 +27,8 @@ LOCAL_SHARED_LIBRARIES := \
         libstagefright \
         libstagefright_foundation \
         libutils \
-        libamffmpeg
+        libamffmpeg \
+        libcurl
 
 LOCAL_MODULE:= libstagefright_httplive
 

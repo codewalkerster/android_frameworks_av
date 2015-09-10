@@ -23,6 +23,8 @@
 
 #include <utils/String8.h>
 
+#include "curl_fetch.h"
+
 namespace android {
 
 struct ABuffer;
@@ -168,6 +170,8 @@ private:
     sp<IMediaHTTPService> mHTTPService;
 
     uint32_t mBuffTimeSec;
+    uint32_t mFailureWaitSec;
+    uint32_t mAbnormalWaitSec;
 
     bool mDebug;
     bool mCodecSpecificDataSend;
@@ -181,7 +185,6 @@ private:
     uint8_t * mCodecSpecificData;
     uint32_t mCodecSpecificDataSize;
 
-    sp<HTTPBase> mHTTPDataSource;
     KeyedVector<String8, String8> mExtraHeaders;
 
     AString mLastPlayListURL;
@@ -250,6 +253,9 @@ private:
     status_t onSeek(const sp<AMessage> &msg);
     void onFinishDisconnect2();
 
+    ssize_t readFromSource(CFContext * cfc, uint8_t * data, size_t size);
+    int32_t retryCase(int32_t arg);
+
     // If given a non-zero block_size (default 0), it is used to cap the number of
     // bytes read in from the DataSource. If given a non-NULL buffer, new content
     // is read into the end.
@@ -268,11 +274,11 @@ private:
             /* download block size */
             uint32_t block_size = 0,
             /* reuse DataSource if doing partial fetch */
-            sp<DataSource> *source = NULL,
+            CFContext ** cfc = NULL,
             String8 *actualUrl = NULL, bool isPlaylist = false);
 
     sp<M3UParser> fetchPlaylist(
-            const char *url, uint8_t *curPlaylistHash, bool *unchanged);
+            const char *url, uint8_t *curPlaylistHash, bool *unchanged, status_t &err, CFContext ** cfc = NULL);
 
     size_t getBandwidthIndex();
     int64_t latestMediaSegmentStartTimeUs();
