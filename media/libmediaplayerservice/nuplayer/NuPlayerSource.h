@@ -118,6 +118,9 @@ struct NuPlayer::Source : public AHandler {
         return false;
     }
 
+    virtual void setParentThreadId(android_thread_id_t) {
+    }
+
 protected:
     virtual ~Source() {}
 

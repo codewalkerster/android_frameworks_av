@@ -1155,9 +1155,7 @@ void NuPlayer::Renderer::onFlush(const sp<AMessage> &msg) {
             ++mAudioQueueGeneration;
             prepareForMediaRenderingStart();
 
-            if (offloadingAudio()) {
-                setAudioFirstAnchorTime(-1);
-            }
+            setAudioFirstAnchorTime(-1);
         }
 
         mDrainAudioQueuePending = false;
