@@ -61,8 +61,8 @@ size_t StreamSniffer::sniffStreamType(size_t sniffsize) {
         }
         sp<ABuffer> buffer = new ABuffer(size);
         size = httpDataSource->readAt(0, buffer->data(), sniffsize ? sniffsize : buffer->size());
-        if (size <= 0) {
-            ALOGE("Could not receive data, err : %d !\n", (size_t)size);
+        if (size <= 2) { /*for encoded with UTF-8 need 3 bytes, if less, will crashed.*/
+            ALOGE("Could not receive enough data, err : %d !\n", (size_t)size);
             return STREAM_UNKNOWN;
         }
         ABitReader br(buffer->data(), size);
