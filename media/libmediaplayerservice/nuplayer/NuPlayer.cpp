@@ -163,6 +163,10 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// static
+Mutex NuPlayer::mThreadLock;
+Vector<android_thread_id_t> NuPlayer::mThreadId;
+
 NuPlayer::NuPlayer(NUPLAYER_STREAMTYPE type)
     : mUIDValid(false),
       mStreamType(type),
@@ -188,6 +192,59 @@ NuPlayer::NuPlayer(NUPLAYER_STREAMTYPE type)
 }
 
 NuPlayer::~NuPlayer() {
+}
+
+// static
+void NuPlayer::thread_interrupt() {
+    android_thread_id_t thread_id = androidGetThreadId();
+
+    Mutex::Autolock autoLock(mThreadLock);
+
+    if (mThreadId.isEmpty()) {
+        mThreadId.push_back(thread_id);
+    } else {
+        size_t size = mThreadId.size();
+        size_t i;
+        for (i = 0; i < size; i++) {
+            if (mThreadId.itemAt(i) == thread_id) {
+                break;
+            }
+        }
+        if (i == size) {
+            mThreadId.push_back(thread_id);
+        }
+    }
+}
+
+// static
+void NuPlayer::thread_uninterrupt() {
+    android_thread_id_t thread_id = androidGetThreadId();
+
+    Mutex::Autolock autoLock(mThreadLock);
+
+    size_t size = mThreadId.size();
+    for (size_t i = 0; i < size; i++) {
+        if (mThreadId.itemAt(i) == thread_id) {
+            mThreadId.removeAt(i);
+            break;
+        }
+    }
+}
+
+// static
+int32_t NuPlayer::interrupt_callback(android_thread_id_t thread_id) {
+    Mutex::Autolock autoLock(mThreadLock);
+    if (mThreadId.isEmpty()) {
+        return 0;
+    } else {
+        size_t size = mThreadId.size();
+        for (size_t i = 0; i < size; i++) {
+            if (mThreadId.itemAt(i) == thread_id) {
+                return 1;
+            }
+        }
+    }
+    return 0;
 }
 
 void NuPlayer::setUID(uid_t uid) {
@@ -237,7 +294,7 @@ void NuPlayer::setDataSourceAsync(
 
     sp<Source> source;
     if (NU_STREAM_HLS == mStreamType || IsHTTPLiveURL(url)) {
-        source = new HTTPLiveSource(notify, httpService, url, headers);
+        source = new HTTPLiveSource(notify, httpService, url, headers, interrupt_callback);
     } else if (!strncasecmp(url, "rtsp://", 7)) {
         source = new RTSPSource(
                 notify, httpService, url, headers, mUIDValid, mUID);
@@ -385,6 +442,8 @@ void NuPlayer::onMessageReceived(const sp<AMessage> &msg) {
             CHECK(msg->findObject("source", &obj));
             if (obj != NULL) {
                 mSource = static_cast<Source *>(obj.get());
+                mSelfThreadId = androidGetThreadId();
+                mSource->setParentThreadId(mSelfThreadId);
             } else {
                 err = UNKNOWN_ERROR;
             }
@@ -1558,7 +1617,11 @@ void NuPlayer::performSeek(int64_t seekTimeUs, bool needNotify) {
                 mAudioDecoder.get(), mVideoDecoder.get());
         return;
     }
+
+    thread_interrupt();
     mSource->seekTo(seekTimeUs);
+    thread_uninterrupt();
+
     ++mTimedTextGeneration;
 
     // everything's flushed, continue playback.
@@ -1603,9 +1666,11 @@ void NuPlayer::performReset() {
     ++mRendererGeneration;
 
     if (mSource != NULL) {
+        thread_interrupt();
         mSource->stop();
 
         mSource.clear();
+        thread_uninterrupt();
     }
 
     if (mDriver != NULL) {

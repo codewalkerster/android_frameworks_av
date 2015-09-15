@@ -37,7 +37,8 @@ NuPlayer::HTTPLiveSource::HTTPLiveSource(
         const sp<AMessage> &notify,
         const sp<IMediaHTTPService> &httpService,
         const char *url,
-        const KeyedVector<String8, String8> *headers)
+        const KeyedVector<String8, String8> *headers,
+        interruptcallback pfunc)
     : Source(notify),
       mHTTPService(httpService),
       mURL(url),
@@ -45,7 +46,8 @@ NuPlayer::HTTPLiveSource::HTTPLiveSource(
       mFlags(0),
       mFinalResult(OK),
       mOffset(0),
-      mFetchSubtitleDataGeneration(0) {
+      mFetchSubtitleDataGeneration(0),
+      mInterruptCallback(pfunc) {
     if (headers) {
         mExtraHeaders = *headers;
 
@@ -87,7 +89,10 @@ void NuPlayer::HTTPLiveSource::prepareAsync() {
     mLiveSession = new LiveSession(
             notify,
             (mFlags & kFlagIncognito) ? LiveSession::kFlagIncognito : 0,
-            mHTTPService);
+            mHTTPService,
+            mInterruptCallback);
+
+    mLiveSession->setParentThreadId(mParentThreadId);
 
     mLiveLooper->registerHandler(mLiveSession);
 
@@ -97,6 +102,10 @@ void NuPlayer::HTTPLiveSource::prepareAsync() {
 }
 
 void NuPlayer::HTTPLiveSource::start() {
+}
+
+void NuPlayer::HTTPLiveSource::setParentThreadId(android_thread_id_t thread_id) {
+    mParentThreadId = thread_id;
 }
 
 sp<AMessage> NuPlayer::HTTPLiveSource::getFormat(bool audio) {

@@ -62,8 +62,9 @@ const String8 LiveSession::kHTTPUserAgentDefault("AppleCoreMedia/1.0.0.9A405 (iP
 
 LiveSession::LiveSession(
         const sp<AMessage> &notify, uint32_t flags,
-        const sp<IMediaHTTPService> &httpService)
-    : mNotify(notify),
+        const sp<IMediaHTTPService> &httpService, interruptcallback pfunc)
+    : mInterruptCallback(pfunc),
+      mNotify(notify),
       mFlags(flags),
       mHTTPService(httpService),
       mBuffTimeSec(2),
@@ -133,6 +134,10 @@ LiveSession::~LiveSession() {
         mCodecSpecificData = NULL;
     }
     curl_global_cleanup();
+}
+
+void LiveSession::setParentThreadId(android_thread_id_t thread_id) {
+    mParentThreadId = thread_id;
 }
 
 sp<ABuffer> LiveSession::createFormatChangeBuffer(bool swap) {
@@ -524,6 +529,12 @@ void LiveSession::connectAsync(
 }
 
 status_t LiveSession::disconnect() {
+
+    {
+        Mutex::Autolock autoLock(mWaitLock);
+        mWaitCondition.broadcast();
+    }
+
     mNeedExit = true;
     sp<AMessage> msg = new AMessage(kWhatDisconnect, id());
 
@@ -534,6 +545,12 @@ status_t LiveSession::disconnect() {
 }
 
 status_t LiveSession::seekTo(int64_t timeUs) {
+
+    {
+        Mutex::Autolock autoLock(mWaitLock);
+        mWaitCondition.broadcast();
+    }
+
     mSeeked = true;
     sp<AMessage> msg = new AMessage(kWhatSeek, id());
     msg->setInt64("timeUs", timeUs);
@@ -662,6 +679,11 @@ void LiveSession::onMessageReceived(const sp<AMessage> &msg) {
                     CHECK(msg->findInt32("err", &err));
 
                     ALOGE("XXX Received error %d from PlaylistFetcher.", err);
+
+                    if (mInterruptCallback(mParentThreadId)) {
+                        ALOGI("Maybe reset or seek, ignore this error : %d", err);
+                        break;
+                    }
 
                     // handle EOS on subtitle tracks independently
                     AString uri;
@@ -1015,7 +1037,10 @@ ssize_t LiveSession::readFromSource(CFContext * cfc, uint8_t * data, size_t size
     int64_t read_seek_size = 0, read_seek_left_size = 0;
     char dummy[4096];
     do {
-        // interrupt_cb()
+        if (mInterruptCallback(mParentThreadId)) {
+            ALOGE("[%s:%d] interrupted !", __FUNCTION__, __LINE__);
+            return UNKNOWN_ERROR;
+        }
         if (read_seek_size && read_seek_left_size) {
             int32_t tmp_size = read_seek_left_size > sizeof(dummy) ? sizeof(dummy) : read_seek_left_size;
             ret = curl_fetch_read(cfc, dummy, tmp_size);
@@ -1031,7 +1056,7 @@ ssize_t LiveSession::readFromSource(CFContext * cfc, uint8_t * data, size_t size
             ret = curl_fetch_read(cfc, (char *)data, size);
         }
         if (ret == C_ERROR_EAGAIN) {
-            usleep(10 * 1000);
+            threadWaitTimeNs(10000000);
             continue;
         }
         if (ret >= 0 || ret == C_ERROR_UNKNOW) {
@@ -1063,7 +1088,7 @@ ssize_t LiveSession::readFromSource(CFContext * cfc, uint8_t * data, size_t size
                         break;
                     }
                     curl_fetch_seek(cfc, cfc->cwd->size, SEEK_SET);
-                    usleep(100 * 1000);
+                    threadWaitTimeNs(100000000);
                 } else {
                     ret = -ENETRESET;
                     break;
@@ -1103,6 +1128,11 @@ int32_t LiveSession::retryCase(int32_t arg) {
     return ret;
 }
 
+void LiveSession::threadWaitTimeNs(int64_t timeNs) {
+    Mutex::Autolock autoLock(mWaitLock);
+    mWaitCondition.waitRelative(mWaitLock, timeNs);
+}
+
 /*
  * Illustration of parameters:
  *
@@ -1126,7 +1156,7 @@ ssize_t LiveSession::fetchFile(
         CFContext ** cfc, /* to return and reuse source */
         String8 *actualUrl, bool isPlaylist) {
 
-    if (mNeedExit) {
+    if (mNeedExit || mInterruptCallback(mParentThreadId)) {
         return 0;
     }
 
@@ -1146,7 +1176,8 @@ ssize_t LiveSession::fetchFile(
             ALOGE("curl fetch init failed!");
             return UNKNOWN_ERROR;
         }
-        //curl_fetch_register_interrupt(temp_cfc, interrupt_cb);
+        curl_fetch_register_interrupt_pid(temp_cfc, mInterruptCallback);
+        curl_fetch_set_parent_pid(temp_cfc, mParentThreadId);
         if (curl_fetch_open(temp_cfc)) {
             ALOGE("curl fetch open failed! http code : %d", temp_cfc->http_code);
             curl_fetch_close(temp_cfc);
@@ -1173,7 +1204,7 @@ ssize_t LiveSession::fetchFile(
     }
     for (;;) {
         // no block when quit.
-        if (mNeedExit) {
+        if (mNeedExit || mInterruptCallback(mParentThreadId)) {
             break;
         }
 

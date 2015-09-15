@@ -29,6 +29,8 @@ struct AMessage;
 struct MetaData;
 struct NuPlayerDriver;
 
+typedef int32_t (*interruptcallback)(android_thread_id_t thread_id);
+
 struct NuPlayer : public AHandler {
     NuPlayer(NUPLAYER_STREAMTYPE type = NU_STREAM_NONE);
 
@@ -71,6 +73,10 @@ struct NuPlayer : public AHandler {
 
     sp<MetaData> getFileMeta();
 
+    static void thread_interrupt();
+    static void thread_uninterrupt();
+    static int32_t interrupt_callback(android_thread_id_t thread_id);
+
 protected:
     virtual ~NuPlayer();
 
@@ -79,6 +85,9 @@ protected:
 public:
     struct NuPlayerStreamListener;
     struct Source;
+
+    static Mutex mThreadLock;
+    static Vector<android_thread_id_t> mThreadId; // store the thread ids which need to be interrupted.
 
 private:
     struct Decoder;
@@ -187,6 +196,8 @@ private:
     // true, mPaused is always true; if mPausedByClient is false, mPaused could
     // still become true, when we pause internally due to buffering.
     bool mPausedByClient;
+
+    android_thread_id_t mSelfThreadId;
 
     inline const sp<DecoderBase> &getDecoder(bool audio) {
         return audio ? mAudioDecoder : mVideoDecoder;

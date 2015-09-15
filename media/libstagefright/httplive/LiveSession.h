@@ -37,6 +37,8 @@ struct M3UParser;
 struct PlaylistFetcher;
 struct Parcel;
 
+typedef int32_t (*interruptcallback)(android_thread_id_t thread_id);
+
 struct LiveSession : public AHandler {
     enum Flags {
         // Don't log any URLs.
@@ -45,7 +47,8 @@ struct LiveSession : public AHandler {
     LiveSession(
             const sp<AMessage> &notify,
             uint32_t flags,
-            const sp<IMediaHTTPService> &httpService);
+            const sp<IMediaHTTPService> &httpService,
+            interruptcallback pfunc);
 
     enum StreamIndex {
         kAudioIndex    = 0,
@@ -90,6 +93,8 @@ struct LiveSession : public AHandler {
     bool haveSufficientDataOnAVTracks();
     status_t hasBufferAvailable(bool audio, bool * needBuffering);
     void setEOSTimeout(bool audio, int64_t timeout);
+
+    void setParentThreadId(android_thread_id_t thread_id);
 
     enum {
         kWhatStreamsChanged,
@@ -164,6 +169,12 @@ private:
         }
     };
     StreamItem mStreams[kMaxStreams];
+
+    interruptcallback mInterruptCallback;
+    android_thread_id_t mParentThreadId;
+
+    Mutex mWaitLock;
+    Condition mWaitCondition;
 
     sp<AMessage> mNotify;
     uint32_t mFlags;
@@ -253,6 +264,7 @@ private:
     status_t onSeek(const sp<AMessage> &msg);
     void onFinishDisconnect2();
 
+    int32_t interrupt_callback();
     ssize_t readFromSource(CFContext * cfc, uint8_t * data, size_t size);
     int32_t retryCase(int32_t arg);
 
@@ -319,6 +331,8 @@ private:
 
     void swapPacketSource(StreamType stream);
     bool canSwitchUp();
+
+    void threadWaitTimeNs(int64_t timeNs);
 
     DISALLOW_EVIL_CONSTRUCTORS(LiveSession);
 };
