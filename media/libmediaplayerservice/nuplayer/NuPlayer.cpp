@@ -181,6 +181,7 @@ NuPlayer::NuPlayer(NUPLAYER_STREAMTYPE type)
       mFlushingVideo(NONE),
       mResumePending(false),
       mVideoScalingMode(NATIVE_WINDOW_SCALING_MODE_SCALE_TO_WINDOW),
+      mNewSurface(NULL),
       mStarted(false),
       mPaused(false),
       mPausedByClient(false) {
