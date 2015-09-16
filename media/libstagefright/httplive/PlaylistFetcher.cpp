@@ -1003,7 +1003,7 @@ void PlaylistFetcher::onDownloadNext() {
 
     // block-wise download
     bool startup = mStartup;
-    ssize_t bytesRead;
+    ssize_t bytesRead, total_size = 0;
     CFContext * cfc_handle = NULL;
 
     FILE * dumpHandle = NULL;
@@ -1048,6 +1048,10 @@ void PlaylistFetcher::onDownloadNext() {
                 fwrite(buffer->data() + (buffer->size() - bytesRead), 1, bytesRead, dumpHandle);
                 fflush(dumpHandle);
             }
+        }
+
+        if (bytesRead > 0) {
+            total_size += bytesRead;
         }
 
         // need to retry
@@ -1199,6 +1203,12 @@ void PlaylistFetcher::onDownloadNext() {
     }
     if (cfc_handle) {
         curl_fetch_close(cfc_handle);
+    }
+
+    if (mPlaylist->isComplete() && mSeqNumber == lastSeqNumberInPlaylist && !total_size) {
+        ALOGE("Last segment is empty, need to notify EOS!");
+        notifyError(ERROR_END_OF_STREAM);
+        return;
     }
 
     if (bufferStartsWithTsSyncByte(buffer)) {
