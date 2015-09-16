@@ -272,7 +272,7 @@ class NuPlayerFactory : public MediaPlayerFactory::IFactory {
             }
 
             StreamSniffer sniffer(url, MediaPlayerFactory::sHttpService);
-            if (StreamSniffer::STREAM_HLS == sniffer.sniffStreamType(1024)) {
+            if (StreamSniffer::STREAM_HLS == sniffer.sniffStreamType(100)) {
                 mNUStreamType = NU_STREAM_HLS;
                 return kOurScore;
             }

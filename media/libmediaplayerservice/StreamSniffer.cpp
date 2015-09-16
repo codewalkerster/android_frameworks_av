@@ -21,14 +21,18 @@
 #include "StreamSniffer.h"
 #include "HTTPBase.h"
 
+#include <cutils/properties.h>
 #include <media/stagefright/MediaHTTP.h>
 #include <media/IMediaHTTPConnection.h>
 #include <media/stagefright/foundation/ABuffer.h>
 #include <media/stagefright/Utils.h>
+#include <sys/time.h>
+
+#include "curl_fetch.h"
 
 namespace android {
 
-#define kHTTPSourceSizeDefault (1*1024*1024)
+#define kHTTPSourceSizeDefault 1024
 
 #define EXTM3U "#EXTM3U"
 
@@ -40,6 +44,10 @@ namespace android {
 StreamSniffer::StreamSniffer(const char * url, const sp<IMediaHTTPService>& httpservice)
     : mURL(url),
       mHttpService(httpservice) {
+    char value[PROPERTY_VALUE_MAX];
+    if (property_get("media.hls.sniffreadwait_s", value, "10")) {
+        mReadWaitS = atoi(value);
+    }
 }
 
 StreamSniffer::~StreamSniffer() {
@@ -48,24 +56,46 @@ StreamSniffer::~StreamSniffer() {
 size_t StreamSniffer::sniffStreamType(size_t sniffsize) {
     status_t err = OK;
     if (IS_HTTP_URL(mURL)) {
-        sp<HTTPBase> httpDataSource = new MediaHTTP(mHttpService->makeHTTPConnection());
-        err = httpDataSource->connect(mURL.c_str());
-        if (err != OK) {
-            ALOGE("Could not connect this url!\n");
+        ALOGI("[%s:%d] start http sniff!", __FUNCTION__, __LINE__);
+        CFContext * cfc_handle = curl_fetch_init(mURL.c_str(), NULL, 0);
+        if (!cfc_handle) {
+            ALOGE("[%s:%d] curl fetch init failed!", __FUNCTION__, __LINE__);
+            return STREAM_UNKNOWN;
+        }
+        if (curl_fetch_open(cfc_handle)) {
+            ALOGE("[%s:%d] curl fetch open failed!", __FUNCTION__, __LINE__);
+            curl_fetch_close(cfc_handle);
+            cfc_handle = NULL;
             return STREAM_UNKNOWN;
         }
         off64_t size;
-        err = httpDataSource->getSize(&size);
-        if (err != OK) {
+        size = cfc_handle->filesize;
+        if (size <= 0) {
             size = kHTTPSourceSizeDefault;
         }
-        sp<ABuffer> buffer = new ABuffer(size);
-        size = httpDataSource->readAt(0, buffer->data(), sniffsize ? sniffsize : buffer->size());
-        if (size <= 2) { /*for encoded with UTF-8 need 3 bytes, if less, will crashed.*/
-            ALOGE("Could not receive enough data, err : %d !\n", (size_t)size);
+        off64_t buf_size = sniffsize > size ? size : sniffsize;
+        ALOGI("[%s:%d] sniff size : %lld!", __FUNCTION__, __LINE__, buf_size);
+        sp<ABuffer> buffer = new ABuffer(buf_size);
+        int64_t read_start_time_us = getNowUs();
+        int32_t ret = 0, read_size = 0;
+        while (((getNowUs() - read_start_time_us) / 1000000ll) < mReadWaitS && read_size < buffer->size()) {
+            ret = curl_fetch_read(cfc_handle, (char *)(buffer->data() + read_size), buffer->size() - read_size);
+            if (ret == C_ERROR_EAGAIN) {
+                continue;
+            }
+            if (ret > 0) {
+                read_size += ret;
+            } else {
+                break;
+            }
+        }
+        curl_fetch_close(cfc_handle);
+        if (read_size <= 2) { /*for encoded with UTF-8 need 3 bytes, if less, will crashed.*/
+            ALOGE("Could not receive enough data, err : %d !\n", (size_t)read_size);
             return STREAM_UNKNOWN;
         }
-        ABitReader br(buffer->data(), size);
+        ALOGI("[%s:%d] try hls, size : %d!", __FUNCTION__, __LINE__, read_size);
+        ABitReader br(buffer->data(), read_size);
         if (OK == tryHLSParser(&br)) {
             ALOGI("Got hls stream type successfully !\n");
             return STREAM_HLS;
@@ -89,6 +119,10 @@ int32_t StreamSniffer::isBOMHeader(ABitReader * br) {
         return br->getBits(8);
     }
     return ret;
+}
+
+int64_t StreamSniffer::getNowUs() {
+    return systemTime(SYSTEM_TIME_MONOTONIC) / 1000ll;
 }
 
 status_t StreamSniffer::tryHLSParser(ABitReader * br) {

@@ -43,7 +43,9 @@ private:
 
     status_t tryHLSParser(ABitReader * br);
     int32_t isBOMHeader(ABitReader * br);
+    int64_t getNowUs();
 
+    int32_t mReadWaitS;
     AString mURL;
     sp<IMediaHTTPService> mHttpService;
 };
