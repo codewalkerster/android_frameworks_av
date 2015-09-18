@@ -21,14 +21,13 @@
 #include <utils/Errors.h>
 #include <media/stagefright/foundation/AString.h>
 #include <media/stagefright/foundation/ABitReader.h>
-#include <media/IMediaHTTPService.h>
 
 namespace android {
 
 class StreamSniffer
 {
 public:
-    StreamSniffer(const char * url, const sp<IMediaHTTPService>& httpservice);
+    StreamSniffer(const char * url);
     ~StreamSniffer();
 
     enum STREAM_TYPE {
@@ -37,17 +36,13 @@ public:
         // other types, add here
     };
 
-    size_t sniffStreamType(size_t sniffsize = 0);
+    status_t tryHLSParser(ABitReader * br);
 
 private:
 
-    status_t tryHLSParser(ABitReader * br);
     int32_t isBOMHeader(ABitReader * br);
-    int64_t getNowUs();
 
-    int32_t mReadWaitS;
     AString mURL;
-    sp<IMediaHTTPService> mHttpService;
 };
 
 }

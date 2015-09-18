@@ -45,7 +45,8 @@ NuPlayerDriver::NuPlayerDriver(NUPLAYER_STREAMTYPE type)
       mAtEOS(false),
       mLooping(false),
       mAutoLoop(false),
-      mStartupSeekTimeUs(-1) {
+      mStartupSeekTimeUs(-1),
+      mSourceReady(-1) {
     ALOGV("NuPlayerDriver(%p)", this);
     mLooper->setName("NuPlayerDriver Looper");
 
@@ -642,6 +643,13 @@ void NuPlayerDriver::notifyListener(
 
 void NuPlayerDriver::notifyListener_l(
         int msg, int ext1, int ext2, const Parcel *in) {
+
+    // if need to create new player,
+    // ignore the remaining info.
+    if (mSourceReady == 1) {
+        return;
+    }
+
     switch (msg) {
         case MEDIA_PLAYBACK_COMPLETE:
         {
@@ -676,6 +684,12 @@ void NuPlayerDriver::notifyListener_l(
         case MEDIA_ERROR:
         {
             mAtEOS = true;
+            break;
+        }
+
+        case 0xffff:
+        {
+            mSourceReady = ext1;
             break;
         }
 

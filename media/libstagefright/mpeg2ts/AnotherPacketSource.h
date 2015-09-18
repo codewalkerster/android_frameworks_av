@@ -49,6 +49,8 @@ struct AnotherPacketSource : public MediaSource {
     // presentation timestamps since the last discontinuity (if any).
     int64_t getBufferedDurationUs(status_t *finalResult);
 
+    int64_t getBufferedDataSize();
+
     int64_t getEstimatedDurationUs();
 
     status_t nextBufferTime(int64_t *timeUs);

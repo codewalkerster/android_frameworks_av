@@ -33,7 +33,6 @@
 #include "TestPlayerStub.h"
 #include "StagefrightPlayer.h"
 #include "nuplayer/NuPlayerDriver.h"
-#include "StreamSniffer.h"
 
 namespace android {
 
@@ -256,7 +255,20 @@ class NuPlayerFactory : public MediaPlayerFactory::IFactory {
 
         // use nuplayer to play hls.
         // add other stream type afterwards.
+        if (!strncasecmp("http://", url, 7)
+            || !strncasecmp("https://", url, 8)) {
+            size_t len = strlen(url);
 
+            // skip over DASH & MS-SS.
+            if ((len >= 4 && !strcasecmp(".mpd", &url[len - 4]))
+                || (strstr(url, ".ism/") || strstr(url, ".isml/"))) {
+                return 0.0;
+            }
+
+            return kOurScore;
+        }
+
+#if 0
         if (!strncasecmp("http://", url, 7)
                 || !strncasecmp("https://", url, 8)
                 || !strncasecmp("file://", url, 7)) {
@@ -277,14 +289,11 @@ class NuPlayerFactory : public MediaPlayerFactory::IFactory {
                 return kOurScore;
             }
 
-#if 0
             if ((len >= 4 && !strcasecmp(".sdp", &url[len - 4])) || strstr(url, ".sdp?")) {
                 return kOurScore;
             }
-#endif
         }
 
-#if 0
         if (!strncasecmp("rtsp://", url, 7)) {
             return kOurScore;
         }

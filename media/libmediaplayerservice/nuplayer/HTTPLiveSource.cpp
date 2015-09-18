@@ -63,6 +63,7 @@ NuPlayer::HTTPLiveSource::HTTPLiveSource(
 }
 
 NuPlayer::HTTPLiveSource::~HTTPLiveSource() {
+    ALOGI("[%s:%d] start !", __FUNCTION__, __LINE__);
     if (mLiveSession != NULL) {
         mLiveSession->disconnect();
 
@@ -73,6 +74,7 @@ NuPlayer::HTTPLiveSource::~HTTPLiveSource() {
         mLiveSession.clear();
         mLiveLooper.clear();
     }
+    ALOGI("[%s:%d] end !", __FUNCTION__, __LINE__);
 }
 
 void NuPlayer::HTTPLiveSource::prepareAsync() {
@@ -264,6 +266,12 @@ void NuPlayer::HTTPLiveSource::onSessionNotify(const sp<AMessage> &msg) {
         {
             // notify the current size here if we have it, otherwise report an initial size of (0,0)
             ALOGI("session notify prepared!\n");
+
+            sp<AMessage> notify = dupNotify();
+            notify->setInt32("what", kWhatSourceReady);
+            notify->setInt32("err", 0);
+            notify->post();
+
             sp<AMessage> format = getFormat(false /* audio */);
             int32_t width;
             int32_t height;
@@ -325,6 +333,25 @@ void NuPlayer::HTTPLiveSource::onSessionNotify(const sp<AMessage> &msg) {
 
         case LiveSession::kWhatError:
         {
+            int32_t err;
+            CHECK(msg->findInt32("err", &err));
+            if (err == ERROR_UNSUPPORTED) {
+                sp<AMessage> notify = dupNotify();
+                notify->setInt32("what", kWhatSourceReady);
+                notify->setInt32("err", 1);
+                notify->post();
+            }
+            break;
+        }
+
+        case LiveSession::kWhatSourceReady:
+        {
+            sp<AMessage> notify = dupNotify();
+            notify->setInt32("what", kWhatSourceReady);
+            int32_t err;
+            CHECK(msg->findInt32("err", &err));
+            notify->setInt32("err", err);
+            notify->post();
             break;
         }
 

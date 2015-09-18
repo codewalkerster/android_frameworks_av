@@ -104,6 +104,8 @@ private:
     int32_t mDumpMode; // 1: one whole file; 2: independent file
     FILE * mDumpHandle;
 
+    int64_t mSegmentBytesPerSec;
+
     int64_t mFailureAnchorTimeUs;
     int64_t mOpenFailureRetryUs;
 
