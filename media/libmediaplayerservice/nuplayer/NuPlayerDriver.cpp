@@ -348,6 +348,13 @@ status_t NuPlayerDriver::seekTo(int msec) {
 
     int64_t seekTimeUs = msec * 1000ll;
 
+    // 0.5 sec to end, need to quit play.
+    if (mDurationUs > 0 && mDurationUs - seekTimeUs <= 500000) {
+        notifySeekComplete_l();
+        notifyListener_l(MEDIA_PLAYBACK_COMPLETE);
+        return OK;
+    }
+
     switch (mState) {
         case STATE_PREPARED:
         case STATE_STOPPED_AND_PREPARED:

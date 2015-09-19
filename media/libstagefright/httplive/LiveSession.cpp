@@ -282,7 +282,7 @@ status_t LiveSession::dequeueAccessUnit(
                 && extra != NULL
                 && extra->findInt64("timeUs", &timeUs)) {
             // seeking only
-            mLastSeekTimeUs = timeUs;
+            mLastSeekTimeUs = getSegmentStartTimeUsAfterSeek(timeUs);
             mDiscontinuityOffsetTimesUs.clear();
             mDiscontinuityAbsStartTimesUs.clear();
         }
@@ -1502,6 +1502,21 @@ int64_t LiveSession::latestMediaSegmentStartTimeUs() {
 
     }
     return minSegmentStartTimeUs;
+}
+
+int64_t LiveSession::getSegmentStartTimeUsAfterSeek(int64_t seekUs) {
+    int64_t minStartTimeUs = -1, tempTimeUs = -1;
+    int32_t number;
+    for (size_t i = 0; i < mFetcherInfos.size(); i++) {
+        number = mFetcherInfos.valueAt(i).mFetcher->getSeqNumberForTime(seekUs);
+        tempTimeUs = mFetcherInfos.valueAt(i).mFetcher->getSegmentStartTimeUs(number);
+        if (minStartTimeUs < 0) {
+            minStartTimeUs = tempTimeUs;
+        } else {
+            minStartTimeUs = minStartTimeUs <= tempTimeUs ? minStartTimeUs : tempTimeUs;
+        }
+    }
+    return minStartTimeUs;
 }
 
 status_t LiveSession::onSeek(const sp<AMessage> &msg) {
