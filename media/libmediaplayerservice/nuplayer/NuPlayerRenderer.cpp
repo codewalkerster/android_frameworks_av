@@ -61,6 +61,7 @@ NuPlayer::Renderer::Renderer(
       mFlags(flags),
       mNumFramesWritten(0),
       mDebug(false),
+      mRenderStarted(false),
       mDrainAudioQueuePending(false),
       mDrainVideoQueuePending(false),
       mAudioQueueGeneration(0),
@@ -1025,16 +1026,20 @@ void NuPlayer::Renderer::onQueueBuffer(const sp<AMessage> &msg) {
     Mutex::Autolock autoLock(mLock);
     if (audio) {
         mAudioQueue.push_back(entry);
-        postDrainAudioQueue_l();
     } else {
         mVideoQueue.push_back(entry);
-        postDrainVideoQueue_l();
     }
 
-    if (!mSyncQueues || mAudioQueue.empty() || mVideoQueue.empty()) {
-        return;
+    // render audio & video synchronously,
+    // OMX fillbuffer has been delayed sometime.
+    if (mHasAudio && mHasVideo && !mRenderStarted) {
+        if (mAudioQueue.empty() || mVideoQueue.empty()) {
+            return;
+        }
+        mRenderStarted = true;
     }
 
+#if 0
     sp<ABuffer> firstAudioBuffer = (*mAudioQueue.begin()).mBuffer;
     sp<ABuffer> firstVideoBuffer = (*mVideoQueue.begin()).mBuffer;
 
@@ -1063,8 +1068,10 @@ void NuPlayer::Renderer::onQueueBuffer(const sp<AMessage> &msg) {
         mAudioQueue.erase(mAudioQueue.begin());
         return;
     }
+#endif
 
-    syncQueuesDone_l();
+    postDrainAudioQueue_l();
+    postDrainVideoQueue_l();
 }
 
 void NuPlayer::Renderer::syncQueuesDone_l() {

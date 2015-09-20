@@ -1273,7 +1273,7 @@ ssize_t LiveSession::fetchFile(
         if (isPlaylist && mFirstSniff) {
             StreamSniffer sniff(NULL);
             status_t err = UNKNOWN_ERROR;
-            if (n > 2) {
+            if (n >= 8) {
                 ABitReader br(buffer->data() + buffer->size(), n);
                 err = sniff.tryHLSParser(&br);
             }

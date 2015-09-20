@@ -1146,9 +1146,11 @@ void NuPlayer::onStart() {
 
     if (mVideoDecoder != NULL) {
         mVideoDecoder->setRenderer(mRenderer);
+        mRenderer->setHasMedia(false);
     }
     if (mAudioDecoder != NULL) {
         mAudioDecoder->setRenderer(mRenderer);
+        mRenderer->setHasMedia(true);
     }
 
     postScanSources();
@@ -1307,6 +1309,7 @@ status_t NuPlayer::instantiateDecoder(bool audio, sp<DecoderBase> *decoder) {
         } else {
             *decoder = new Decoder(notify, mSource, mRenderer);
         }
+        mRenderer->setHasMedia(true);
     } else {
         sp<AMessage> notify = new AMessage(kWhatVideoNotify, id());
         ++mVideoDecoderGeneration;
@@ -1314,6 +1317,7 @@ status_t NuPlayer::instantiateDecoder(bool audio, sp<DecoderBase> *decoder) {
 
         *decoder = new Decoder(
                 notify, mSource, mRenderer, mNativeWindow, mCCDecoder);
+        mRenderer->setHasMedia(false);
 
         // enable FRC if high-quality AV sync is requested, even if not
         // queuing to native window, as this will even improve textureview
