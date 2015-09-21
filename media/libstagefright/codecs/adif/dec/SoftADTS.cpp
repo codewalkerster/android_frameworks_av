@@ -168,7 +168,7 @@ OMX_ERRORTYPE SoftADTS::internalGetParameter(
             
             if (!isConfigured()) {
                 aacParams->nChannels = 1;
-                aacParams->nSampleRate = 0;
+                aacParams->nSampleRate = 44100;
                 aacParams->nFrameLength = 0;
             } else {
                 aacParams->nChannels = mNumChannels;
@@ -197,8 +197,8 @@ OMX_ERRORTYPE SoftADTS::internalGetParameter(
             pcmParams->eChannelMapping[1] = OMX_AUDIO_ChannelRF;
 
             if (!isConfigured()) {
-                pcmParams->nChannels = 0;
-                pcmParams->nSamplingRate = 0;
+                pcmParams->nChannels = 1;
+                pcmParams->nSamplingRate = 44100;
             } else {
                 pcmParams->nChannels = mNumChannels;
                 pcmParams->nSamplingRate = mNumSampleRate;
@@ -322,6 +322,10 @@ void SoftADTS::onQueueFilled(OMX_U32 portIndex) {
 				if(mNumChannels > 2)
 					mNumChannels = 2;
 			}
+
+			info->mOwnedByUs = false;
+			inQueue.erase(inQueue.begin());
+			notifyEmptyBufferDone(header);
 			notify(OMX_EventPortSettingsChanged, 1, 0, NULL);
 			mOutputPortSettingsChange = AWAITING_DISABLED;
 

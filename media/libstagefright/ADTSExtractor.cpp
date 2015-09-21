@@ -326,6 +326,7 @@ bool SniffADTS(
 		if(channel <= 2){
 			if(((header[2] >> 6) & 0x3) == 1){
 				ALOGI("adts:yes LC\n");
+				return false;
 			} 
 		}
 		ALOGI("profile=%d\n", (header[2] >> 6) & 0x3);
