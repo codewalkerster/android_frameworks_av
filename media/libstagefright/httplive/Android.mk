@@ -7,6 +7,7 @@ LOCAL_SRC_FILES:=               \
         LiveSession.cpp         \
         M3UParser.cpp           \
         PlaylistFetcher.cpp     \
+        StreamSniffer.cpp
 
 LOCAL_C_INCLUDES:= \
 	$(TOP)/frameworks/av/media/libstagefright \

@@ -65,6 +65,7 @@ PlaylistFetcher::PlaylistFetcher(
         int32_t subtitleGeneration)
     : mDumpMode(-1),
       mDumpHandle(NULL),
+      mSegmentBytesPerSec(0),
       mFailureAnchorTimeUs(0),
       mOpenFailureRetryUs(0),
       mNotify(notify),
@@ -238,7 +239,7 @@ status_t PlaylistFetcher::decryptBuffer(
         return OK;
     } else if (!(method == "AES-128")) {
         ALOGE("Unsupported cipher method '%s'", method.c_str());
-        return ERROR_UNSUPPORTED;
+        return ERROR_MALFORMED;
     }
 
     AString keyURI;
@@ -412,6 +413,7 @@ void PlaylistFetcher::pauseAsync() {
 }
 
 void PlaylistFetcher::stopAsync(bool clear) {
+    ALOGI("[%s:%d] start !", __FUNCTION__, __LINE__);
     sp<AMessage> msg = new AMessage(kWhatStop, id());
     msg->setInt32("clear", clear);
     msg->post();
@@ -576,6 +578,7 @@ void PlaylistFetcher::onPause() {
 }
 
 void PlaylistFetcher::onStop(const sp<AMessage> &msg) {
+    ALOGI("[%s:%d] start !", __FUNCTION__, __LINE__);
     cancelMonitorQueue();
 
     int32_t clear;
@@ -689,6 +692,7 @@ void PlaylistFetcher::onMonitorQueue() {
     }
 
     int64_t bufferedDurationUs = 0ll;
+    int64_t bufferedDataSize = 0ll;
     status_t finalResult = NOT_ENOUGH_DATA;
     if (mStreamTypeMask == LiveSession::STREAMTYPE_SUBTITLES) {
         sp<AnotherPacketSource> packetSource =
@@ -706,6 +710,8 @@ void PlaylistFetcher::onMonitorQueue() {
                 continue;
             }
 
+            bufferedDataSize += mPacketSources.valueAt(i)->getBufferedDataSize();
+
             int64_t bufferedStreamDurationUs =
                 mPacketSources.valueAt(i)->getBufferedDurationUs(&finalResult);
             ALOGV("buffered %" PRId64 " for stream %d",
@@ -715,6 +721,15 @@ void PlaylistFetcher::onMonitorQueue() {
             }
         }
     }
+
+    if (bufferedDataSize && mSegmentBytesPerSec) {
+        int64_t adjust_durationUs = (bufferedDataSize / (mSegmentBytesPerSec * 0.9)) * 1E6;
+        if (llabs(adjust_durationUs - bufferedDurationUs) > durationToBufferUs) {
+            ALOGI("buffered durationUs : %lld us not correct, rectify it!", bufferedDurationUs);
+            bufferedDurationUs = adjust_durationUs;
+        }
+    }
+
     downloadMore = (bufferedDurationUs < durationToBufferUs);
 
     // signal start if buffered up at least the target size
@@ -974,6 +989,9 @@ void PlaylistFetcher::onDownloadNext() {
         discontinuity = true;
     }
 
+    int64_t item_durationUs = 0;
+    itemMeta->findInt64("durationUs", &item_durationUs);
+
     int64_t range_offset, range_length;
     if (!itemMeta->findInt64("range-offset", &range_offset)
             || !itemMeta->findInt64("range-length", &range_length)) {
@@ -1203,6 +1221,11 @@ void PlaylistFetcher::onDownloadNext() {
     }
     if (cfc_handle) {
         curl_fetch_close(cfc_handle);
+    }
+
+    if (total_size && item_durationUs) {
+        mSegmentBytesPerSec = total_size / (float)(item_durationUs / 1E6); // just an approximate value.
+        ALOGI("segment duration : %lld us, size : %d bytes, bytes per second : %lld", item_durationUs, total_size, mSegmentBytesPerSec);
     }
 
     if (mPlaylist->isComplete() && mSeqNumber == lastSeqNumberInPlaylist && !total_size) {
@@ -1737,7 +1760,7 @@ status_t PlaylistFetcher::extractAndQueueAccessUnits(
         if (!id3.isValid()) {
             if (firstID3Tag) {
                 ALOGE("Unable to parse ID3 tag.");
-                return ERROR_MALFORMED;
+                return ERROR_UNSUPPORTED; // to notify service to create new player.
             } else {
                 break;
             }

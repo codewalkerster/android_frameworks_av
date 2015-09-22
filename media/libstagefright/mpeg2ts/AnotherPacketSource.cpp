@@ -309,6 +309,20 @@ int64_t AnotherPacketSource::getBufferedDurationUs(status_t *finalResult) {
     return getBufferedDurationUs_l(finalResult);
 }
 
+int64_t AnotherPacketSource::getBufferedDataSize() {
+    if (mBuffers.empty()) {
+        return 0;
+    }
+    int64_t data_size_bytes = 0;
+    List<sp<ABuffer> >::iterator it = mBuffers.begin();
+    while (it != mBuffers.end()) {
+        const sp<ABuffer> &buffer = *it;
+        data_size_bytes += buffer->size();
+        ++it;
+    }
+    return data_size_bytes;
+}
+
 int64_t AnotherPacketSource::getBufferedDurationUs_l(status_t *finalResult) {
     *finalResult = mEOSResult;
 

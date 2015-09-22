@@ -133,6 +133,22 @@ OMX_ERRORTYPE SoftMP2::internalGetParameter(
             return OMX_ErrorNone;
         }
 
+        case OMX_IndexParamAudioMp3:
+        {
+            OMX_AUDIO_PARAM_MP3TYPE *mp3Params =
+                (OMX_AUDIO_PARAM_MP3TYPE *)params;
+
+            if (mp3Params->nPortIndex > 1) {
+                return OMX_ErrorUndefined;
+            }
+
+            mp3Params->nChannels = mNumChannels;
+            mp3Params->nSampleRate = mSamplingRate;
+            // other fields are encoder-only
+
+            return OMX_ErrorNone;
+        }
+
         default:
             return SimpleSoftOMXComponent::internalGetParameter(index, params);
     }
@@ -153,6 +169,20 @@ OMX_ERRORTYPE SoftMP2::internalSetParameter(
             }
 
             return OMX_ErrorNone;
+        }
+
+        case OMX_IndexParamAudioPcm:
+        {
+            const OMX_AUDIO_PARAM_PCMMODETYPE *pcmParams = (const OMX_AUDIO_PARAM_PCMMODETYPE *)params;
+
+            if (pcmParams->nPortIndex != 1) {
+                return OMX_ErrorUndefined;
+            }
+
+            mNumChannels = pcmParams->nChannels;
+            mSamplingRate = pcmParams->nSamplingRate;
+
+           return OMX_ErrorNone;
         }
 
         default:

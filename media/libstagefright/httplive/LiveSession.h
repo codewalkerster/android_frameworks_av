@@ -101,6 +101,7 @@ struct LiveSession : public AHandler {
         kWhatError,
         kWhatPrepared,
         kWhatPreparationFailed,
+        kWhatSourceReady,
     };
 
     // create a format-change discontinuity
@@ -184,6 +185,7 @@ private:
     uint32_t mFailureWaitSec;
     uint32_t mAbnormalWaitSec;
 
+    bool mFirstSniff;
     bool mDebug;
     bool mCodecSpecificDataSend;
     bool mSeeked;

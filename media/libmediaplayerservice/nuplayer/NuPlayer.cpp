@@ -268,16 +268,8 @@ void NuPlayer::setDataSourceAsync(const sp<IStreamSource> &source) {
 
 static bool IsHTTPLiveURL(const char *url) {
     if (!strncasecmp("http://", url, 7)
-            || !strncasecmp("https://", url, 8)
-            || !strncasecmp("file://", url, 7)) {
-        size_t len = strlen(url);
-        if (len >= 5 && !strcasecmp(".m3u8", &url[len - 5])) {
-            return true;
-        }
-
-        if (strstr(url,"m3u8")) {
-            return true;
-        }
+        || !strncasecmp("https://", url, 8)) {
+        return true;
     }
 
     return false;
@@ -294,7 +286,7 @@ void NuPlayer::setDataSourceAsync(
     sp<AMessage> notify = new AMessage(kWhatSourceNotify, id());
 
     sp<Source> source;
-    if (NU_STREAM_HLS == mStreamType || IsHTTPLiveURL(url)) {
+    if (IsHTTPLiveURL(url)) {
         source = new HTTPLiveSource(notify, httpService, url, headers, interrupt_callback);
     } else if (!strncasecmp(url, "rtsp://", 7)) {
         source = new RTSPSource(
@@ -1950,6 +1942,14 @@ void NuPlayer::onSourceNotify(const sp<AMessage> &msg) {
         case Source::kWhatDrmNoLicense:
         {
             notifyListener(MEDIA_ERROR, MEDIA_ERROR_UNKNOWN, ERROR_DRM_NO_LICENSE);
+            break;
+        }
+
+        case Source::kWhatSourceReady:
+        {
+            int32_t err;
+            CHECK(msg->findInt32("err", &err));
+            notifyListener(0xffff, err, 0);
             break;
         }
 

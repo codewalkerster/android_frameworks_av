@@ -23,6 +23,7 @@
 #include "M3UParser.h"
 #include "PlaylistFetcher.h"
 #include "include/HEVC_utils.h"
+#include "StreamSniffer.h"
 
 #include "include/HTTPBase.h"
 #include "mpeg2ts/AnotherPacketSource.h"
@@ -70,6 +71,7 @@ LiveSession::LiveSession(
       mBuffTimeSec(2),
       mFailureWaitSec(0),
       mAbnormalWaitSec(0),
+      mFirstSniff(true),
       mDebug(false),
       mCodecSpecificDataSend(false),
       mSeeked(false),
@@ -529,7 +531,7 @@ void LiveSession::connectAsync(
 }
 
 status_t LiveSession::disconnect() {
-
+    ALOGI("[%s:%d] start !", __FUNCTION__, __LINE__);
     {
         Mutex::Autolock autoLock(mWaitLock);
         mWaitCondition.broadcast();
@@ -541,6 +543,7 @@ status_t LiveSession::disconnect() {
     sp<AMessage> response;
     status_t err = msg->postAndAwaitResponse(&response);
 
+    ALOGI("[%s:%d] end !", __FUNCTION__, __LINE__);
     return err;
 }
 
@@ -702,7 +705,7 @@ void LiveSession::onMessageReceived(const sp<AMessage> &msg) {
                         }
                     }
 
-                    if (mInPreparationPhase) {
+                    if (mInPreparationPhase && err != ERROR_UNSUPPORTED) { // ingore err when unsupport.
                         postPrepared(err);
                     }
 
@@ -958,6 +961,7 @@ void LiveSession::onConnect(const sp<AMessage> &msg) {
 }
 
 void LiveSession::finishDisconnect() {
+    ALOGI("[%s:%d] start !", __FUNCTION__, __LINE__);
     // No reconfiguration is currently pending, make sure none will trigger
     // during disconnection either.
     cancelCheckBandwidthEvent();
@@ -981,9 +985,11 @@ void LiveSession::finishDisconnect() {
     if (mContinuationCounter == 0) {
         msg->post();
     }
+    ALOGI("[%s:%d] end !", __FUNCTION__, __LINE__);
 }
 
 void LiveSession::onFinishDisconnect2() {
+    ALOGI("[%s:%d] start !", __FUNCTION__, __LINE__);
     mContinuation.clear();
 
     mPacketSources.valueFor(STREAMTYPE_AUDIO)->signalEOS(ERROR_END_OF_STREAM);
@@ -997,6 +1003,7 @@ void LiveSession::onFinishDisconnect2() {
 
     response->postReply(mDisconnectReplyID);
     mDisconnectReplyID = 0;
+    ALOGI("[%s:%d] end !", __FUNCTION__, __LINE__);
 }
 
 sp<PlaylistFetcher> LiveSession::addFetcher(const char *uri) {
@@ -1188,6 +1195,13 @@ ssize_t LiveSession::fetchFile(
     }
 
     size = (*cfc)->filesize;
+    if (isPlaylist && size > 1 * 1024 * 1024) { // assume not m3u8.
+        sp<AMessage> notify = mNotify->dup();
+        notify->setInt32("what", kWhatSourceReady);
+        notify->setInt32("err", 1);
+        notify->post();
+        return ERROR_UNSUPPORTED;
+    }
     if (size <= 0) {
         size = 1 * 1024 * 1024;
     }
@@ -1202,6 +1216,12 @@ ssize_t LiveSession::fetchFile(
     if (block_size > 0 && (range_length == -1 || (int64_t)(buffer->size() + block_size) < range_length)) {
         range_length = buffer->size() + block_size;
     }
+
+    size_t size_per_read = kSizePerRead;
+    if (isPlaylist && mFirstSniff) {
+        size_per_read = 100;
+    }
+
     for (;;) {
         // no block when quit.
         if (mNeedExit || mInterruptCallback(mParentThreadId)) {
@@ -1227,7 +1247,7 @@ ssize_t LiveSession::fetchFile(
             buffer = copy;
         }
 
-        size_t maxBytesToRead = (bufferRemaining < kSizePerRead) ? bufferRemaining : kSizePerRead;
+        size_t maxBytesToRead = (bufferRemaining < size_per_read) ? bufferRemaining : size_per_read;
         if (range_length >= 0) {
             int64_t bytesLeftInRange = range_length - buffer->size();
             if (bytesLeftInRange < (int64_t)maxBytesToRead) {
@@ -1248,6 +1268,25 @@ ssize_t LiveSession::fetchFile(
 
         if (n == 0) {
             break;
+        }
+
+        if (isPlaylist && mFirstSniff) {
+            StreamSniffer sniff(NULL);
+            status_t err = UNKNOWN_ERROR;
+            if (n > 2) {
+                ABitReader br(buffer->data() + buffer->size(), n);
+                err = sniff.tryHLSParser(&br);
+            }
+            if (err != OK) {
+                ALOGI("[%s:%d] hls sniff failed !", __FUNCTION__, __LINE__);
+                sp<AMessage> notify = mNotify->dup();
+                notify->setInt32("what", kWhatSourceReady);
+                notify->setInt32("err", 1);
+                notify->post();
+                return ERROR_UNSUPPORTED;
+            }
+            mFirstSniff = false;
+            size_per_read = kSizePerRead;
         }
 
         buffer->setRange(0, buffer->size() + (size_t)n);
