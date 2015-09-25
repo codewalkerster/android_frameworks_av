@@ -59,7 +59,7 @@ const int64_t kNearEOSTimeoutUs = 2000000ll; // 2 secs
 const size_t kSizePerRead = 1500;
 
 //static
-const String8 LiveSession::kHTTPUserAgentDefault("AppleCoreMedia/1.0.0.9A405 (iPad; U; CPU OS 5_0_1 like Mac OS X; zh_cn)");
+const String8 LiveSession::kHTTPUserAgentDefault("Mozilla/5.0 (Linux; Android 5.1.1) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/39.0.0.0 Safari/537.36");
 
 LiveSession::LiveSession(
         const sp<AMessage> &notify, uint32_t flags,
@@ -1177,6 +1177,8 @@ ssize_t LiveSession::fetchFile(
         ssize_t i = mExtraHeaders.indexOfKey(String8("User-Agent"));
         if (i >= 0) {
             headers.append(StringPrintf("User-Agent: %s\r\n", mExtraHeaders.valueAt(i).string()).c_str());
+        } else {
+            headers.append(StringPrintf("User-Agent: %s\r\n", kHTTPUserAgentDefault.string()).c_str());
         }
         CFContext * temp_cfc = curl_fetch_init(url, headers.string(), 0);
         if (!temp_cfc) {
