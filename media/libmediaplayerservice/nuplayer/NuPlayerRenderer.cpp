@@ -51,6 +51,7 @@ const NuPlayer::Renderer::PcmInfo NuPlayer::Renderer::AUDIO_PCMINFO_INITIALIZER 
 
 // static
 const int64_t NuPlayer::Renderer::kMinPositionUpdateDelayUs = 100000ll;
+const int64_t NuPlayer::Renderer::kFrameJitterThresholdUs = 15000ll;
 
 NuPlayer::Renderer::Renderer(
         const sp<MediaPlayerBase::AudioSink> &sink,
@@ -60,6 +61,15 @@ NuPlayer::Renderer::Renderer(
       mNotify(notify),
       mFlags(flags),
       mNumFramesWritten(0),
+      mLastAudioQueueTimeUs(-1),
+      mLastVideoQueueTimeUs(-1),
+      mAudioFrameDurationUs(-1),
+      mVideoFrameDurationUs(-1),
+      mAudioFrameIntervalUs(0),
+      mVideoFrameIntervalUs(0),
+      mLastAudioFrameSize(0),
+      mChannel(0),
+      mSampleRate(0),
       mDebug(false),
       mRenderStarted(false),
       mDrainAudioQueuePending(false),
@@ -160,6 +170,11 @@ void NuPlayer::Renderer::signalTimeDiscontinuity() {
     setAudioFirstAnchorTime(-1);
     setAnchorTime(-1, -1);
     setVideoLateByUs(0);
+    mLastAudioQueueTimeUs = -1;
+    mLastVideoQueueTimeUs = -1;
+    mAudioFrameIntervalUs = 0;
+    mVideoFrameIntervalUs = 0;
+    mLastAudioFrameSize = 0;
     mSyncQueues = false;
 }
 
@@ -187,6 +202,13 @@ void NuPlayer::Renderer::setVideoFrameRate(float fps) {
     sp<AMessage> msg = new AMessage(kWhatSetVideoFrameRate, id());
     msg->setFloat("frame-rate", fps);
     msg->post();
+}
+
+void NuPlayer::Renderer::setAudioParameter(sp<AMessage> para) {
+    Mutex::Autolock autoLock(mLock);
+    CHECK(para->findInt32("channel-count", &mChannel));
+    CHECK(para->findInt32("sample-rate", &mSampleRate));
+    ALOGI("[%s:%d] audio channel : %d, sample-rate : %d", __FUNCTION__, __LINE__, mChannel, mSampleRate);
 }
 
 // Called on any threads, except renderer's thread.
@@ -987,6 +1009,56 @@ void NuPlayer::Renderer::notifyAudioOffloadTearDown() {
     (new AMessage(kWhatAudioOffloadTearDown, id()))->post();
 }
 
+void NuPlayer::Renderer::checkFrameDiscontinuity(sp<ABuffer> &buffer, int32_t isAudio) {
+    Mutex::Autolock autoLock(mLock);
+    int64_t timeUs, rectify_timeUs;
+    buffer->meta()->findInt64("timeUs", &timeUs);
+    if (mDebug) {
+        ALOGI("[%s] queued buffer timeUs : %lld us \n", isAudio ? "audio" : "video", timeUs);
+    }
+    if (isAudio && mLastAudioQueueTimeUs >= 0 && timeUs > mLastAudioQueueTimeUs && mAudioFrameDurationUs <= 0) {
+        mAudioFrameDurationUs = timeUs - mLastAudioQueueTimeUs;
+        if (mAudioFrameDurationUs < 15000) {
+            mAudioFrameDurationUs = 0;
+        }
+    }
+    if (!isAudio && mLastVideoQueueTimeUs >= 0 && timeUs > mLastVideoQueueTimeUs && mVideoFrameDurationUs <= 0) {
+        mVideoFrameDurationUs = timeUs - mLastVideoQueueTimeUs;
+        if (mVideoFrameDurationUs < 16000 || mVideoFrameDurationUs > 42000) {
+            mVideoFrameDurationUs = 0;
+        }
+    }
+    if (isAudio && mLastAudioQueueTimeUs >= 0 && mAudioFrameDurationUs > 0) {
+        if (llabs(timeUs - mLastAudioQueueTimeUs) > mAudioFrameDurationUs + kFrameJitterThresholdUs) {
+            bool jitter_flag = true;
+            if (mSampleRate && mChannel && (llabs(llabs(timeUs - mLastAudioQueueTimeUs) - ((mLastAudioFrameSize * 1000000ll) / (mSampleRate * mChannel * 2))) < 5)) {
+                jitter_flag = false;
+            }
+            if (jitter_flag) {
+                ALOGI("[%s:%d] audio jitter ! timeUs : %lld us, last timeUs : %lld us, duration : %lld us, last frame size : %d", __FUNCTION__, __LINE__, timeUs, mLastAudioQueueTimeUs, mAudioFrameDurationUs, mLastAudioFrameSize);
+                rectify_timeUs  = mLastAudioQueueTimeUs + mAudioFrameDurationUs;
+                mAudioFrameIntervalUs += rectify_timeUs - timeUs;
+            }
+        }
+    }
+    if (!isAudio && mLastVideoQueueTimeUs >= 0 && mVideoFrameDurationUs > 0) {
+        if (llabs(timeUs - mLastVideoQueueTimeUs) > mVideoFrameDurationUs + kFrameJitterThresholdUs) {
+            ALOGI("[%s:%d] video jitter ! timeUs : %lld us, last timeUs : %lld us, duration : %lld us", __FUNCTION__, __LINE__, timeUs, mLastVideoQueueTimeUs, mVideoFrameDurationUs);
+            rectify_timeUs = mLastVideoQueueTimeUs + mVideoFrameDurationUs;
+            mVideoFrameIntervalUs += rectify_timeUs - timeUs;
+        }
+    }
+    if (isAudio) {
+        mLastAudioQueueTimeUs = timeUs;
+        mLastAudioFrameSize = buffer->size();
+        rectify_timeUs = timeUs + mAudioFrameIntervalUs;
+    } else {
+        mLastVideoQueueTimeUs = timeUs;
+        rectify_timeUs = timeUs + mVideoFrameIntervalUs;
+    }
+    buffer->meta()->setInt64("timeUs", rectify_timeUs);
+}
+
 void NuPlayer::Renderer::onQueueBuffer(const sp<AMessage> &msg) {
     int32_t audio;
     CHECK(msg->findInt32("audio", &audio));
@@ -1007,6 +1079,8 @@ void NuPlayer::Renderer::onQueueBuffer(const sp<AMessage> &msg) {
     sp<ABuffer> buffer;
     CHECK(msg->findBuffer("buffer", &buffer));
 
+    checkFrameDiscontinuity(buffer, audio);
+
     sp<AMessage> notifyConsumed;
     CHECK(msg->findMessage("notifyConsumed", &notifyConsumed));
 
@@ -1016,12 +1090,6 @@ void NuPlayer::Renderer::onQueueBuffer(const sp<AMessage> &msg) {
     entry.mOffset = 0;
     entry.mFinalResult = OK;
     entry.mBufferOrdinal = ++mTotalBuffersQueued;
-
-    if (mDebug) {
-        int64_t timeUs;
-        buffer->meta()->findInt64("timeUs", &timeUs);
-        ALOGI("[%s] queued buffer timeUs : %lld us \n", audio ? "audio" : "video", timeUs);
-    }
 
     Mutex::Autolock autoLock(mLock);
     if (audio) {

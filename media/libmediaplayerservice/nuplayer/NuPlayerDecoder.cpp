@@ -260,22 +260,23 @@ void NuPlayer::Decoder::onResume(bool notifyComplete) {
 }
 
 void NuPlayer::Decoder::onFlush(bool notifyComplete) {
+    ALOGI("[%s:%d] %s flushing ", __FUNCTION__, __LINE__, mIsAudio ? "audio" : "video");
     if (mCCDecoder != NULL) {
         mCCDecoder->flush();
     }
-
+    ALOGI("[%s:%d] %s flushing ", __FUNCTION__, __LINE__, mIsAudio ? "audio" : "video");
     if (mRenderer != NULL) {
         mRenderer->flush(mIsAudio, notifyComplete);
         mRenderer->signalTimeDiscontinuity();
     }
-
+    ALOGI("[%s:%d] %s flushing ", __FUNCTION__, __LINE__, mIsAudio ? "audio" : "video");
     status_t err = OK;
     if (mCodec != NULL) {
         err = mCodec->flush();
         mCSDsToSubmit = mCSDsForCurrentFormat; // copy operator
         ++mBufferGeneration;
     }
-
+    ALOGI("[%s:%d] %s flushing ", __FUNCTION__, __LINE__, mIsAudio ? "audio" : "video");
     if (err != OK) {
         ALOGE("failed to flush %s (err=%d)", mComponentName.c_str(), err);
         handleError(err);
@@ -283,7 +284,7 @@ void NuPlayer::Decoder::onFlush(bool notifyComplete) {
         // we attempt to release the buffers even if flush fails.
     }
     releaseAndResetMediaBuffers();
-
+    ALOGI("[%s:%d] %s flushing ", __FUNCTION__, __LINE__, mIsAudio ? "audio" : "video");
     if (notifyComplete) {
         sp<AMessage> notify = mNotify->dup();
         notify->setInt32("what", kWhatFlushCompleted);
@@ -483,6 +484,13 @@ bool NuPlayer::Decoder::handleAnOutputBuffer() {
         return true;
     } else if (res == INFO_DISCONTINUITY) {
         // nothing to do
+        return true;
+    } else if (res == INFO_AUDIO_RECONFIG) {
+        sp<AMessage> audio_para;
+        mCodec->getAudioParameter(audio_para);
+        if (mRenderer != NULL) {
+            mRenderer->setAudioParameter(audio_para);
+        }
         return true;
     } else if (res != OK) {
         if (res != -EAGAIN) {

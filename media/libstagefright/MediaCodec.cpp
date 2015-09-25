@@ -567,6 +567,10 @@ status_t MediaCodec::getInputBuffer(size_t index, sp<ABuffer> *buffer) {
     return getBufferAndFormat(kPortIndexInput, index, buffer, &format);
 }
 
+void MediaCodec::getAudioParameter(sp<AMessage> &para) {
+    para = mAudioParameter;
+}
+
 bool MediaCodec::isExecuting() const {
     return mState == STARTED || mState == FLUSHED;
 }
@@ -678,6 +682,9 @@ bool MediaCodec::handleDequeueOutputBuffer(uint32_t replyID, bool newRequest) {
     } else if (mFlags & kFlagOutputFormatChanged) {
         response->setInt32("err", INFO_FORMAT_CHANGED);
         mFlags &= ~kFlagOutputFormatChanged;
+    } else if (mFlags & kFlagAudioReconfig) {
+        response->setInt32("err", INFO_AUDIO_RECONFIG);
+        mFlags &= ~kFlagAudioReconfig;
     } else {
         ssize_t index = dequeuePortBuffer(kPortIndexOutput);
 
@@ -1028,6 +1035,13 @@ void MediaCodec::onMessageReceived(const sp<AMessage> &msg) {
                         }
                     }
 
+                    break;
+                }
+
+                case CodecBase::kWhatAudioReconfig:
+                {
+                    mAudioParameter = msg;
+                    mFlags |= kFlagAudioReconfig;
                     break;
                 }
 
@@ -1763,12 +1777,14 @@ void MediaCodec::setState(State newState) {
 
         mInputFormat.clear();
         mOutputFormat.clear();
+        mAudioParameter.clear();
         mFlags &= ~kFlagOutputFormatChanged;
         mFlags &= ~kFlagOutputBuffersChanged;
         mFlags &= ~kFlagStickyError;
         mFlags &= ~kFlagIsEncoder;
         mFlags &= ~kFlagGatherCodecSpecificData;
         mFlags &= ~kFlagIsAsync;
+        mFlags &= ~kFlagAudioReconfig;
         mStickyError = OK;
 
         mActivityNotify.clear();
@@ -2176,7 +2192,8 @@ void MediaCodec::postActivityNotificationIfPossible() {
     bool isErrorOrOutputChanged =
             (mFlags & (kFlagStickyError
                     | kFlagOutputBuffersChanged
-                    | kFlagOutputFormatChanged));
+                    | kFlagOutputFormatChanged
+                    | kFlagAudioReconfig));
 
     if (isErrorOrOutputChanged
             || !mAvailPortBuffers[kPortIndexInput].empty()

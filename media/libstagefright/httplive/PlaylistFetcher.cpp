@@ -1144,6 +1144,7 @@ void PlaylistFetcher::onDownloadNext() {
             goto FAIL;
         }
 
+#if 0
         if (startup || discontinuity) {
             // Signal discontinuity.
 
@@ -1155,6 +1156,8 @@ void PlaylistFetcher::onDownloadNext() {
                 ALOGI("segment start time : %lld us on %s", mNextPTSTimeUs, startup ? "startup" : "discontinuity");
             }
 
+            // do not handle time discontinuity here.
+            // maybe need to handle other type discontinuity.
             if (discontinuity) {
                 ALOGI("queueing discontinuity (explicit=%d)", discontinuity);
 
@@ -1168,6 +1171,7 @@ void PlaylistFetcher::onDownloadNext() {
 
             startup = false;
         }
+#endif
 
         err = OK;
         if (bufferStartsWithTsSyncByte(buffer)) {

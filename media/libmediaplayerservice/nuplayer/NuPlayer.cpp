@@ -1439,7 +1439,7 @@ void NuPlayer::notifyListener(int msg, int ext1, int ext2, const Parcel *in) {
 }
 
 void NuPlayer::flushDecoder(bool audio, bool needShutdown) {
-    ALOGV("[%s] flushDecoder needShutdown=%d",
+    ALOGI("[%s] flushDecoder needShutdown=%d",
           audio ? "audio" : "video", needShutdown);
 
     const sp<DecoderBase> &decoder = getDecoder(audio);
@@ -1625,7 +1625,7 @@ void NuPlayer::performSeek(int64_t seekTimeUs, bool needNotify) {
 }
 
 void NuPlayer::performDecoderFlush(FlushCommand audio, FlushCommand video) {
-    ALOGV("performDecoderFlush audio=%d, video=%d", audio, video);
+    ALOGI("performDecoderFlush audio=%d, video=%d", audio, video);
 
     if ((audio == FLUSH_CMD_NONE || mAudioDecoder == NULL)
             && (video == FLUSH_CMD_NONE || mVideoDecoder == NULL)) {
@@ -1639,10 +1639,11 @@ void NuPlayer::performDecoderFlush(FlushCommand audio, FlushCommand video) {
     if (video != FLUSH_CMD_NONE && mVideoDecoder != NULL) {
         flushDecoder(false /* audio */, (video == FLUSH_CMD_SHUTDOWN));
     }
+    ALOGI("performDecoderFlush end");
 }
 
 void NuPlayer::performReset() {
-    ALOGV("performReset");
+    ALOGI("performReset");
 
     CHECK(mAudioDecoder == NULL);
     CHECK(mVideoDecoder == NULL);

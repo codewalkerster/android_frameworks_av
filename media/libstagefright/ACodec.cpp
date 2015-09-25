@@ -5708,6 +5708,14 @@ bool ACodec::ExecutingState::onOMXEvent(
             CHECK_EQ(data1, (OMX_U32)kPortIndexOutput);
 
             if (data2 == 0 || data2 == OMX_IndexParamPortDefinition) {
+
+                if (data2 == 0) {
+                    sp<AMessage> outputFormat = mCodec->mNotify->dup();
+                    CHECK_EQ(mCodec->getPortFormat(kPortIndexOutput, outputFormat), (status_t)OK);
+                    outputFormat->setInt32("what", kWhatAudioReconfig);
+                    outputFormat->post();
+                }
+
                 mCodec->mMetaDataBuffersToSubmit = 0;
                 CHECK_EQ(mCodec->mOMX->sendCommand(
                             mCodec->mNode,

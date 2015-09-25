@@ -181,23 +181,37 @@ bool LiveSession::haveSufficientDataOnAVTracks() {
     }
 
     status_t err;
-    int64_t durationUs;
-    if (audioTrack != NULL
-            && (durationUs = audioTrack->getBufferedDurationUs(&err))
-                    < kMinDurationUs
-            && err == OK) {
-        ALOGV("audio track doesn't have enough data yet. (%.2f secs buffered)",
-              durationUs / 1E6);
-        return false;
+    int64_t durationUs, estimate;
+    bool buffer_flag = true;
+    if (audioTrack != NULL) {
+        estimate = audioTrack->getEstimatedBytesPerSec();
+        // just estimate, prevent wrong duration caused by pts jitter.
+        if ((durationUs = audioTrack->getBufferedDurationUs(&err)) < kMinDurationUs && err == OK) {
+            buffer_flag = false;
+        }
+        if (!buffer_flag && estimate) {
+            if (audioTrack->getBufferedDataSize() >= mBuffTimeSec * estimate) {
+                buffer_flag = true;
+            }
+        }
+        if (!buffer_flag) {
+            return false;
+        }
     }
-
-    if (videoTrack != NULL
-            && (durationUs = videoTrack->getBufferedDurationUs(&err))
-                    < kMinDurationUs
-            && err == OK) {
-        ALOGV("video track doesn't have enough data yet. (%.2f secs buffered)",
-              durationUs / 1E6);
-        return false;
+    if (videoTrack != NULL) {
+        estimate = videoTrack->getEstimatedBytesPerSec();
+        // just estimate, prevent wrong duration caused by pts jitter.
+        if ((durationUs = videoTrack->getBufferedDurationUs(&err)) < kMinDurationUs && err == OK) {
+            buffer_flag = false;
+        }
+        if (!buffer_flag && estimate) {
+            if (videoTrack->getBufferedDataSize() >= mBuffTimeSec * estimate) {
+                buffer_flag = true;
+            }
+        }
+        if (!buffer_flag) {
+            return false;
+        }
     }
 
     ALOGI("audio and video track have enough data!\n");
@@ -283,8 +297,10 @@ status_t LiveSession::dequeueAccessUnit(
                 && extra->findInt64("timeUs", &timeUs)) {
             // seeking only
             mLastSeekTimeUs = getSegmentStartTimeUsAfterSeek(timeUs);
-            mDiscontinuityOffsetTimesUs.clear();
-            mDiscontinuityAbsStartTimesUs.clear();
+            mAudioDiscontinuityOffsetTimesUs.clear();
+            mVideoDiscontinuityOffsetTimesUs.clear();
+            mAudioDiscontinuityAbsStartTimesUs.clear();
+            mVideoDiscontinuityAbsStartTimesUs.clear();
         }
         return INFO_DISCONTINUITY;
     }
@@ -419,35 +435,47 @@ status_t LiveSession::dequeueAccessUnit(
         } else {
             size_t seq = strm.mCurDiscontinuitySeq;
             int64_t offsetTimeUs;
-            if (mDiscontinuityOffsetTimesUs.indexOfKey(seq) >= 0) {
-                offsetTimeUs = mDiscontinuityOffsetTimesUs.valueFor(seq);
+            if (stream == STREAMTYPE_AUDIO && mAudioDiscontinuityOffsetTimesUs.indexOfKey(seq) >= 0) {
+                offsetTimeUs = mAudioDiscontinuityOffsetTimesUs.valueFor(seq);
+            } else if (stream == STREAMTYPE_VIDEO && mVideoDiscontinuityOffsetTimesUs.indexOfKey(seq) >= 0) {
+                offsetTimeUs = mVideoDiscontinuityOffsetTimesUs.valueFor(seq);
             } else {
                 offsetTimeUs = 0;
             }
 
             seq += 1;
-            if (mDiscontinuityAbsStartTimesUs.indexOfKey(strm.mCurDiscontinuitySeq) >= 0) {
+            if (stream == STREAMTYPE_AUDIO && mAudioDiscontinuityAbsStartTimesUs.indexOfKey(strm.mCurDiscontinuitySeq) >= 0) {
                 int64_t firstTimeUs;
-                firstTimeUs = mDiscontinuityAbsStartTimesUs.valueFor(strm.mCurDiscontinuitySeq);
+                firstTimeUs = mAudioDiscontinuityAbsStartTimesUs.valueFor(strm.mCurDiscontinuitySeq);
+                offsetTimeUs += strm.mLastDequeuedTimeUs - firstTimeUs;
+                offsetTimeUs += strm.mLastSampleDurationUs;
+            } else if (stream == STREAMTYPE_VIDEO && mVideoDiscontinuityAbsStartTimesUs.indexOfKey(strm.mCurDiscontinuitySeq) >= 0) {
+                int64_t firstTimeUs;
+                firstTimeUs = mVideoDiscontinuityAbsStartTimesUs.valueFor(strm.mCurDiscontinuitySeq);
                 offsetTimeUs += strm.mLastDequeuedTimeUs - firstTimeUs;
                 offsetTimeUs += strm.mLastSampleDurationUs;
             } else {
                 offsetTimeUs += strm.mLastSampleDurationUs;
             }
-            mDiscontinuityOffsetTimesUs.add(seq, offsetTimeUs);
+            if (stream == STREAMTYPE_AUDIO) {
+                mAudioDiscontinuityOffsetTimesUs.add(seq, offsetTimeUs);
+            } else if (stream == STREAMTYPE_VIDEO) {
+                mVideoDiscontinuityOffsetTimesUs.add(seq, offsetTimeUs);
+            }
         }
     } else if (err == OK) {
 
         if (stream == STREAMTYPE_AUDIO || stream == STREAMTYPE_VIDEO) {
-            int64_t timeUs;
+            int64_t timeUs, origin_timeUs;
             int32_t discontinuitySeq = 0;
-            CHECK((*accessUnit)->meta()->findInt64("timeUs",  &timeUs));
+            CHECK((*accessUnit)->meta()->findInt64("timeUs",  &origin_timeUs));
             (*accessUnit)->meta()->findInt32("discontinuitySeq", &discontinuitySeq);
             strm.mCurDiscontinuitySeq = discontinuitySeq;
+            timeUs = origin_timeUs;
 
             int32_t discard = 0;
             int64_t firstTimeUs;
-            if (mDiscontinuityAbsStartTimesUs.indexOfKey(strm.mCurDiscontinuitySeq) >= 0) {
+            if (stream == STREAMTYPE_AUDIO && mAudioDiscontinuityAbsStartTimesUs.indexOfKey(strm.mCurDiscontinuitySeq) >= 0) {
                 int64_t durUs; // approximate sample duration
                 if (timeUs > strm.mLastDequeuedTimeUs) {
                     durUs = timeUs - strm.mLastDequeuedTimeUs;
@@ -455,30 +483,47 @@ status_t LiveSession::dequeueAccessUnit(
                     durUs = strm.mLastDequeuedTimeUs - timeUs;
                 }
                 strm.mLastSampleDurationUs = durUs;
-                firstTimeUs = mDiscontinuityAbsStartTimesUs.valueFor(strm.mCurDiscontinuitySeq);
+                firstTimeUs = mAudioDiscontinuityAbsStartTimesUs.valueFor(strm.mCurDiscontinuitySeq);
+            } else if (stream == STREAMTYPE_VIDEO && mVideoDiscontinuityAbsStartTimesUs.indexOfKey(strm.mCurDiscontinuitySeq) >= 0) {
+                int64_t durUs; // approximate sample duration
+                if (timeUs > strm.mLastDequeuedTimeUs) {
+                    durUs = timeUs - strm.mLastDequeuedTimeUs;
+                } else {
+                    durUs = strm.mLastDequeuedTimeUs - timeUs;
+                }
+                strm.mLastSampleDurationUs = durUs;
+                firstTimeUs = mVideoDiscontinuityAbsStartTimesUs.valueFor(strm.mCurDiscontinuitySeq);
             } else if ((*accessUnit)->meta()->findInt32("discard", &discard) && discard) {
                 firstTimeUs = timeUs;
             } else {
-                mDiscontinuityAbsStartTimesUs.add(strm.mCurDiscontinuitySeq, timeUs);
+                if (stream == STREAMTYPE_AUDIO) {
+                    mAudioDiscontinuityAbsStartTimesUs.add(strm.mCurDiscontinuitySeq, timeUs);
+                } else {
+                    mVideoDiscontinuityAbsStartTimesUs.add(strm.mCurDiscontinuitySeq, timeUs);
+                }
                 firstTimeUs = timeUs;
             }
 
             strm.mLastDequeuedTimeUs = timeUs;
             if (timeUs >= firstTimeUs) {
                 timeUs -= firstTimeUs;
-            } else {
-                timeUs = 0;
             }
             timeUs += mLastSeekTimeUs;
-            if (mDiscontinuityOffsetTimesUs.indexOfKey(discontinuitySeq) >= 0) {
-                timeUs += mDiscontinuityOffsetTimesUs.valueFor(discontinuitySeq);
+            int64_t offset_timeUs = 0;
+            if (stream == STREAMTYPE_AUDIO && mAudioDiscontinuityOffsetTimesUs.indexOfKey(discontinuitySeq) >= 0) {
+                offset_timeUs = mAudioDiscontinuityOffsetTimesUs.valueFor(discontinuitySeq);
+                timeUs += offset_timeUs;
+            } else if (stream == STREAMTYPE_VIDEO && mVideoDiscontinuityOffsetTimesUs.indexOfKey(discontinuitySeq) >= 0) {
+                offset_timeUs = mVideoDiscontinuityOffsetTimesUs.valueFor(discontinuitySeq);
+                timeUs += offset_timeUs;
             }
 
             if (mDebug) {
-                ALOGI("[%s] read buffer at time %" PRId64 " us", streamStr, timeUs);
+                ALOGI("[%s] read buffer at time (%lld)us, origin time (%lld)us, first time (%lld)us, seek time (%lld)us, offset time (%lld)us", streamStr, timeUs, origin_timeUs, firstTimeUs, mLastSeekTimeUs, offset_timeUs);
             } else {
                 ALOGV("[%s] read buffer at time %" PRId64 " us", streamStr, timeUs);
             }
+
             (*accessUnit)->meta()->setInt64("timeUs",  timeUs);
             mLastDequeuedTimeUs = timeUs;
             mRealTimeBaseUs = ALooper::GetNowUs() - timeUs;
@@ -1070,7 +1115,7 @@ ssize_t LiveSession::readFromSource(CFContext * cfc, uint8_t * data, size_t size
             break;
         }
         if (ret < C_ERROR_EAGAIN) {
-            if (!retryCase(ret) || retryCase(ret) == 1) {
+            if (!retryCase(ret) || retryCase(ret) == 1 || retryCase(ret) == 2) {
                 if (!wait_flag) {
                     start_waittime_s = ALooper::GetNowUs() / 1000000;
                     wait_flag = true;
@@ -1082,7 +1127,7 @@ ssize_t LiveSession::readFromSource(CFContext * cfc, uint8_t * data, size_t size
                 }
                 ALOGI("source read met error! ret : %d", ret);
                 if (ALooper::GetNowUs() / 1000000 - start_waittime_s <= waitSec) {
-                    if (cfc->filesize <= 0 && !read_seek_size) { // try to do read seek in chunked mode.
+                    if ((cfc->filesize <= 0 || retryCase(ret) == 2) && !read_seek_size) { // try to do read seek in chunked mode.
                         read_seek_size = cfc->cwd->size;
                         ALOGI("need to do read seek : %lld", read_seek_size);
                     }
@@ -1100,9 +1145,6 @@ ssize_t LiveSession::readFromSource(CFContext * cfc, uint8_t * data, size_t size
                     ret = -ENETRESET;
                     break;
                 }
-            } else if (retryCase(ret) == 2) {
-                ret = -ENETRESET;
-                break;
             } else {
                 ret = -ENETRESET;
                 break;
@@ -1524,6 +1566,12 @@ int64_t LiveSession::getSegmentStartTimeUsAfterSeek(int64_t seekUs) {
 status_t LiveSession::onSeek(const sp<AMessage> &msg) {
     int64_t timeUs;
     CHECK(msg->findInt64("timeUs", &timeUs));
+
+    // clear discontinuity.
+    for (size_t i = 0; i < kMaxStreams; ++i) {
+        sp<AnotherPacketSource> discontinuityQueue  = mDiscontinuities.valueFor(indexToType(i));
+        discontinuityQueue->clear();
+    }
 
     if (!mReconfigurationInProgress) {
         changeConfiguration(timeUs, mCurBandwidthIndex);

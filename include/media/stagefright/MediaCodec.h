@@ -132,6 +132,8 @@ struct MediaCodec : public AHandler {
     status_t getOutputFormat(size_t index, sp<AMessage> *format);
     status_t getInputBuffer(size_t index, sp<ABuffer> *buffer);
 
+    void getAudioParameter(sp<AMessage> &para);
+
     status_t requestIDRFrame();
 
     // Notification will be posted once there "is something to do", i.e.
@@ -206,6 +208,7 @@ private:
         kFlagGatherCodecSpecificData    = 512,
         kFlagIsAsync                    = 1024,
         kFlagIsComponentAllocated       = 2048,
+        kFlagAudioReconfig              = 4096,
     };
 
     struct BufferInfo {
@@ -229,6 +232,7 @@ private:
     SoftwareRenderer *mSoftRenderer;
     sp<AMessage> mOutputFormat;
     sp<AMessage> mInputFormat;
+    sp<AMessage> mAudioParameter;
     sp<AMessage> mCallback;
 
     bool mBatteryStatNotified;
