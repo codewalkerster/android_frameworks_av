@@ -748,7 +748,7 @@ status_t ACodec::configureOutputBuffersFromNativeWindow(
             mNativeWindow.get(), NATIVE_WINDOW_MIN_UNDEQUEUED_BUFFERS,
             (int *)minUndequeuedBuffers);
     if (mLowLatencyMode) {     //set BufferQueue async mode
-        *minUndequeuedBuffers += 1;
+        //*minUndequeuedBuffers += 1;
         mNativeWindow->setSwapInterval(mNativeWindow.get(),0);
     }
 
@@ -1226,13 +1226,14 @@ status_t ACodec::configureCodec(
         return err;
     }
 
-
-    int32_t low_latency_mode = 0;
-    if (msg->findInt32("low-latency", &low_latency_mode)) {
-        OMX_BOOL enable = (OMX_BOOL) low_latency_mode;
-        err = mOMX->setParameter(
-            mNode, static_cast<OMX_INDEXTYPE>(OMX_IndexParamLowLatencyMode),
-            &enable, sizeof(enable));
+    bool low_latency_mode = false;
+    if (mFlags & kFlagLowLatencyMode) {
+        low_latency_mode = true;
+        mOMX->setParameter(
+                mNode,
+                static_cast<OMX_INDEXTYPE>(OMX_IndexParamLowLatencyMode),
+                &low_latency_mode,
+                sizeof(low_latency_mode));
     }
     mLowLatencyMode = low_latency_mode;
 
@@ -5143,6 +5144,12 @@ bool ACodec::LoadedState::onConfigureComponent(
 
     AString mime;
     CHECK(msg->findString("mime", &mime));
+
+    int32_t lowlatencymode = false;
+    if (msg->findInt32("lowlatencymode", &lowlatencymode)) {
+        if (lowlatencymode)
+            mCodec->mFlags |= kFlagLowLatencyMode;
+    }
 
     status_t err = mCodec->configureCodec(mime.c_str(), msg);
 
