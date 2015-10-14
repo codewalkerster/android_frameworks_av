@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "NU-NuPlayerDecoderBase"
+#define LOG_TAG "NuPlayerDecoderBase"
 #include <utils/Log.h>
 #include <inttypes.h>
 

@@ -54,13 +54,9 @@ enum player_type {
 
     AMLOGIC_PLAYER = 110,
     AMSUPER_PLAYER = 111,
+    AMNUPLAYER = 112,
 };
 
-enum NUPLAYER_STREAMTYPE {
-    NU_STREAM_NONE,
-    NU_STREAM_HLS,
-    // other types
-};
 
 #define DEFAULT_AUDIOSINK_BUFFERCOUNT 4
 #define DEFAULT_AUDIOSINK_BUFFERSIZE 1200

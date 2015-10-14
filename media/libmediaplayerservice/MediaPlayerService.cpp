@@ -73,7 +73,6 @@
 #include "MidiFile.h"
 #include "TestPlayerStub.h"
 #include "StagefrightPlayer.h"
-#include "nuplayer/NuPlayerDriver.h"
 
 #include <OMX.h>
 
@@ -749,8 +748,8 @@ status_t MediaPlayerService::Client::setDataSource(
         close(fd);
         return mStatus;
     } else {
-        player_type playerType = MediaPlayerFactory::getPlayerType(this, url, httpService);
-        if (playerType == NU_PLAYER) {
+        player_type playerType = MediaPlayerFactory::getPlayerType(this, url);
+        if (playerType == AMNUPLAYER) {
             mHTTPService = httpService;
             if (mURI) {
                 free((void *)mURI);
@@ -1428,7 +1427,7 @@ status_t MediaPlayerService::decode(
     }
 
     player_type playerType =
-        MediaPlayerFactory::getPlayerType(NULL /* client */, url, httpService);
+        MediaPlayerFactory::getPlayerType(NULL /* client */, url);
     ALOGV("player type = %d", playerType);
 
     // create the right type of player

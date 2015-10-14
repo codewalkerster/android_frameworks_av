@@ -47,7 +47,6 @@ struct PlaylistFetcher : public AHandler {
         kWhatPrepared,
         kWhatPreparationFailed,
         kWhatStartedAt,
-        kWhatCodecSpecificData,
     };
 
     PlaylistFetcher(
@@ -72,20 +71,11 @@ struct PlaylistFetcher : public AHandler {
 
     void stopAsync(bool clear = true);
 
-    void changeURI(AString uri);
-    uint32_t getStreamTypeMask();
-    void setStreamTypeMask(uint32_t streamMask);
-
     void resumeUntilAsync(const sp<AMessage> &params);
 
     uint32_t getStreamTypeMask() const {
         return mStreamTypeMask;
     }
-
-    int32_t getSeqNumberForTime(int64_t timeUs) const;
-    // Returns the media time in us of the segment specified by seqNumber.
-    // This is computed by summing the durations of all segments before it.
-    int64_t getSegmentStartTimeUs(int32_t seqNumber) const;
 
 protected:
     virtual ~PlaylistFetcher();
@@ -104,15 +94,6 @@ private:
         kWhatResumeUntil    = 'rsme',
         kWhatDownloadNext   = 'dlnx',
     };
-
-    static const AString DumpPath;
-    int32_t mDumpMode; // 1: one whole file; 2: independent file
-    FILE * mDumpHandle;
-
-    int64_t mSegmentBytesPerSec;
-
-    int64_t mFailureAnchorTimeUs;
-    int64_t mOpenFailureRetryUs;
 
     static const int64_t kMaxMonitorDelayUs;
     static const int32_t kNumSkipFrames;
@@ -147,13 +128,10 @@ private:
     int64_t mLastPlaylistFetchTimeUs;
     sp<M3UParser> mPlaylist;
     int32_t mSeqNumber;
-    int32_t mDownloadedNum;
     int32_t mNumRetries;
     bool mStartup;
     bool mAdaptive;
-    bool mFetchingNotify;
     bool mPrepared;
-    bool mPostPrepared;
     int64_t mNextPTSTimeUs;
 
     int32_t mMonitorQueueGeneration;
@@ -201,6 +179,10 @@ private:
     int64_t delayUsToRefreshPlaylist() const;
     status_t refreshPlaylist();
 
+    // Returns the media time in us of the segment specified by seqNumber.
+    // This is computed by summing the durations of all segments before it.
+    int64_t getSegmentStartTimeUs(int32_t seqNumber) const;
+
     status_t onStart(const sp<AMessage> &msg);
     void onPause();
     void onStop(const sp<AMessage> &msg);
@@ -226,6 +208,7 @@ private:
 
     int32_t getSeqNumberWithAnchorTime(int64_t anchorTimeUs) const;
     int32_t getSeqNumberForDiscontinuity(size_t discontinuitySeq) const;
+    int32_t getSeqNumberForTime(int64_t timeUs) const;
 
     void updateDuration();
 

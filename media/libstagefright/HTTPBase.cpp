@@ -75,7 +75,7 @@ void HTTPBase::addBandwidthMeasurement(
 bool HTTPBase::estimateBandwidth(int32_t *bandwidth_bps) {
     Mutex::Autolock autoLock(mLock);
 
-    if (mNumBandwidthHistoryItems < 1) {
+    if (mNumBandwidthHistoryItems < 2) {
         return false;
     }
 

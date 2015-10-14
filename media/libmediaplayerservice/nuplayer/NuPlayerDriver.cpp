@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "NU-NuPlayerDriver"
+#define LOG_TAG "NuPlayerDriver"
 #include <inttypes.h>
 #include <utils/Log.h>
 
@@ -32,7 +32,7 @@
 
 namespace android {
 
-NuPlayerDriver::NuPlayerDriver(NUPLAYER_STREAMTYPE type)
+NuPlayerDriver::NuPlayerDriver()
     : mState(STATE_IDLE),
       mIsAsyncPrepare(false),
       mAsyncResult(UNKNOWN_ERROR),
@@ -45,8 +45,7 @@ NuPlayerDriver::NuPlayerDriver(NUPLAYER_STREAMTYPE type)
       mAtEOS(false),
       mLooping(false),
       mAutoLoop(false),
-      mStartupSeekTimeUs(-1),
-      mSourceReady(-1) {
+      mStartupSeekTimeUs(-1) {
     ALOGV("NuPlayerDriver(%p)", this);
     mLooper->setName("NuPlayerDriver Looper");
 
@@ -55,7 +54,7 @@ NuPlayerDriver::NuPlayerDriver(NUPLAYER_STREAMTYPE type)
             true,  /* canCallJava */
             PRIORITY_AUDIO);
 
-    mPlayer = new NuPlayer(type);
+    mPlayer = new NuPlayer;
     mLooper->registerHandler(mPlayer);
 
     mPlayer->setDriver(this);
@@ -348,13 +347,6 @@ status_t NuPlayerDriver::seekTo(int msec) {
 
     int64_t seekTimeUs = msec * 1000ll;
 
-    // 0.5 sec to end, need to quit play.
-    if (mDurationUs > 0 && mDurationUs - seekTimeUs <= 500000) {
-        notifySeekComplete_l();
-        notifyListener_l(MEDIA_PLAYBACK_COMPLETE);
-        return OK;
-    }
-
     switch (mState) {
         case STATE_PREPARED:
         case STATE_STOPPED_AND_PREPARED:
@@ -409,8 +401,6 @@ status_t NuPlayerDriver::getCurrentPosition(int *msec) {
         mPositionUs = tempUs;
     }
     *msec = (int)divRound(tempUs, (int64_t)(1000));
-    ALOGI("[%s] position : %d msec", __FUNCTION__, *msec);
-
     return OK;
 }
 
@@ -650,13 +640,6 @@ void NuPlayerDriver::notifyListener(
 
 void NuPlayerDriver::notifyListener_l(
         int msg, int ext1, int ext2, const Parcel *in) {
-
-    // if need to create new player,
-    // ignore the remaining info.
-    if (mSourceReady == 1) {
-        return;
-    }
-
     switch (msg) {
         case MEDIA_PLAYBACK_COMPLETE:
         {
@@ -691,12 +674,6 @@ void NuPlayerDriver::notifyListener_l(
         case MEDIA_ERROR:
         {
             mAtEOS = true;
-            break;
-        }
-
-        case 0xffff:
-        {
-            mSourceReady = ext1;
             break;
         }
 

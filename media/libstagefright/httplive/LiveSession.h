@@ -23,8 +23,6 @@
 
 #include <utils/String8.h>
 
-#include "curl_fetch.h"
-
 namespace android {
 
 struct ABuffer;
@@ -37,8 +35,6 @@ struct M3UParser;
 struct PlaylistFetcher;
 struct Parcel;
 
-typedef int32_t (*interruptcallback)(android_thread_id_t thread_id);
-
 struct LiveSession : public AHandler {
     enum Flags {
         // Don't log any URLs.
@@ -47,8 +43,7 @@ struct LiveSession : public AHandler {
     LiveSession(
             const sp<AMessage> &notify,
             uint32_t flags,
-            const sp<IMediaHTTPService> &httpService,
-            interruptcallback pfunc);
+            const sp<IMediaHTTPService> &httpService);
 
     enum StreamIndex {
         kAudioIndex    = 0,
@@ -62,13 +57,6 @@ struct LiveSession : public AHandler {
         STREAMTYPE_VIDEO        = 1 << kVideoIndex,
         STREAMTYPE_SUBTITLES    = 1 << kSubtitleIndex,
     };
-
-    enum FetcherStatus {
-        STATUS_ACTIVE,
-        STATUS_PAUSED,
-        STATUS_STOPPED,
-    };
-
     status_t dequeueAccessUnit(StreamType stream, sp<ABuffer> *accessUnit);
 
     status_t getStreamFormat(StreamType stream, sp<AMessage> *format);
@@ -90,18 +78,12 @@ struct LiveSession : public AHandler {
 
     bool isSeekable() const;
     bool hasDynamicDuration() const;
-    bool haveSufficientDataOnAVTracks();
-    status_t hasBufferAvailable(bool audio, bool * needBuffering);
-    void setEOSTimeout(bool audio, int64_t timeout);
-
-    void setParentThreadId(android_thread_id_t thread_id);
 
     enum {
         kWhatStreamsChanged,
         kWhatError,
         kWhatPrepared,
         kWhatPreparationFailed,
-        kWhatSourceReady,
     };
 
     // create a format-change discontinuity
@@ -142,7 +124,6 @@ private:
     struct FetcherInfo {
         sp<PlaylistFetcher> mFetcher;
         int64_t mDurationUs;
-        FetcherStatus mStatus;
         bool mIsPrepared;
         bool mToBeRemoved;
     };
@@ -171,45 +152,19 @@ private:
     };
     StreamItem mStreams[kMaxStreams];
 
-    interruptcallback mInterruptCallback;
-    android_thread_id_t mParentThreadId;
-
-    Mutex mWaitLock;
-    Condition mWaitCondition;
-
     sp<AMessage> mNotify;
     uint32_t mFlags;
     sp<IMediaHTTPService> mHTTPService;
 
-    uint32_t mBuffTimeSec;
-    uint32_t mFailureWaitSec;
-    uint32_t mAbnormalWaitSec;
-
-    bool mFirstSniff;
-    bool mDebug;
-    bool mCodecSpecificDataSend;
-    bool mSeeked;
-    bool mNeedExit;
     bool mInPreparationPhase;
     bool mBuffering[kMaxStreams];
 
-    static const String8 kHTTPUserAgentDefault;
-
-    uint8_t * mCodecSpecificData;
-    uint32_t mCodecSpecificDataSize;
-
+    sp<HTTPBase> mHTTPDataSource;
     KeyedVector<String8, String8> mExtraHeaders;
-    KeyedVector<size_t, int64_t> mAudioDiscontinuityAbsStartTimesUs;
-    KeyedVector<size_t, int64_t> mVideoDiscontinuityAbsStartTimesUs;
-    KeyedVector<size_t, int64_t> mAudioDiscontinuityOffsetTimesUs;
-    KeyedVector<size_t, int64_t> mVideoDiscontinuityOffsetTimesUs;
 
-    AString mLastPlayListURL;
     AString mMasterURL;
 
     Vector<BandwidthItem> mBandwidthItems;
-    Vector<sp<ALooper> > mFetcherLooper;
-
     ssize_t mCurBandwidthIndex;
 
     sp<M3UParser> mPlaylist;
@@ -236,7 +191,6 @@ private:
     // * a forced bandwidth switch termination in cancelSwitch on the live looper.
     Mutex mSwapMutex;
 
-    int32_t mEstimatedBWbps;
     int32_t mCheckBandwidthGeneration;
     int32_t mSwitchGeneration;
     int32_t mSubtitleGeneration;
@@ -256,21 +210,15 @@ private:
     bool mFirstTimeUsValid;
     int64_t mFirstTimeUs;
     int64_t mLastSeekTimeUs;
-
-    int64_t mEOSTimeoutAudio;
-    int64_t mEOSTimeoutVideo;
-
     sp<AMessage> mSwitchDownMonitor;
+    KeyedVector<size_t, int64_t> mDiscontinuityAbsStartTimesUs;
+    KeyedVector<size_t, int64_t> mDiscontinuityOffsetTimesUs;
 
     sp<PlaylistFetcher> addFetcher(const char *uri);
 
     void onConnect(const sp<AMessage> &msg);
     status_t onSeek(const sp<AMessage> &msg);
     void onFinishDisconnect2();
-
-    int32_t interrupt_callback();
-    ssize_t readFromSource(CFContext * cfc, uint8_t * data, size_t size);
-    int32_t retryCase(int32_t arg);
 
     // If given a non-zero block_size (default 0), it is used to cap the number of
     // bytes read in from the DataSource. If given a non-NULL buffer, new content
@@ -290,15 +238,14 @@ private:
             /* download block size */
             uint32_t block_size = 0,
             /* reuse DataSource if doing partial fetch */
-            CFContext ** cfc = NULL,
-            String8 *actualUrl = NULL, bool isPlaylist = false);
+            sp<DataSource> *source = NULL,
+            String8 *actualUrl = NULL);
 
     sp<M3UParser> fetchPlaylist(
-            const char *url, uint8_t *curPlaylistHash, bool *unchanged, status_t &err, CFContext ** cfc = NULL);
+            const char *url, uint8_t *curPlaylistHash, bool *unchanged);
 
     size_t getBandwidthIndex();
     int64_t latestMediaSegmentStartTimeUs();
-    int64_t getSegmentStartTimeUsAfterSeek(int64_t seekUs);
 
     static int SortByBandwidth(const BandwidthItem *, const BandwidthItem *);
     static StreamType indexToType(int idx);
@@ -314,13 +261,8 @@ private:
     void onSwitchDown();
     void tryToFinishBandwidthSwitch();
 
-    // no need to rebuild fetcher when bandwidth changed, this is light method.
-    void reconfigFetcher(size_t bandwidthIndex);
-
     void scheduleCheckBandwidthEvent();
     void cancelCheckBandwidthEvent();
-
-    void checkBandwidth(bool * needFetchPlaylist);
 
     // cancelBandwidthSwitch is atomic wrt swapPacketSource; call it to prevent packet sources
     // from being swapped out on stale discontinuities while manipulating
@@ -336,8 +278,6 @@ private:
 
     void swapPacketSource(StreamType stream);
     bool canSwitchUp();
-
-    void threadWaitTimeNs(int64_t timeNs);
 
     DISALLOW_EVIL_CONSTRUCTORS(LiveSession);
 };

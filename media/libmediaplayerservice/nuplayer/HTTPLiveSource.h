@@ -30,8 +30,7 @@ struct NuPlayer::HTTPLiveSource : public NuPlayer::Source {
             const sp<AMessage> &notify,
             const sp<IMediaHTTPService> &httpService,
             const char *url,
-            const KeyedVector<String8, String8> *headers,
-            interruptcallback pfunc);
+            const KeyedVector<String8, String8> *headers);
 
     virtual void prepareAsync();
     virtual void start();
@@ -46,7 +45,6 @@ struct NuPlayer::HTTPLiveSource : public NuPlayer::Source {
     virtual ssize_t getSelectedTrack(media_track_type /* type */) const;
     virtual status_t selectTrack(size_t trackIndex, bool select, int64_t timeUs);
     virtual status_t seekTo(int64_t seekTimeUs);
-    virtual void setParentThreadId(android_thread_id_t thread_id);
 
 protected:
     virtual ~HTTPLiveSource();
@@ -67,16 +65,12 @@ private:
     sp<IMediaHTTPService> mHTTPService;
     AString mURL;
     KeyedVector<String8, String8> mExtraHeaders;
-    bool mBuffering;
     uint32_t mFlags;
     status_t mFinalResult;
     off64_t mOffset;
     sp<ALooper> mLiveLooper;
     sp<LiveSession> mLiveSession;
     int32_t mFetchSubtitleDataGeneration;
-
-    interruptcallback mInterruptCallback;
-    android_thread_id_t mParentThreadId;
 
     void onSessionNotify(const sp<AMessage> &msg);
 
