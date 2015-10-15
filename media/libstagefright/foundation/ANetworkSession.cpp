@@ -192,7 +192,7 @@ ANetworkSession::Session::Session(
         CHECK_GE(res, 0);
 
         in_addr_t addr = ntohl(localAddr.sin_addr.s_addr);
-        AString localAddrString = StringPrintf(
+        AString localAddrString = AStringPrintf(
                 "%d.%d.%d.%d",
                 (addr >> 24),
                 (addr >> 16) & 0xff,
@@ -200,7 +200,7 @@ ANetworkSession::Session::Session(
                 addr & 0xff);
 
         addr = ntohl(remoteAddr.sin_addr.s_addr);
-        AString remoteAddrString = StringPrintf(
+        AString remoteAddrString = AStringPrintf(
                 "%d.%d.%d.%d",
                 (addr >> 24),
                 (addr >> 16) & 0xff,
@@ -321,7 +321,7 @@ status_t ANetworkSession::Session::readMore() {
                 uint32_t ip = ntohl(remoteAddr.sin_addr.s_addr);
                 notify->setString(
                         "fromAddr",
-                        StringPrintf(
+                        AStringPrintf(
                             "%u.%u.%u.%u",
                             ip >> 24,
                             (ip >> 16) & 0xff,

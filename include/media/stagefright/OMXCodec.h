@@ -316,7 +316,6 @@ private:
     status_t queueBufferToNativeWindow(BufferInfo *info);
     status_t cancelBufferToNativeWindow(BufferInfo *info);
     BufferInfo* dequeueBufferFromNativeWindow();
-    status_t pushBlankBuffersToNativeWindow();
 
     status_t freeBuffersOnPort(
             OMX_U32 portIndex, bool onlyThoseWeOwn = false);
@@ -365,7 +364,6 @@ private:
 
     status_t configureCodec(const sp<MetaData> &meta);
 
-    status_t applyRotation();
     status_t waitForBufferFilled_l();
 
     int64_t getDecodingTimeUs();

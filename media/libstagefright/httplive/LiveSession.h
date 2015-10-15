@@ -199,10 +199,6 @@ private:
     uint32_t mCodecSpecificDataSize;
 
     KeyedVector<String8, String8> mExtraHeaders;
-    KeyedVector<size_t, int64_t> mAudioDiscontinuityAbsStartTimesUs;
-    KeyedVector<size_t, int64_t> mVideoDiscontinuityAbsStartTimesUs;
-    KeyedVector<size_t, int64_t> mAudioDiscontinuityOffsetTimesUs;
-    KeyedVector<size_t, int64_t> mVideoDiscontinuityOffsetTimesUs;
 
     AString mLastPlayListURL;
     AString mMasterURL;
@@ -261,6 +257,8 @@ private:
     int64_t mEOSTimeoutVideo;
 
     sp<AMessage> mSwitchDownMonitor;
+    KeyedVector<size_t, int64_t> mDiscontinuityAbsStartTimesUs;
+    KeyedVector<size_t, int64_t> mDiscontinuityOffsetTimesUs;
 
     sp<PlaylistFetcher> addFetcher(const char *uri);
 

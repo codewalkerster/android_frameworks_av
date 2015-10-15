@@ -21,6 +21,7 @@
 #include "MatroskaExtractor.h"
 
 #include <media/stagefright/foundation/ADebug.h>
+#include <media/stagefright/foundation/AUtils.h>
 #include <media/stagefright/foundation/hexdump.h>
 #include <media/stagefright/DataSource.h>
 #include <media/stagefright/MediaBuffer.h>
@@ -511,17 +512,6 @@ static unsigned U24_AT(const uint8_t *ptr) {
     return ptr[0] << 16 | ptr[1] << 8 | ptr[2];
 }
 
-static size_t clz(uint8_t x) {
-    size_t numLeadingZeroes = 0;
-
-    while (!(x & 0x80)) {
-        ++numLeadingZeroes;
-        x = x << 1;
-    }
-
-    return numLeadingZeroes;
-}
-
 void MatroskaSource::clearPendingFrames() {
     while (!mPendingFrames.empty()) {
         MediaBuffer *frame = *mPendingFrames.begin();
@@ -663,7 +653,12 @@ status_t MatroskaSource::read(
                     TRESPASS();
             }
 
-            if (srcOffset + mNALSizeLen + NALsize > srcSize) {
+            if (srcOffset + mNALSizeLen + NALsize <= srcOffset + mNALSizeLen) {
+                frame->release();
+                frame = NULL;
+
+                return ERROR_MALFORMED;
+            } else if (srcOffset + mNALSizeLen + NALsize > srcSize) {
                 break;
             }
 
@@ -980,6 +975,11 @@ void MatroskaExtractor::addTracks() {
         const char *const codecID = track->GetCodecId();
         ALOGV("codec id = %s", codecID);
         ALOGV("codec name = %s", track->GetCodecNameAsUTF8());
+
+        if (codecID == NULL) {
+            ALOGW("unknown codecID is not supported.");
+            continue;
+        }
 
         size_t codecPrivateSize;
         const unsigned char *codecPrivate =

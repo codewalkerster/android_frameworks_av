@@ -59,7 +59,7 @@ OMX_ERRORTYPE SimpleSoftOMXComponent::sendCommand(
         OMX_COMMANDTYPE cmd, OMX_U32 param, OMX_PTR data) {
     CHECK(data == NULL);
 
-    sp<AMessage> msg = new AMessage(kWhatSendCommand, mHandler->id());
+    sp<AMessage> msg = new AMessage(kWhatSendCommand, mHandler);
     msg->setInt32("cmd", cmd);
     msg->setInt32("param", param);
     msg->post();
@@ -346,7 +346,7 @@ OMX_ERRORTYPE SimpleSoftOMXComponent::freeBuffer(
 
 OMX_ERRORTYPE SimpleSoftOMXComponent::emptyThisBuffer(
         OMX_BUFFERHEADERTYPE *buffer) {
-    sp<AMessage> msg = new AMessage(kWhatEmptyThisBuffer, mHandler->id());
+    sp<AMessage> msg = new AMessage(kWhatEmptyThisBuffer, mHandler);
     msg->setPointer("header", buffer);
     msg->post();
 
@@ -355,7 +355,7 @@ OMX_ERRORTYPE SimpleSoftOMXComponent::emptyThisBuffer(
 
 OMX_ERRORTYPE SimpleSoftOMXComponent::fillThisBuffer(
         OMX_BUFFERHEADERTYPE *buffer) {
-    sp<AMessage> msg = new AMessage(kWhatFillThisBuffer, mHandler->id());
+    sp<AMessage> msg = new AMessage(kWhatFillThisBuffer, mHandler);
     msg->setPointer("header", buffer);
     msg->post();
 
@@ -544,7 +544,15 @@ void SimpleSoftOMXComponent::onPortFlush(
     CHECK_LT(portIndex, mPorts.size());
 
     PortInfo *port = &mPorts.editItemAt(portIndex);
-    CHECK_EQ((int)port->mTransition, (int)PortInfo::NONE);
+    // Ideally, the port should not in transitioning state when flushing.
+    // However, in error handling case, e.g., the client can't allocate buffers
+    // when it tries to re-enable the port, the port will be stuck in ENABLING.
+    // The client will then transition the component from Executing to Idle,
+    // which leads to flushing ports. At this time, it should be ok to notify
+    // the client of the error and still clear all buffers on the port.
+    if (port->mTransition != PortInfo::NONE) {
+        notify(OMX_EventError, OMX_ErrorUndefined, 0, 0);
+    }
 
     for (size_t i = 0; i < port->mBuffers.size(); ++i) {
         BufferInfo *buffer = &port->mBuffers.editItemAt(i);
@@ -637,7 +645,7 @@ void SimpleSoftOMXComponent::checkTransitions() {
 
         if (port->mTransition == PortInfo::DISABLING) {
             if (port->mBuffers.empty()) {
-                ALOGV("Port %d now disabled.", i);
+                ALOGV("Port %zu now disabled.", i);
 
                 port->mTransition = PortInfo::NONE;
                 notify(OMX_EventCmdComplete, OMX_CommandPortDisable, i, NULL);
@@ -646,7 +654,7 @@ void SimpleSoftOMXComponent::checkTransitions() {
             }
         } else if (port->mTransition == PortInfo::ENABLING) {
             if (port->mDef.bPopulated == OMX_TRUE) {
-                ALOGV("Port %d now enabled.", i);
+                ALOGV("Port %zu now enabled.", i);
 
                 port->mTransition = PortInfo::NONE;
                 port->mDef.bEnabled = OMX_TRUE;
@@ -667,14 +675,14 @@ void SimpleSoftOMXComponent::addPort(const OMX_PARAM_PORTDEFINITIONTYPE &def) {
     info->mTransition = PortInfo::NONE;
 }
 
-void SimpleSoftOMXComponent::onQueueFilled(OMX_U32 portIndex) {
+void SimpleSoftOMXComponent::onQueueFilled(OMX_U32 portIndex __unused) {
 }
 
-void SimpleSoftOMXComponent::onPortFlushCompleted(OMX_U32 portIndex) {
+void SimpleSoftOMXComponent::onPortFlushCompleted(OMX_U32 portIndex __unused) {
 }
 
 void SimpleSoftOMXComponent::onPortEnableCompleted(
-        OMX_U32 portIndex, bool enabled) {
+        OMX_U32 portIndex __unused, bool enabled __unused) {
 }
 
 List<SimpleSoftOMXComponent::BufferInfo *> &

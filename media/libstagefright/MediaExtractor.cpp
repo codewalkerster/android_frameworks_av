@@ -38,6 +38,7 @@
 #include "include/DtshdExtractor.h"
 #include "include/AIFFExtractor.h"
 #include "include/THDExtractor.h"
+#include "include/MidiExtractor.h"
 
 #include "matroska/MatroskaExtractor.h"
 
@@ -185,6 +186,8 @@ sp<MediaExtractor> MediaExtractor::Create(
         ret = new THDExtractor(source);
     } else if (!strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_DDP)) {
         ret = new DDPExtractor(source);
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_MIDI)) {
+        ret = new MidiExtractor(source);
     }
 
     if (ret != NULL) {

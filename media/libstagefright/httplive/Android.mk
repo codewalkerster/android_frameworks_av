@@ -3,6 +3,7 @@ LOCAL_PATH:= $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:=               \
+        HTTPDownloader.cpp      \
         LiveDataSource.cpp      \
         LiveSession.cpp         \
         M3UParser.cpp           \
@@ -16,7 +17,8 @@ LOCAL_C_INCLUDES:= \
     $(TOP)/external/curl/include \
     $(TOP)/vendor/amlogic/frameworks/av/LibPlayer/third_parts/libcurl-ffmpeg/include
 
-LOCAL_CFLAGS += -Werror
+LOCAL_CFLAGS += -Werror -Wall
+LOCAL_CLANG := true
 
 LOCAL_STATIC_LIBRARIES := libstagefright_hevcutils libcurl_base libcurl_common
 

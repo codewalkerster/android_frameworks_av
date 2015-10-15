@@ -1486,7 +1486,7 @@ int PreProcessingFx_Command(effect_handle_t  self,
         } break;
 
         case EFFECT_CMD_ENABLE:
-            if (pReplyData == NULL || replySize == NULL || *replySize != sizeof(int)) {
+            if (pReplyData == NULL || replySize == NULL || *replySize != sizeof(int)){
                 ALOGV("PreProcessingFx_Command cmdCode Case: EFFECT_CMD_ENABLE: ERROR");
                 return -EINVAL;
             }
@@ -1494,7 +1494,7 @@ int PreProcessingFx_Command(effect_handle_t  self,
             break;
 
         case EFFECT_CMD_DISABLE:
-            if (pReplyData == NULL || replySize == NULL || *replySize != sizeof(int)) {
+            if (pReplyData == NULL || replySize == NULL || *replySize != sizeof(int)){
                 ALOGV("PreProcessingFx_Command cmdCode Case: EFFECT_CMD_DISABLE: ERROR");
                 return -EINVAL;
             }

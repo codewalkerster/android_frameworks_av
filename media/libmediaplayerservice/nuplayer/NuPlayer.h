@@ -18,15 +18,18 @@
 
 #define NU_PLAYER_H_
 
+#include <media/AudioResamplerPublic.h>
 #include <media/MediaPlayerInterface.h>
 #include <media/stagefright/foundation/AHandler.h>
-#include <media/stagefright/NativeWindowWrapper.h>
 
 namespace android {
 
 struct ABuffer;
 struct AMessage;
-struct MetaData;
+struct AudioPlaybackRate;
+struct AVSyncSettings;
+class IDataSource;
+class MetaData;
 struct NuPlayerDriver;
 
 typedef int32_t (*interruptcallback)(android_thread_id_t thread_id);
@@ -47,12 +50,19 @@ struct NuPlayer : public AHandler {
 
     void setDataSourceAsync(int fd, int64_t offset, int64_t length);
 
+    void setDataSourceAsync(const sp<DataSource> &source);
+
     void prepareAsync();
 
     void setVideoSurfaceTextureAsync(
             const sp<IGraphicBufferProducer> &bufferProducer);
 
     void setAudioSink(const sp<MediaPlayerBase::AudioSink> &sink);
+    status_t setPlaybackSettings(const AudioPlaybackRate &rate);
+    status_t getPlaybackSettings(AudioPlaybackRate *rate /* nonnull */);
+    status_t setSyncSettings(const AVSyncSettings &sync, float videoFpsHint);
+    status_t getSyncSettings(AVSyncSettings *sync /* nonnull */, float *videoFps /* nonnull */);
+
     void start();
 
     void pause();
@@ -69,9 +79,10 @@ struct NuPlayer : public AHandler {
     status_t getSelectedTrack(int32_t type, Parcel* reply) const;
     status_t selectTrack(size_t trackIndex, bool select, int64_t timeUs);
     status_t getCurrentPosition(int64_t *mediaUs);
-    void getStats(int64_t *mNumFramesTotal, int64_t *mNumFramesDropped);
+    void getStats(Vector<sp<AMessage> > *mTrackStats);
 
     sp<MetaData> getFileMeta();
+    float getFrameRate();
 
     static void thread_interrupt();
     static void thread_uninterrupt();
@@ -110,9 +121,13 @@ private:
     enum {
         kWhatSetDataSource              = '=DaS',
         kWhatPrepare                    = 'prep',
-        kWhatSetVideoNativeWindow       = '=NaW',
+        kWhatSetVideoSurface            = '=VSu',
         kWhatSetAudioSink               = '=AuS',
         kWhatMoreDataQueued             = 'more',
+        kWhatConfigPlayback             = 'cfPB',
+        kWhatConfigSync                 = 'cfSy',
+        kWhatGetPlaybackSettings        = 'gPbS',
+        kWhatGetSyncSettings            = 'gSyS',
         kWhatStart                      = 'strt',
         kWhatScanSources                = 'scan',
         kWhatVideoNotify                = 'vidN',
@@ -133,10 +148,12 @@ private:
     wp<NuPlayerDriver> mDriver;
     bool mUIDValid;
     uid_t mUID;
+    pid_t mPID;
     sp<Source> mSource;
     uint32_t mSourceFlags;
     sp<NativeWindowWrapper> mNativeWindow;
     sp<Surface> mNewSurface;
+    sp<Surface> mSurface;
     sp<MediaPlayerBase::AudioSink> mAudioSink;
     sp<DecoderBase> mVideoDecoder;
     bool mOffloadAudio;
@@ -147,6 +164,8 @@ private:
     int32_t mAudioDecoderGeneration;
     int32_t mVideoDecoderGeneration;
     int32_t mRendererGeneration;
+
+    int64_t mPreviousSeekTimeUs;
 
     List<sp<Action> > mDeferredActions;
 
@@ -187,7 +206,11 @@ private:
 
     int32_t mVideoScalingMode;
 
+    AudioPlaybackRate mPlaybackSettings;
+    AVSyncSettings mSyncSettings;
+    float mVideoFpsHint;
     bool mStarted;
+    bool mSourceStarted;
 
     // Actual pause state, either as requested by client or due to buffering.
     bool mPaused;
@@ -198,6 +221,8 @@ private:
     bool mPausedByClient;
 
     android_thread_id_t mSelfThreadId;
+    // Pause state as requested by source (internally) due to buffering
+    bool mPausedForBuffering;
 
     inline const sp<DecoderBase> &getDecoder(bool audio) {
         return audio ? mAudioDecoder : mVideoDecoder;
@@ -212,6 +237,7 @@ private:
 
     void tryOpenAudioSinkForOffload(const sp<AMessage> &format, bool hasVideo);
     void closeAudioSink();
+    void determineAudioModeChange();
 
     status_t instantiateDecoder(bool audio, sp<DecoderBase> *decoder);
 
@@ -226,7 +252,7 @@ private:
     void handleFlushComplete(bool audio, bool isDecoder);
     void finishFlushIfPossible();
 
-    void onStart();
+    void onStart(int64_t startPositionUs = -1);
     void onResume();
     void onPause();
 
@@ -235,6 +261,7 @@ private:
     void flushDecoder(bool audio, bool needShutdown);
 
     void finishResume();
+    void notifyDriverSeekComplete();
 
     void postScanSources();
 
@@ -243,11 +270,11 @@ private:
 
     void processDeferredActions();
 
-    void performSeek(int64_t seekTimeUs, bool needNotify);
+    void performSeek(int64_t seekTimeUs);
     void performDecoderFlush(FlushCommand audio, FlushCommand video);
     void performReset();
     void performScanSources();
-    void performSetSurface(const sp<NativeWindowWrapper> &wrapper);
+    void performSetSurface(const sp<Surface> &wrapper);
     void performResumeDecoders(bool needNotify);
 
     void onSourceNotify(const sp<AMessage> &msg);
@@ -257,6 +284,7 @@ private:
             bool audio, bool video, const sp<AMessage> &reply);
 
     void sendSubtitleData(const sp<ABuffer> &buffer, int32_t baseIndex);
+    void sendTimedMetaData(const sp<ABuffer> &buffer);
     void sendTimedTextData(const sp<ABuffer> &buffer);
 
     void writeTrackInfo(Parcel* reply, const sp<AMessage> format) const;

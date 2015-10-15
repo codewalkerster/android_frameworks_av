@@ -1915,7 +1915,7 @@ int Reverb_command(effect_handle_t  self,
             //ALOGV("\tReverb_command cmdCode Case: "
             //        "EFFECT_CMD_INIT start");
 
-            if (pReplyData == NULL || replySize == NULL || *replySize != sizeof(int)) {
+            if (pReplyData == NULL || replySize == NULL || *replySize != sizeof(int)){
                 ALOGV("\tLVM_ERROR : Reverb_command cmdCode Case: "
                         "EFFECT_CMD_INIT: ERROR");
                 return -EINVAL;

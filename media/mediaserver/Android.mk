@@ -11,14 +11,16 @@ endif
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:= \
-	main_mediaserver.cpp 
+	main_mediaserver.cpp
 
 LOCAL_SHARED_LIBRARIES := \
 	libaudioflinger \
 	libaudiopolicyservice \
 	libcamera_metadata\
 	libcameraservice \
+	libicuuc \
 	libmedialogservice \
+	libresourcemanagerservice \
 	libcutils \
 	libnbaio \
 	libmedia \
@@ -26,10 +28,12 @@ LOCAL_SHARED_LIBRARIES := \
 	libutils \
 	liblog \
 	libbinder \
-	libsoundtriggerservice
+	libsoundtriggerservice \
+	libradioservice
 
 LOCAL_STATIC_LIBRARIES := \
-	libregistermsext
+        libicuandroid_utils \
+        libregistermsext
 
 ifeq ($(BUILD_WITH_VIEWRIGHT_STB), true)
 LOCAL_WHOLE_STATIC_LIBRARIES := libvmlogger
@@ -41,9 +45,15 @@ LOCAL_C_INCLUDES := \
     frameworks/av/services/medialog \
     frameworks/av/services/audioflinger \
     frameworks/av/services/audiopolicy \
+    frameworks/av/services/audiopolicy/common/managerdefinitions/include \
+    frameworks/av/services/audiopolicy/common/include \
+    frameworks/av/services/audiopolicy/engine/interface \
     frameworks/av/services/camera/libcameraservice \
+    frameworks/av/services/mediaresourcemanager \
     $(call include-path-for, audio-utils) \
-    frameworks/av/services/soundtrigger
+    frameworks/av/services/soundtrigger \
+    frameworks/av/services/radio \
+    external/sonic
 
 LOCAL_MODULE:= mediaserver
 LOCAL_32_BIT_ONLY := true

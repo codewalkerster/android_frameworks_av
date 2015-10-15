@@ -26,7 +26,7 @@
 namespace android {
 
 struct ABuffer;
-struct MetaData;
+class MetaData;
 
 struct ElementaryStreamQueue {
     enum Mode {
@@ -40,7 +40,8 @@ struct ElementaryStreamQueue {
         DDP_AC3_AUDIO,
         DDP_EC3_AUDIO,
 #endif // DOLBY_UDC && DOLBY_UDC_STREAMING_HLS
-        H265
+        H265,
+        METADATA,
     };
 
     enum Flags {
@@ -50,6 +51,7 @@ struct ElementaryStreamQueue {
     ElementaryStreamQueue(Mode mode, uint32_t flags = 0);
 
     status_t appendData(const void *data, size_t size, int64_t timeUs);
+    void signalEOS();
     void clear(bool clearFormat);
 
     sp<ABuffer> dequeueAccessUnit();
@@ -64,6 +66,7 @@ private:
 
     Mode mMode;
     uint32_t mFlags;
+    bool mEOSReached;
 
     // hevc seek
     bool mHevcFindKey;
@@ -83,11 +86,11 @@ private:
 #if defined(DOLBY_UDC) && defined(DOLBY_UDC_STREAMING_HLS)
     sp<ABuffer> dequeueAccessUnitDDP();
 #endif // DOLBY_UDC && DOLBY_UDC_STREAMING_HLS
+    sp<ABuffer> dequeueAccessUnitMetadata();
 
     // consume a logical (compressed) access unit of size "size",
     // returns its timestamp in us (or -1 if no time information).
     int64_t fetchTimestamp(size_t size);
-    int64_t fetchTimestampAAC(size_t size);
 
     DISALLOW_EVIL_CONSTRUCTORS(ElementaryStreamQueue);
 };

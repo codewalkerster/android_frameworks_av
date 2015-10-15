@@ -215,7 +215,7 @@ void WifiDisplaySource::PlaybackSession::Track::stopAsync() {
         mConverter->shutdownAsync();
     }
 
-    sp<AMessage> msg = new AMessage(kWhatMediaPullerStopped, id());
+    sp<AMessage> msg = new AMessage(kWhatMediaPullerStopped, this);
 
     if (mStarted && mMediaPuller != NULL) {
         if (mRepeaterSource != NULL) {
@@ -346,12 +346,14 @@ bool WifiDisplaySource::PlaybackSession::Track::isSuspended() const {
 ////////////////////////////////////////////////////////////////////////////////
 
 WifiDisplaySource::PlaybackSession::PlaybackSession(
+        const String16 &opPackageName,
         const sp<ANetworkSession> &netSession,
         const sp<AMessage> &notify,
         const in_addr &interfaceAddr,
         const sp<IHDCP> &hdcp,
         const char *path)
-    : mNetSession(netSession),
+    : mOpPackageName(opPackageName),
+      mNetSession(netSession),
       mNotify(notify),
       mInterfaceAddr(interfaceAddr),
       mHDCP(hdcp),
@@ -383,7 +385,7 @@ status_t WifiDisplaySource::PlaybackSession::init(
         size_t videoResolutionIndex,
         VideoFormats::ProfileType videoProfileType,
         VideoFormats::LevelType videoLevelType) {
-    sp<AMessage> notify = new AMessage(kWhatMediaSenderNotify, id());
+    sp<AMessage> notify = new AMessage(kWhatMediaSenderNotify, this);
     mMediaSender = new MediaSender(mNetSession, notify);
     looper()->registerHandler(mMediaSender);
 
@@ -443,7 +445,7 @@ void WifiDisplaySource::PlaybackSession::updateLiveness() {
 status_t WifiDisplaySource::PlaybackSession::play() {
     updateLiveness();
 
-    (new AMessage(kWhatResume, id()))->post();
+    (new AMessage(kWhatResume, this))->post();
 
     return OK;
 }
@@ -463,7 +465,7 @@ status_t WifiDisplaySource::PlaybackSession::onMediaSenderInitialized() {
 status_t WifiDisplaySource::PlaybackSession::pause() {
     updateLiveness();
 
-    (new AMessage(kWhatPause, id()))->post();
+    (new AMessage(kWhatPause, this))->post();
 
     return OK;
 }
@@ -512,7 +514,7 @@ void WifiDisplaySource::PlaybackSession::onMessageReceived(
             } else if (what == Converter::kWhatEOS) {
                 CHECK_EQ(what, Converter::kWhatEOS);
 
-                ALOGI("output EOS on track %d", trackIndex);
+                ALOGI("output EOS on track %zu", trackIndex);
 
                 ssize_t index = mTracks.indexOfKey(trackIndex);
                 CHECK_GE(index, 0);
@@ -585,7 +587,7 @@ void WifiDisplaySource::PlaybackSession::onMessageReceived(
             CHECK(msg->findSize("trackIndex", &trackIndex));
 
             if (what == Track::kWhatStopped) {
-                ALOGI("Track %d stopped", trackIndex);
+                ALOGI("Track %zu stopped", trackIndex);
 
                 sp<Track> track = mTracks.valueFor(trackIndex);
                 looper()->unregisterHandler(track->id());
@@ -790,7 +792,7 @@ status_t WifiDisplaySource::PlaybackSession::setupMediaPacketizer(
 
         size_t trackIndex = mTracks.size();
 
-        sp<AMessage> notify = new AMessage(kWhatTrackNotify, id());
+        sp<AMessage> notify = new AMessage(kWhatTrackNotify, this);
         notify->setSize("trackIndex", trackIndex);
 
         sp<Track> track = new Track(notify, format);
@@ -825,21 +827,27 @@ void WifiDisplaySource::PlaybackSession::schedulePullExtractor() {
         return;
     }
 
+    int64_t delayUs = 1000000; // default delay is 1 sec
     int64_t sampleTimeUs;
     status_t err = mExtractor->getSampleTime(&sampleTimeUs);
 
-    int64_t nowUs = ALooper::GetNowUs();
+    if (err == OK) {
+        int64_t nowUs = ALooper::GetNowUs();
 
-    if (mFirstSampleTimeRealUs < 0ll) {
-        mFirstSampleTimeRealUs = nowUs;
-        mFirstSampleTimeUs = sampleTimeUs;
+        if (mFirstSampleTimeRealUs < 0ll) {
+            mFirstSampleTimeRealUs = nowUs;
+            mFirstSampleTimeUs = sampleTimeUs;
+        }
+
+        int64_t whenUs = sampleTimeUs - mFirstSampleTimeUs + mFirstSampleTimeRealUs;
+        delayUs = whenUs - nowUs;
+    } else {
+        ALOGW("could not get sample time (%d)", err);
     }
 
-    int64_t whenUs = sampleTimeUs - mFirstSampleTimeUs + mFirstSampleTimeRealUs;
-
-    sp<AMessage> msg = new AMessage(kWhatPullExtractorSample, id());
+    sp<AMessage> msg = new AMessage(kWhatPullExtractorSample, this);
     msg->setInt32("generation", mPullExtractorGeneration);
-    msg->post(whenUs - nowUs);
+    msg->post(delayUs);
 
     mPullExtractorPending = true;
 }
@@ -861,7 +869,7 @@ void WifiDisplaySource::PlaybackSession::onPullExtractor() {
     size_t trackIndex;
     CHECK_EQ((status_t)OK, mExtractor->getSampleTrackIndex(&trackIndex));
 
-    sp<AMessage> msg = new AMessage(kWhatConverterNotify, id());
+    sp<AMessage> msg = new AMessage(kWhatConverterNotify, this);
 
     msg->setSize(
             "trackIndex", mExtractorTrackToInternalTrack.valueFor(trackIndex));
@@ -959,7 +967,7 @@ status_t WifiDisplaySource::PlaybackSession::addSource(
                     ? MEDIA_MIMETYPE_AUDIO_RAW : MEDIA_MIMETYPE_AUDIO_AAC);
     }
 
-    notify = new AMessage(kWhatConverterNotify, id());
+    notify = new AMessage(kWhatConverterNotify, this);
     notify->setSize("trackIndex", trackIndex);
 
     sp<Converter> converter = new Converter(notify, codecLooper, format);
@@ -974,7 +982,7 @@ status_t WifiDisplaySource::PlaybackSession::addSource(
         return err;
     }
 
-    notify = new AMessage(Converter::kWhatMediaPullerNotify, converter->id());
+    notify = new AMessage(Converter::kWhatMediaPullerNotify, converter);
     notify->setSize("trackIndex", trackIndex);
 
     sp<MediaPuller> puller = new MediaPuller(source, notify);
@@ -984,7 +992,7 @@ status_t WifiDisplaySource::PlaybackSession::addSource(
         *numInputBuffers = converter->getInputBufferCount();
     }
 
-    notify = new AMessage(kWhatTrackNotify, id());
+    notify = new AMessage(kWhatTrackNotify, this);
     notify->setSize("trackIndex", trackIndex);
 
     sp<Track> track = new Track(
@@ -1065,6 +1073,7 @@ status_t WifiDisplaySource::PlaybackSession::addVideoSource(
 status_t WifiDisplaySource::PlaybackSession::addAudioSource(bool usePCMAudio) {
     sp<AudioSource> audioSource = new AudioSource(
             AUDIO_SOURCE_REMOTE_SUBMIX,
+            mOpPackageName,
             48000 /* sampleRate */,
             2 /* channelCount */);
 

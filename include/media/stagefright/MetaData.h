@@ -71,11 +71,15 @@ enum {
     kKeyDriftTime         = 'dftT',  // int64_t (usecs)
     kKeyAnchorTime        = 'ancT',  // int64_t (usecs)
     kKeyDuration          = 'dura',  // int64_t (usecs)
-    kKeyColorFormat       = 'colf',
+    kKeyPixelFormat       = 'pixf',  // int32_t
+    kKeyColorFormat       = 'colf',  // int32_t
+    kKeyColorSpace        = 'cols',  // int32_t
     kKeyPlatformPrivate   = 'priv',  // pointer
     kKeyDecoderComponent  = 'decC',  // cstring
     kKeyBufferID          = 'bfID',
     kKeyMaxInputSize      = 'inpS',
+    kKeyMaxWidth          = 'maxW',
+    kKeyMaxHeight         = 'maxH',
     kKeyThumbnailTime     = 'thbT',  // int64_t (usecs)
     kKeyTrackID           = 'trID',
     kKeyIsDRM             = 'idrm',  // int32_t (bool)
@@ -99,6 +103,7 @@ enum {
     kKeyCompilation       = 'cpil',  // cstring
     kKeyLocation          = 'loc ',  // cstring
     kKeyTimeScale         = 'tmsl',  // int32_t
+    kKeyCaptureFramerate  = 'capF',  // float (capture fps)
 
     // video profile and level
     kKeyVideoProfile      = 'vprf',  // int32_t
@@ -185,6 +190,9 @@ enum {
     kKeyDts958PktSize     ='dtsP',
     kKeyDts958PktType     ='dtsT',
     kKeyDtsPcmSampsInFrmMaxFs='dtsS',
+
+    // H264 supplemental enhancement information offsets/sizes
+    kKeySEI               = 'sei ', // raw data
 };
 
 enum {
@@ -272,7 +280,7 @@ private:
             return mSize <= sizeof(u.reservoir);
         }
 
-        void allocateStorage(size_t size);
+        void *allocateStorage(size_t size);
         void freeStorage();
 
         void *storage() {

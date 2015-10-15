@@ -10,13 +10,12 @@ LOCAL_SRC_FILES:=               \
     ActivityManager.cpp         \
     Crypto.cpp                  \
     Drm.cpp                     \
+    DrmSessionManager.cpp       \
     HDCP.cpp                    \
     MediaPlayerFactory.cpp      \
     MediaPlayerService.cpp      \
     MediaRecorderClient.cpp     \
     MetadataRetrieverClient.cpp \
-    MidiFile.cpp                \
-    MidiMetadataRetriever.cpp   \
     RemoteDisplay.cpp           \
     SharedLibrary.cpp           \
     StagefrightPlayer.cpp       \
@@ -35,6 +34,7 @@ LOCAL_SHARED_LIBRARIES :=       \
     libdl                       \
     libgui                      \
     libmedia                    \
+    libmediautils               \
     libsonivox                  \
     libstagefright              \
     libstagefright_foundation   \
@@ -57,7 +57,6 @@ LOCAL_C_INCLUDES :=                                                 \
     $(TOP)/external/tremolo/Tremolo                                 \
 
 
-
 ifeq ($(BUILD_WITH_AMLOGIC_PLAYER),true)
     AMPLAYER_APK_DIR=$(TOP)/vendor/amlogic/frameworks/av/LibPlayer/
     LOCAL_C_INCLUDES += \
@@ -69,6 +68,9 @@ ifeq ($(BUILD_WITH_AMLOGIC_PLAYER),true)
         $(AMPLAYER_APK_DIR)/amvdec/include           \
         $(AMPLAYER_APK_DIR)/amffmpeg/
 endif
+
+LOCAL_CFLAGS += -Werror -Wno-error=deprecated-declarations -Wall
+LOCAL_CLANG := true
 
 LOCAL_MODULE:= libmediaplayerservice
 

@@ -59,6 +59,7 @@ static const struct {
     { "OMX.google.g711.mlaw.decoder", "g711dec", "audio_decoder.g711mlaw" },
     { "OMX.google.adpcm.ms.decoder", "adpcmdec", "audio_decoder.adpcmms" },
     { "OMX.google.adpcm.ima.decoder", "adpcmdec", "audio_decoder.adpcmima" },
+    { "OMX.google.mpeg2.decoder", "mpeg2dec", "video_decoder.mpeg2" },
     { "OMX.google.h263.decoder", "mpeg4dec", "video_decoder.h263" },
     { "OMX.google.h263.encoder", "mpeg4enc", "video_encoder.h263" },
     { "OMX.google.mpeg4.decoder", "mpeg4dec", "video_decoder.mpeg4" },
@@ -111,7 +112,7 @@ OMX_ERRORTYPE SoftOMXPlugin::makeComponentInstance(
         void *libHandle = dlopen(libName.c_str(), RTLD_NOW);
 
         if (libHandle == NULL) {
-            ALOGE("unable to dlopen %s", libName.c_str());
+            ALOGE("unable to dlopen %s: %s", libName.c_str(), dlerror());
 
             return OMX_ErrorComponentNotFound;
         }

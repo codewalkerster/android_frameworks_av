@@ -105,4 +105,4 @@ status_t BnRemoteDisplay::onTransact(
     }
 }
 
-}; // namespace android
+} // namespace android

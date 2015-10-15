@@ -93,7 +93,7 @@ Converter::~Converter() {
 
 void Converter::shutdownAsync() {
     ALOGV("shutdown");
-    (new AMessage(kWhatShutdown, id()))->post();
+    (new AMessage(kWhatShutdown, this))->post();
 }
 
 status_t Converter::init() {
@@ -495,11 +495,11 @@ void Converter::scheduleDoMoreWork() {
 
 #if 1
     if (mEncoderActivityNotify == NULL) {
-        mEncoderActivityNotify = new AMessage(kWhatEncoderActivity, id());
+        mEncoderActivityNotify = new AMessage(kWhatEncoderActivity, this);
     }
     mEncoder->requestActivityNotification(mEncoderActivityNotify->dup());
 #else
-    sp<AMessage> notify = new AMessage(kWhatEncoderActivity, id());
+    sp<AMessage> notify = new AMessage(kWhatEncoderActivity, this);
     notify->setInt64("whenUs", ALooper::GetNowUs());
     mEncoder->requestActivityNotification(notify);
 #endif
@@ -744,8 +744,7 @@ status_t Converter::doMoreWork() {
 
                 // MediaSender will post the following message when HDCP
                 // is done, to release the output buffer back to encoder.
-                sp<AMessage> notify(new AMessage(
-                        kWhatReleaseOutputBuffer, id()));
+                sp<AMessage> notify(new AMessage(kWhatReleaseOutputBuffer, this));
                 notify->setInt32("bufferIndex", bufferIndex);
 
                 buffer = new ABuffer(
@@ -760,8 +759,8 @@ status_t Converter::doMoreWork() {
 
             buffer->meta()->setInt64("timeUs", timeUs);
 
-            //ALOGV("[%s] time %lld us (%.2f secs) flags:%x size:%d",
-                  //mIsVideo ? "video" : "audio", timeUs, timeUs / 1E6, flags, size);
+            ALOGV("[%s] time %lld us (%.2f secs)",
+                    mIsVideo ? "video" : "audio", (long long)timeUs, timeUs / 1E6);
 
             memcpy(buffer->data(), outbuf->base() + offset, size);
 
@@ -800,18 +799,18 @@ status_t Converter::doMoreWork() {
 }
 
 void Converter::requestIDRFrame() {
-    (new AMessage(kWhatRequestIDRFrame, id()))->post();
+    (new AMessage(kWhatRequestIDRFrame, this))->post();
 }
 
 void Converter::dropAFrame() {
     // Unsupported in surface input mode.
     CHECK(!(mFlags & FLAG_USE_SURFACE_INPUT));
 
-    (new AMessage(kWhatDropAFrame, id()))->post();
+    (new AMessage(kWhatDropAFrame, this))->post();
 }
 
 void Converter::suspendEncoding(bool suspend) {
-    sp<AMessage> msg = new AMessage(kWhatSuspendEncoding, id());
+    sp<AMessage> msg = new AMessage(kWhatSuspendEncoding, this);
     msg->setInt32("suspend", suspend);
     msg->post();
 }

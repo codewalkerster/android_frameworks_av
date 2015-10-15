@@ -6,7 +6,9 @@ ifeq ($(TARGET_DEVICE), manta)
 endif
 
 USE_AM_SOFT_DEMUXER_CODEC := true
+
 LOCAL_SRC_FILES:=                     \
+        FrameDropper.cpp              \
         GraphicBufferSource.cpp       \
         OMX.cpp                       \
         OMXMaster.cpp                 \
@@ -35,9 +37,14 @@ LOCAL_SHARED_LIBRARIES :=               \
         libdl
 
 LOCAL_MODULE:= libstagefright_omx
+
 ifeq ($(USE_AM_SOFT_DEMUXER_CODEC),true)
 LOCAL_CFLAGS += -DUSE_AM_SOFT_DEMUXER_CODEC
 endif
+
+LOCAL_CFLAGS += -Werror -Wall
+LOCAL_CLANG := true
+
 include $(BUILD_SHARED_LIBRARY)
 
 ################################################################################

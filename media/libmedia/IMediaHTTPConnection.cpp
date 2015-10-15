@@ -70,7 +70,7 @@ struct BpMediaHTTPConnection : public BpInterface<IMediaHTTPConnection> {
         int32_t exceptionCode = reply.readExceptionCode();
 
         if (exceptionCode) {
-            return UNKNOWN_ERROR;
+            return false;
         }
 
         sp<IBinder> binder = reply.readStrongBinder();
@@ -107,7 +107,20 @@ struct BpMediaHTTPConnection : public BpInterface<IMediaHTTPConnection> {
             return UNKNOWN_ERROR;
         }
 
-        size_t len = reply.readInt32();
+        int32_t lenOrErrorCode = reply.readInt32();
+
+        // Negative values are error codes
+        if (lenOrErrorCode < 0) {
+            return lenOrErrorCode;
+        }
+        if (len > mMemory->size()) {
+            ALOGE("got %zu, but memory has %zu", len, mMemory->size());
+            return ERROR_OUT_OF_RANGE;
+        }
+
+        memcpy(buffer, mMemory->pointer(), len);
+
+        size_t len = lenOrErrorCode;
 
         if (len > size) {
             ALOGE("requested %zu, got %zu", size, len);
@@ -186,5 +199,4 @@ private:
 IMPLEMENT_META_INTERFACE(
         MediaHTTPConnection, "android.media.IMediaHTTPConnection");
 
-}  // namespace android
-
+} // namespace android
