@@ -57,7 +57,6 @@ LOCAL_C_INCLUDES :=                                                 \
     $(TOP)/external/tremolo/Tremolo                                 \
 
 
-
 ifeq ($(BUILD_WITH_AMLOGIC_PLAYER),true)
     AMPLAYER_APK_DIR=$(TOP)/vendor/amlogic/frameworks/av/LibPlayer/
     LOCAL_C_INCLUDES += \

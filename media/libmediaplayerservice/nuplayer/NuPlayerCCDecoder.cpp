@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "NU-NuPlayerCCDecoder"
+#define LOG_TAG "NuPlayerCCDecoder"
 #include <utils/Log.h>
 #include <inttypes.h>
 
@@ -186,7 +186,7 @@ int32_t NuPlayer::CCDecoder::getTrackIndex(size_t channel) const {
 // returns true if a new CC track is found
 bool NuPlayer::CCDecoder::extractFromSEI(const sp<ABuffer> &accessUnit) {
     int64_t timeUs;
-    accessUnit->meta()->findInt64("timeUs", &timeUs);
+    CHECK(accessUnit->meta()->findInt64("timeUs", &timeUs));
 
     sp<ABuffer> sei;
     if (!accessUnit->meta()->findBuffer("sei", &sei) || sei == NULL) {

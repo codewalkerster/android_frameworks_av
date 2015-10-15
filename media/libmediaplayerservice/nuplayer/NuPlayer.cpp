@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "NU-NuPlayer"
+#define LOG_TAG "NuPlayer"
 #include <utils/Log.h>
 
 #include "NuPlayer.h"
@@ -163,13 +163,8 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// static
-Mutex NuPlayer::mThreadLock;
-Vector<android_thread_id_t> NuPlayer::mThreadId;
-
-NuPlayer::NuPlayer(NUPLAYER_STREAMTYPE type)
+NuPlayer::NuPlayer()
     : mUIDValid(false),
-      mStreamType(type),
       mSourceFlags(0),
       mOffloadAudio(false),
       mAudioDecoderGeneration(0),
@@ -195,59 +190,6 @@ NuPlayer::NuPlayer(NUPLAYER_STREAMTYPE type)
 NuPlayer::~NuPlayer() {
 }
 
-// static
-void NuPlayer::thread_interrupt() {
-    android_thread_id_t thread_id = androidGetThreadId();
-
-    Mutex::Autolock autoLock(mThreadLock);
-
-    if (mThreadId.isEmpty()) {
-        mThreadId.push_back(thread_id);
-    } else {
-        size_t size = mThreadId.size();
-        size_t i;
-        for (i = 0; i < size; i++) {
-            if (mThreadId.itemAt(i) == thread_id) {
-                break;
-            }
-        }
-        if (i == size) {
-            mThreadId.push_back(thread_id);
-        }
-    }
-}
-
-// static
-void NuPlayer::thread_uninterrupt() {
-    android_thread_id_t thread_id = androidGetThreadId();
-
-    Mutex::Autolock autoLock(mThreadLock);
-
-    size_t size = mThreadId.size();
-    for (size_t i = 0; i < size; i++) {
-        if (mThreadId.itemAt(i) == thread_id) {
-            mThreadId.removeAt(i);
-            break;
-        }
-    }
-}
-
-// static
-int32_t NuPlayer::interrupt_callback(android_thread_id_t thread_id) {
-    Mutex::Autolock autoLock(mThreadLock);
-    if (mThreadId.isEmpty()) {
-        return 0;
-    } else {
-        size_t size = mThreadId.size();
-        for (size_t i = 0; i < size; i++) {
-            if (mThreadId.itemAt(i) == thread_id) {
-                return 1;
-            }
-        }
-    }
-    return 0;
-}
-
 void NuPlayer::setUID(uid_t uid) {
     mUIDValid = true;
     mUID = uid;
@@ -268,8 +210,16 @@ void NuPlayer::setDataSourceAsync(const sp<IStreamSource> &source) {
 
 static bool IsHTTPLiveURL(const char *url) {
     if (!strncasecmp("http://", url, 7)
-        || !strncasecmp("https://", url, 8)) {
-        return true;
+            || !strncasecmp("https://", url, 8)
+            || !strncasecmp("file://", url, 7)) {
+        size_t len = strlen(url);
+        if (len >= 5 && !strcasecmp(".m3u8", &url[len - 5])) {
+            return true;
+        }
+
+        if (strstr(url,"m3u8")) {
+            return true;
+        }
     }
 
     return false;
@@ -287,7 +237,7 @@ void NuPlayer::setDataSourceAsync(
 
     sp<Source> source;
     if (IsHTTPLiveURL(url)) {
-        source = new HTTPLiveSource(notify, httpService, url, headers, interrupt_callback);
+        source = new HTTPLiveSource(notify, httpService, url, headers);
     } else if (!strncasecmp(url, "rtsp://", 7)) {
         source = new RTSPSource(
                 notify, httpService, url, headers, mUIDValid, mUID);
@@ -435,8 +385,6 @@ void NuPlayer::onMessageReceived(const sp<AMessage> &msg) {
             CHECK(msg->findObject("source", &obj));
             if (obj != NULL) {
                 mSource = static_cast<Source *>(obj.get());
-                mSelfThreadId = androidGetThreadId();
-                mSource->setParentThreadId(mSelfThreadId);
             } else {
                 err = UNKNOWN_ERROR;
             }
@@ -1146,11 +1094,9 @@ void NuPlayer::onStart() {
 
     if (mVideoDecoder != NULL) {
         mVideoDecoder->setRenderer(mRenderer);
-        mRenderer->setHasMedia(false);
     }
     if (mAudioDecoder != NULL) {
         mAudioDecoder->setRenderer(mRenderer);
-        mRenderer->setHasMedia(true);
     }
 
     postScanSources();
@@ -1309,7 +1255,6 @@ status_t NuPlayer::instantiateDecoder(bool audio, sp<DecoderBase> *decoder) {
         } else {
             *decoder = new Decoder(notify, mSource, mRenderer);
         }
-        mRenderer->setHasMedia(true);
     } else {
         sp<AMessage> notify = new AMessage(kWhatVideoNotify, id());
         ++mVideoDecoderGeneration;
@@ -1317,7 +1262,6 @@ status_t NuPlayer::instantiateDecoder(bool audio, sp<DecoderBase> *decoder) {
 
         *decoder = new Decoder(
                 notify, mSource, mRenderer, mNativeWindow, mCCDecoder);
-        mRenderer->setHasMedia(false);
 
         // enable FRC if high-quality AV sync is requested, even if not
         // queuing to native window, as this will even improve textureview
@@ -1439,7 +1383,7 @@ void NuPlayer::notifyListener(int msg, int ext1, int ext2, const Parcel *in) {
 }
 
 void NuPlayer::flushDecoder(bool audio, bool needShutdown) {
-    ALOGI("[%s] flushDecoder needShutdown=%d",
+    ALOGV("[%s] flushDecoder needShutdown=%d",
           audio ? "audio" : "video", needShutdown);
 
     const sp<DecoderBase> &decoder = getDecoder(audio);
@@ -1614,18 +1558,14 @@ void NuPlayer::performSeek(int64_t seekTimeUs, bool needNotify) {
                 mAudioDecoder.get(), mVideoDecoder.get());
         return;
     }
-
-    thread_interrupt();
     mSource->seekTo(seekTimeUs);
-    thread_uninterrupt();
-
     ++mTimedTextGeneration;
 
     // everything's flushed, continue playback.
 }
 
 void NuPlayer::performDecoderFlush(FlushCommand audio, FlushCommand video) {
-    ALOGI("performDecoderFlush audio=%d, video=%d", audio, video);
+    ALOGV("performDecoderFlush audio=%d, video=%d", audio, video);
 
     if ((audio == FLUSH_CMD_NONE || mAudioDecoder == NULL)
             && (video == FLUSH_CMD_NONE || mVideoDecoder == NULL)) {
@@ -1639,11 +1579,10 @@ void NuPlayer::performDecoderFlush(FlushCommand audio, FlushCommand video) {
     if (video != FLUSH_CMD_NONE && mVideoDecoder != NULL) {
         flushDecoder(false /* audio */, (video == FLUSH_CMD_SHUTDOWN));
     }
-    ALOGI("performDecoderFlush end");
 }
 
 void NuPlayer::performReset() {
-    ALOGI("performReset");
+    ALOGV("performReset");
 
     CHECK(mAudioDecoder == NULL);
     CHECK(mVideoDecoder == NULL);
@@ -1664,11 +1603,9 @@ void NuPlayer::performReset() {
     ++mRendererGeneration;
 
     if (mSource != NULL) {
-        thread_interrupt();
         mSource->stop();
 
         mSource.clear();
-        thread_uninterrupt();
     }
 
     if (mDriver != NULL) {
@@ -1947,14 +1884,6 @@ void NuPlayer::onSourceNotify(const sp<AMessage> &msg) {
         case Source::kWhatDrmNoLicense:
         {
             notifyListener(MEDIA_ERROR, MEDIA_ERROR_UNKNOWN, ERROR_DRM_NO_LICENSE);
-            break;
-        }
-
-        case Source::kWhatSourceReady:
-        {
-            int32_t err;
-            CHECK(msg->findInt32("err", &err));
-            notifyListener(0xffff, err, 0);
             break;
         }
 
