@@ -37,6 +37,7 @@ struct Surface;
 struct MediaCodec : public AHandler {
     enum ConfigureFlags {
         CONFIGURE_FLAG_ENCODE   = 1,
+        CONFIGURE_FLAG_LOW_LATENCY   = 2, // add by amlogic for decoder low latency mode
     };
 
     enum BufferFlags {

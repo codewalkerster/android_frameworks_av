@@ -132,6 +132,7 @@ private:
         kFlagIsSecure                                 = 1,
         kFlagPushBlankBuffersToNativeWindowOnShutdown = 2,
         kFlagIsGrallocUsageProtected                  = 4,
+        kFlagLowLatencyMode                           = 8,//add by amlogic
     };
 
     struct BufferInfo {
