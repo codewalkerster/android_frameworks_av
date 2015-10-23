@@ -5240,10 +5240,6 @@ status_t QueryCodec(
         const char *componentName, const char *mime,
         bool isEncoder,
         CodecCapabilities *caps) {
-
-    /*by AML*/
-    return OK;
-
     bool isVideo = !strncasecmp(mime, "video/", 6);
 
     sp<OMXCodecObserver> observer = new OMXCodecObserver;
