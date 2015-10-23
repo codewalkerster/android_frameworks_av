@@ -14,7 +14,7 @@
 #include <fcntl.h>
 namespace android {
 
-audio_format_t AudioTrack_reset_system_samplerate(int samplerate,audio_format_t format,audio_channel_mask_t ChMask,
+audio_format_t AudioTrack_reset_system_samplerate(int samplerate,audio_format_t format,
                                                                     audio_output_flags_t flags,unsigned int *pSampleRateAudiotrak);
 void AudioTrack_restore_system_samplerate(audio_format_t format,audio_output_flags_t flags ,unsigned int SampleRateAudiotrake);
 

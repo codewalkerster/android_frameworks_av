@@ -46,7 +46,8 @@ LOCAL_C_INCLUDES := \
     $(TOPDIR)frameworks/av/services/audiopolicy \
     $(TOPDIR)external/sonic \
     $(call include-path-for, audio-effects) \
-    $(call include-path-for, audio-utils)
+    $(call include-path-for, audio-utils) \
+    $(TOPDIR)system/media/audio/include
 
 LOCAL_SHARED_LIBRARIES := \
     libaudioresampler \

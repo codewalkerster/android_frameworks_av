@@ -27,7 +27,7 @@ namespace android {
 
 struct ABuffer;
 struct AnotherPacketSource;
-class DataSource;
+//class DataSource;
 struct HTTPBase;
 struct LiveDataSource;
 struct M3UParser;
@@ -48,10 +48,11 @@ struct PlaylistFetcher : public AHandler {
         kWhatPrepared,
         kWhatPreparationFailed,
         kWhatStartedAt,
-        kWhatCodecSpecificData,
         kWhatStopReached,
         kWhatPlaylistFetched,
         kWhatMetadataDetected,
+        kWhatCodecSpecificData,
+        kWhatTemporarilyDoneFetching,
     };
 
     PlaylistFetcher(
@@ -78,10 +79,6 @@ struct PlaylistFetcher : public AHandler {
 
     void stopAsync(bool clear = true);
 
-    void changeURI(AString uri);
-    uint32_t getStreamTypeMask();
-    void setStreamTypeMask(uint32_t streamMask);
-
     void resumeUntilAsync(const sp<AMessage> &params);
 
     void fetchPlaylistAsync();
@@ -89,11 +86,6 @@ struct PlaylistFetcher : public AHandler {
     uint32_t getStreamTypeMask() const {
         return mStreamTypeMask;
     }
-
-    int32_t getSeqNumberForTime(int64_t timeUs) const;
-    // Returns the media time in us of the segment specified by seqNumber.
-    // This is computed by summing the durations of all segments before it.
-    int64_t getSegmentStartTimeUs(int32_t seqNumber) const;
 
 protected:
     virtual ~PlaylistFetcher();
@@ -114,6 +106,8 @@ private:
         kWhatFetchPlaylist  = 'flst'
     };
 
+    struct DownloadState;
+
     static const AString DumpPath;
     int32_t mDumpMode; // 1: one whole file; 2: independent file
     FILE * mDumpHandle;
@@ -122,7 +116,6 @@ private:
 
     int64_t mFailureAnchorTimeUs;
     int64_t mOpenFailureRetryUs;
-    struct DownloadState;
 
     static const int64_t kMaxMonitorDelayUs;
     static const int32_t kNumSkipFrames;
@@ -268,6 +261,7 @@ private:
 
     bool adjustSeqNumberWithAnchorTime(int64_t anchorTimeUs);
     int32_t getSeqNumberForDiscontinuity(size_t discontinuitySeq) const;
+    int32_t getSeqNumberForTime(int64_t timeUs) const;
 
     void updateDuration();
     void updateTargetDuration();

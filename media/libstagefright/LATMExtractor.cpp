@@ -212,13 +212,13 @@ LATMSource::LATMSource(
       mMeta(meta),
       mSampleRate(0),
       mNumChannels(0),
-      mCurrentTimeUs(0),
       mLatmHead(latmHead),
       mSize(size),
+      mStarted(false),
       mOffsetVector(offset_vector),
       mFrameDurationUs(frame_duration_us),
-      mStarted(false),
-      mGroup(NULL)  {
+      mGroup(NULL),
+      mCurrentTimeUs(0) {
       CHECK(mMeta->findInt32(kKeySampleRate, &mSampleRate));
       CHECK(mMeta->findInt32(kKeyChannelCount, &mNumChannels));
 	  

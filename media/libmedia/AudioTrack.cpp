@@ -462,7 +462,7 @@ status_t AudioTrack::set(
         mAudioTrackThread->run("AudioTrack", ANDROID_PRIORITY_AUDIO, 0 /*stack*/);
         // thread begins in paused state, and will not reference us until start()
     }
-    mFormat = AudioTrack_reset_system_samplerate(sampleRate,mFormat,channelMask,flags,&mSampleRate);
+    mFormat = AudioTrack_reset_system_samplerate(sampleRate,mFormat,flags,&mSampleRate);
     // create the IAudioTrack
     status_t status = createTrack_l();
 

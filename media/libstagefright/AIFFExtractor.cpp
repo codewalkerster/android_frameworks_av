@@ -181,361 +181,357 @@ int av_get_exact_bits_per_sample(enum AVCodecID codec_id)
     }
 }
 
-status_t AIFFExtractor::init(){
+status_t AIFFExtractor::init() {
 
-	uint8_t header[12];
-    if (mDataSource->readAt(0, header, sizeof(header)) < (ssize_t)sizeof(header)){
-		ALOGV("AIFF header size is not correct! \n");
+    uint8_t header[12];
+    if (mDataSource->readAt(0, header, sizeof(header)) < (ssize_t)sizeof(header)) {
+        ALOGV("AIFF header size is not correct! \n");
         return NO_INIT;
     }
 
-    if (memcmp(header, "FORM", 4) || (memcmp(&header[8], "AIFF", 4) && memcmp(&header[8], "AIFC", 4))){
-		ALOGV("AIFF header is invalid data! \n");
+    if (memcmp(header, "FORM", 4) || (memcmp(&header[8], "AIFF", 4) && memcmp(&header[8], "AIFC", 4))) {
+        ALOGV("AIFF header is invalid data! \n");
         return NO_INIT;
     }
 
-	uint32_t totalSize = U32_RE_AT(&header[4]);
-	ALOGI("TotalSize of the file is %u byte !\n", totalSize);
-	
-	unsigned version;
-	if (memcmp(&header[8], "AIFF", 4) == 0){
-		version = AIFF;
-		ALOGI(" [AIFF] header \n");
-	}else{ 
-		version = AIFF_C_VERSION1;
-		ALOGI(" [AIFC] header \n");
-	}
-	
-	off64_t offset = 12;
+    uint32_t totalSize = U32_RE_AT(&header[4]);
+    ALOGI("TotalSize of the file is %u byte !\n", totalSize);
+
+    unsigned version;
+    if (memcmp(&header[8], "AIFF", 4) == 0) {
+        version = AIFF;
+        ALOGI(" [AIFF] header \n");
+    } else {
+        version = AIFF_C_VERSION1;
+        ALOGI(" [AIFC] header \n");
+    }
+
+    off64_t offset = 12;
     uint32_t remainingSize = totalSize;
-	uint32_t chunkSize;
-	uint8_t chunkHeader[8];
-	unsigned int codec_tag;
-	enum AVCodecID codec_id;
+    uint32_t chunkSize;
+    uint8_t chunkHeader[8];
+    unsigned int codec_tag;
+    enum AVCodecID codec_id;
 
-	mTrackMeta = new MetaData;
-	mBlockAlign = 0;
-	
-	while (remainingSize >= 8) {
-		
-		if (mDataSource->readAt(offset, chunkHeader, 8) < 8) {
-			ALOGV("AIFF chunk header size is not correct! \n");
-			return NO_INIT;
-		}
+    mTrackMeta = new MetaData;
+    mBlockAlign = 0;
 
-		remainingSize -= 8;
-		offset += 8;
-		codec_tag = U32_LE_AT(chunkHeader);
-		chunkSize = U32_RE_AT(&chunkHeader[4]);
-		
-		if (chunkSize > remainingSize){
-			ALOGV("AIFF chunk header size is not correct! left_filesize = %u byte, chunksize = %u byte !\n",
-				remainingSize,chunkSize);
-			return NO_INIT;
-		}
-	 
-		switch (codec_tag) {
-		  case MKTAG('C', 'O', 'M', 'M'):{
-		  	// Common chunk 
-            if (chunkSize < 18) {
-                return NO_INIT;
-        	}
-			
-			uint8_t commonChunk[chunkSize];
-			mDataSource->readAt(offset, commonChunk, chunkSize);
-			
-			mNumChannels = U16_RE_AT(commonChunk);
-			mNumSampleFrame = U32_RE_AT(&commonChunk[2]);
-			mBitsPerSample = U16_RE_AT(&commonChunk[6]);
-			int exp;
-    		uint64_t val;
-			double sample_rate;
-			exp = U16_RE_AT(&commonChunk[8]);
-			val = U64_RE_AT(&commonChunk[10]);
-			sample_rate = ldexp(val, exp - 16383 - 63);
-			mSampleRate = (uint32_t)sample_rate;
+    while (remainingSize >= 8) {
 
-			ALOGI("AIFF Channel = %d, SampleRate = %d, BitsPerSample = %d \n", 
-				mNumChannels, mSampleRate, mBitsPerSample);
-			
-			if (version == AIFF_C_VERSION1) {
-				codec_tag = U32_LE_AT(&commonChunk[18]);
-				codec_id  = ff_codec_get_id(ff_codec_aiff_tags, codec_tag);
-				
-				ALOGI("Compression type: [ %c%c%c%c ] \n Compression discription: [ %s ] \n", 
-					commonChunk[18],commonChunk[19],commonChunk[20],commonChunk[21],&commonChunk[22]);
-		    }
-			
-			if (version != AIFF_C_VERSION1 || codec_id == AV_CODEC_ID_PCM_S16BE) {
-				
-        		codec_id = aiff_codec_get_id(mBitsPerSample);
-				
-				ALOGI("AIFFExtractor::Waveformt is %d bit PCM_RAW, codec_id = [ %d ] \n", mBitsPerSample, codec_id);
-    		} else {
-        		switch (codec_id) {
-				case AV_CODEC_ID_PCM_S16LE:
-					ALOGI("AIFFExtractor::Waveformt is 16 bit LE PCM_RAW, codec_id = [ %d ] \n", codec_id);
-					break;
-        		case AV_CODEC_ID_PCM_F32BE:
-					break;
-        		case AV_CODEC_ID_PCM_F64BE:
-					ALOGI("Float 64 bit PCM are not supported!\n");
-            		break;
-        		case AV_CODEC_ID_PCM_G711_ALAW:
-					ALOGI("AIFFExtractor::Waveformt is PCM_G711_ALAW \n");
-            		mBlockAlign = 1;
-            		break;
-        		case AV_CODEC_ID_PCM_G711_MULAW:
-					ALOGI("AIFFExtractor::Waveformt is PCM_G711_MULAW \n");
-            		mBlockAlign = 1;
-            		break;
-				case AV_CODEC_ID_PCM_ALAW:
-				case AV_CODEC_ID_PCM_MULAW:
-					ALOGI("AIFFExtractor::Waveformt is PCM_ALAW/MULAW are not not supported \n");
-            		break;
-        		case AV_CODEC_ID_ADPCM_IMA_QT:
-            		mBlockAlign = 34*mNumChannels;
-					ALOGI("AIFFExtractor::Waveformt is ADPCM_IMA_QT \n");
-            		break;
-        		case AV_CODEC_ID_MACE3:
-            		mBlockAlign = 2*mNumChannels;
-					ALOGI("MACE3 are not supported!\n");
-            		break;
-        		case AV_CODEC_ID_MACE6:
-            		mBlockAlign = 1*mNumChannels;
-					ALOGI("MACE6 are not supported!\n");
-            		break;
-        		case AV_CODEC_ID_GSM:
-            		mBlockAlign = 33;
-					ALOGI("GSM are not supported!\n");
-            		break;
-        		case AV_CODEC_ID_QCELP:
-            		mBlockAlign = 35;
-					ALOGI("AIFFExtractor::Waveformt is QCELP \n");
-            		break;
-        		default:
-					ALOGI("Unknown Waveformt!\n");
-					return NO_INIT;
-       			}
-			}
+        if (mDataSource->readAt(offset, chunkHeader, 8) < 8) {
+            ALOGV("AIFF chunk header size is not correct! \n");
+            return NO_INIT;
+        }
 
-			mBitsPerSample = av_get_exact_bits_per_sample(codec_id);
-			
-			if (!mBlockAlign)
-        		mBlockAlign = (mBitsPerSample * mNumChannels) >> 3;
-			
-			ALOGI("AIFFExtractor::mBlockAlign=%d, mBitsPerSample = %d \n", mBlockAlign,mBitsPerSample);
+        remainingSize -= 8;
+        offset += 8;
+        codec_tag = U32_LE_AT(chunkHeader);
+        chunkSize = U32_RE_AT(&chunkHeader[4]);
 
-			remainingSize -= chunkSize;
-			offset += chunkSize;
-			
-			mValidFormat = true;
-			
-		  break;
-		}
-		case MKTAG('F', 'V', 'E', 'R'):{ 
-		// Version chunk 
-			uint8_t VersionChunk[chunkSize];
-			mDataSource->readAt(offset, VersionChunk, chunkSize);
+        if (chunkSize > remainingSize) {
+            ALOGV("AIFF chunk header size is not correct! left_filesize = %u byte, chunksize = %u byte !\n",
+            remainingSize,chunkSize);
+            return NO_INIT;
+        }
 
-			unsigned versiontype = U32_RE_AT(VersionChunk);
-			
-			ALOGV("The Version [ %x ]\n", versiontype);
-			
-			remainingSize -= chunkSize;
-			offset += chunkSize;
-			
-		  break;
-		}
-		case MKTAG('(', 'c', ')', ' '):{ 
-		// Copyright chunk 
-			char CopyrightChunk[chunkSize];
-			mDataSource->readAt(offset, CopyrightChunk, chunkSize);
+        switch (codec_tag) {
+            case MKTAG('C', 'O', 'M', 'M'):{
+                // Common chunk
+                if (chunkSize < 18) {
+                    return NO_INIT;
+                }
 
-			ALOGV("The Copyright [ %s ]\n", CopyrightChunk);
-			
-			remainingSize -= chunkSize;
-			offset += chunkSize;
-			
-		  break;
-		}
-		case MKTAG('A', 'N', 'N', 'O'):{ 
-		// Annotation chunk 
-			char AnnotationChunk[chunkSize];
-			mDataSource->readAt(offset, AnnotationChunk, chunkSize);
+                uint8_t commonChunk[chunkSize];
+                mDataSource->readAt(offset, commonChunk, chunkSize);
 
-			ALOGV("The Annotation [ %s ]\n", AnnotationChunk);
-			
-			remainingSize -= chunkSize;
-			offset += chunkSize;
-			
-		  break;
-		}
-		case MKTAG('N', 'A', 'M', 'E'):{ 
-		// Sample name chunk
-			char TitleChunk[chunkSize];
-			mDataSource->readAt(offset, TitleChunk, chunkSize);
+                mNumChannels = U16_RE_AT(commonChunk);
+                mNumSampleFrame = U32_RE_AT(&commonChunk[2]);
+                mBitsPerSample = U16_RE_AT(&commonChunk[6]);
+                int exp;
+                uint64_t val;
+                double sample_rate;
+                exp = U16_RE_AT(&commonChunk[8]);
+                val = U64_RE_AT(&commonChunk[10]);
+                sample_rate = ldexp(val, exp - 16383 - 63);
+                mSampleRate = (uint32_t)sample_rate;
 
-			mTrackMeta->setCString(kKeyTitle, TitleChunk);
+                ALOGI("AIFF Channel = %d, SampleRate = %d, BitsPerSample = %d \n",
+                mNumChannels, mSampleRate, mBitsPerSample);
 
-			ALOGV("The Title [ %s ]\n", TitleChunk);
-			
-			remainingSize -= chunkSize;
-			offset += chunkSize;
-			
-		  break;
-		}
-		case MKTAG('A', 'U', 'T', 'H'):{ 
-		// Author chunk
-			char AuthorChunk[chunkSize];
-			mDataSource->readAt(offset, AuthorChunk, chunkSize);
+                if (version == AIFF_C_VERSION1) {
+                    codec_tag = U32_LE_AT(&commonChunk[18]);
+                    codec_id  = ff_codec_get_id(ff_codec_aiff_tags, codec_tag);
 
-			mTrackMeta->setCString(kKeyAuthor, AuthorChunk);
+                    ALOGI("Compression type: [ %c%c%c%c ] \n Compression discription: [ %s ] \n",
+                    commonChunk[18],commonChunk[19],commonChunk[20],commonChunk[21],&commonChunk[22]);
+                }
 
-			ALOGV("The Author [ %s ]\n", AuthorChunk);
-			
-			remainingSize -= chunkSize;
-			offset += chunkSize;
+                if (version != AIFF_C_VERSION1 || codec_id == AV_CODEC_ID_PCM_S16BE) {
 
-		  break;
-		}
-		case MKTAG('S', 'S', 'N', 'D'):{
-		//Data chunk
-		if (mValidFormat) {
-			
-			uint8_t DataChunk[8];
-			mDataSource->readAt(offset, DataChunk, 8);
+                    codec_id = aiff_codec_get_id(mBitsPerSample);
 
-			uint32_t data_offset = U32_RE_AT(DataChunk);
-			
-			mDataOffset = offset + data_offset + 8;
-            mDataSize = chunkSize;
-			int64_t durationUs;
+                    ALOGI("AIFFExtractor::Waveformt is %d bit PCM_RAW, codec_id = [ %d ] \n", mBitsPerSample, codec_id);
+                } else {
+                    switch (codec_id) {
+                        case AV_CODEC_ID_PCM_S16LE:
+                            ALOGI("AIFFExtractor::Waveformt is 16 bit LE PCM_RAW, codec_id = [ %d ] \n", codec_id);
+                            break;
+                        case AV_CODEC_ID_PCM_F32BE:
+                            break;
+                        case AV_CODEC_ID_PCM_F64BE:
+                            ALOGI("Float 64 bit PCM are not supported!\n");
+                            break;
+                        case AV_CODEC_ID_PCM_G711_ALAW:
+                            ALOGI("AIFFExtractor::Waveformt is PCM_G711_ALAW \n");
+                            mBlockAlign = 1;
+                            break;
+                        case AV_CODEC_ID_PCM_G711_MULAW:
+                            ALOGI("AIFFExtractor::Waveformt is PCM_G711_MULAW \n");
+                            mBlockAlign = 1;
+                            break;
+                        case AV_CODEC_ID_PCM_ALAW:
+                        case AV_CODEC_ID_PCM_MULAW:
+                            ALOGI("AIFFExtractor::Waveformt is PCM_ALAW/MULAW are not not supported \n");
+                            break;
+                        case AV_CODEC_ID_ADPCM_IMA_QT:
+                            mBlockAlign = 34*mNumChannels;
+                            ALOGI("AIFFExtractor::Waveformt is ADPCM_IMA_QT \n");
+                            break;
+                        case AV_CODEC_ID_MACE3:
+                            mBlockAlign = 2*mNumChannels;
+                            ALOGI("MACE3 are not supported!\n");
+                            break;
+                        case AV_CODEC_ID_MACE6:
+                            mBlockAlign = 1*mNumChannels;
+                            ALOGI("MACE6 are not supported!\n");
+                            break;
+                        case AV_CODEC_ID_GSM:
+                            mBlockAlign = 33;
+                            ALOGI("GSM are not supported!\n");
+                            break;
+                        case AV_CODEC_ID_QCELP:
+                            mBlockAlign = 35;
+                            ALOGI("AIFFExtractor::Waveformt is QCELP \n");
+                            break;
+                        default:
+                            ALOGI("Unknown Waveformt!\n");
+                            return NO_INIT;
+                    }
+                }
 
-			uint32_t bytesPerSample = mBitsPerSample >> 3;
+                mBitsPerSample = av_get_exact_bits_per_sample(codec_id);
 
-			ALOGI("AIFFExtractor::mDataSize [%u] byte data, mDataOffset = [%llu], data_offset = [%u] \n",
-				mDataSize, mDataOffset,data_offset);
-				
-			switch (codec_id) {
-				case AV_CODEC_ID_PCM_S8:
-				case AV_CODEC_ID_PCM_S16BE:
-				case AV_CODEC_ID_PCM_S24BE:
-				case AV_CODEC_ID_PCM_S32BE:
-				case AV_CODEC_ID_PCM_S16LE:
-				case AV_CODEC_ID_PCM_F32BE:
-					 if (mBitsPerSample != 8 && mBitsPerSample != 16 && mBitsPerSample != 24 
-					 	&& mBitsPerSample != 32) {
-                     	return ERROR_UNSUPPORTED;
-                     }else{
-                     	mTrackMeta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_RAW);
-					 	durationUs = 1000000LL * (mDataSize / (mNumChannels * bytesPerSample)) / mSampleRate;
-					 }
-					 
-                     break;
-				case AV_CODEC_ID_ADPCM_IMA_QT:
+                if (!mBlockAlign)
+                    mBlockAlign = (mBitsPerSample * mNumChannels) >> 3;
 
-					if(mBitsPerSample != 4){
-						ALOGE("%d BitsPerSample ADPCM_IMA_QT are not supported ! \n",mBitsPerSample);
-						return ERROR_UNSUPPORTED;
-					}else{
-					 	//mTrackMeta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_ADPCM_IMA);
-					 
-					 	if(mNumChannels == 1)
-					 		durationUs = 1000000LL * (mDataSize * 2) / mSampleRate;
-				     	if(mNumChannels == 2)
-					 		durationUs = 1000000LL * mDataSize /mSampleRate;
-					}
-					ALOGE("ADPCM_IMA_QT are not supported ! \n");
-					break;
-                case AV_CODEC_ID_PCM_G711_ALAW:
-					
-					if(mBitsPerSample != 8){
-						ALOGE("%d BitsPerSample PCM_ALAW are not supported ! \n",mBitsPerSample);
-						return ERROR_UNSUPPORTED;
-					}else{
-                     	mTrackMeta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_G711_ALAW);
-					 	durationUs = 1000000LL * (mDataSize / (mNumChannels * bytesPerSample)) / mSampleRate;
-					}
-                     break;
-                case AV_CODEC_ID_PCM_G711_MULAW:
-					
-					if(mBitsPerSample != 8){
-						ALOGE("%d BitsPerSample PCM_ALAW are not supported ! \n",mBitsPerSample);
-						return ERROR_UNSUPPORTED;
-					}else{
-                     	mTrackMeta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_G711_MLAW);
-					 	durationUs = 1000000LL * (mDataSize / (mNumChannels * bytesPerSample)) / mSampleRate;
-					}
-                     break;
-				case AV_CODEC_ID_QCELP:
-					
-					 mTrackMeta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_QCELP);
-					 
-                     break;
-        		case AV_CODEC_ID_PCM_F64BE:
-					 ALOGE("64 bitsPerSample float PCM are not supported ! \n");
-					 return ERROR_UNSUPPORTED;
-				case AV_CODEC_ID_MACE3:
-				case AV_CODEC_ID_MACE6:
-				case AV_CODEC_ID_GSM:
-				case AV_CODEC_ID_QDM2:
-				case AV_CODEC_ID_ADPCM_G726:
-					 ALOGE("AV_CODEC_ID_MACE3/AV_CODEC_ID_MACE6/AV_CODEC_ID_GSM/AV_CODEC_ID_QDM2/AV_CODEC_ID_ADPCM_G726 are not supported ! \n");
-					 return ERROR_UNSUPPORTED;
-				default:
-					 ALOGV("Unknown AIFF decode %d! \n", codec_id);
-					 return ERROR_UNSUPPORTED;
+                ALOGI("AIFFExtractor::mBlockAlign=%d, mBitsPerSample = %d \n", mBlockAlign,mBitsPerSample);
+
+                remainingSize -= chunkSize;
+                offset += chunkSize;
+
+                mValidFormat = true;
+
+                break;
             }
+            case MKTAG('F', 'V', 'E', 'R'):{
+                // Version chunk
+                uint8_t VersionChunk[chunkSize];
+                mDataSource->readAt(offset, VersionChunk, chunkSize);
 
-			mWaveFormat = codec_id;
-				
-			ALOGI("mTrackMeta::mNumChannels=%d\n", mNumChannels);
-			mTrackMeta->setInt32(kKeyChannelCount, mNumChannels);
+                unsigned versiontype = U32_RE_AT(VersionChunk);
 
-			ALOGI("mTrackMeta::mSampleRate=%d\n", mSampleRate);
-			mTrackMeta->setInt32(kKeySampleRate, mSampleRate);
+                ALOGV("The Version [ %x ]\n", versiontype);
 
-			ALOGI("mTrackMeta::mBlockAlign=%d\n", mBlockAlign);
-			mTrackMeta->setInt32(kKeyBlockAlign, mBlockAlign);
-			
-			ALOGI("mTrackMeta::durationUs=%lld us\n", durationUs);	
-            mTrackMeta->setInt64(kKeyDuration, durationUs);
-			
-			return OK;
-			}
-		}
-		default:{
-		//other Chunks
-			ALOGV("The Unknown Chunk Name [%s] \n", chunkHeader);
-		
-			remainingSize -= chunkSize;
-			offset += chunkSize;
+                remainingSize -= chunkSize;
+                offset += chunkSize;
 
-		  break;
-		}
-	  }
-	  if(offset & 1){ /* Always even aligned */
-	  	offset++;
-		remainingSize--;
-	  }
-	}
-	return NO_INIT;
-	
+                break;
+            }
+            case MKTAG('(', 'c', ')', ' '):{
+                // Copyright chunk
+                char CopyrightChunk[chunkSize];
+                mDataSource->readAt(offset, CopyrightChunk, chunkSize);
+
+                ALOGV("The Copyright [ %s ]\n", CopyrightChunk);
+
+                remainingSize -= chunkSize;
+                offset += chunkSize;
+
+                break;
+            }
+            case MKTAG('A', 'N', 'N', 'O'):{
+                // Annotation chunk
+                char AnnotationChunk[chunkSize];
+                mDataSource->readAt(offset, AnnotationChunk, chunkSize);
+
+                ALOGV("The Annotation [ %s ]\n", AnnotationChunk);
+
+                remainingSize -= chunkSize;
+                offset += chunkSize;
+
+                break;
+            }
+            case MKTAG('N', 'A', 'M', 'E'):{
+                // Sample name chunk
+                char TitleChunk[chunkSize];
+                mDataSource->readAt(offset, TitleChunk, chunkSize);
+
+                mTrackMeta->setCString(kKeyTitle, TitleChunk);
+
+                ALOGV("The Title [ %s ]\n", TitleChunk);
+
+                remainingSize -= chunkSize;
+                offset += chunkSize;
+
+                break;
+            }
+            case MKTAG('A', 'U', 'T', 'H'):{
+                // Author chunk
+                char AuthorChunk[chunkSize];
+                mDataSource->readAt(offset, AuthorChunk, chunkSize);
+
+                mTrackMeta->setCString(kKeyAuthor, AuthorChunk);
+
+                ALOGV("The Author [ %s ]\n", AuthorChunk);
+
+                remainingSize -= chunkSize;
+                offset += chunkSize;
+
+                break;
+            }
+            case MKTAG('S', 'S', 'N', 'D'):{
+                //Data chunk
+                if (mValidFormat) {
+
+                    uint8_t DataChunk[8];
+                    mDataSource->readAt(offset, DataChunk, 8);
+
+                    uint32_t data_offset = U32_RE_AT(DataChunk);
+
+                    mDataOffset = offset + data_offset + 8;
+                    mDataSize = chunkSize;
+                    int64_t durationUs = 0;
+
+                    uint32_t bytesPerSample = mBitsPerSample >> 3;
+
+                    ALOGI("AIFFExtractor::mDataSize [%u] byte data, mDataOffset = [%llu], data_offset = [%u] \n",
+                    mDataSize, mDataOffset,data_offset);
+
+                    switch (codec_id) {
+                    case AV_CODEC_ID_PCM_S8:
+                    case AV_CODEC_ID_PCM_S16BE:
+                    case AV_CODEC_ID_PCM_S24BE:
+                    case AV_CODEC_ID_PCM_S32BE:
+                    case AV_CODEC_ID_PCM_S16LE:
+                    case AV_CODEC_ID_PCM_F32BE:
+                        if (mBitsPerSample != 8 && mBitsPerSample != 16 && mBitsPerSample != 24
+                            && mBitsPerSample != 32) {
+                            return ERROR_UNSUPPORTED;
+                        } else {
+                            mTrackMeta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_RAW);
+                            durationUs = 1000000LL * (mDataSize / (mNumChannels * bytesPerSample)) / mSampleRate;
+                        }
+                        break;
+                    case AV_CODEC_ID_ADPCM_IMA_QT:
+
+                        if (mBitsPerSample != 4) {
+                            ALOGE("%d BitsPerSample ADPCM_IMA_QT are not supported ! \n",mBitsPerSample);
+                            return ERROR_UNSUPPORTED;
+                        } else {
+                        //mTrackMeta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_ADPCM_IMA);
+
+                        if (mNumChannels == 1)
+                            durationUs = 1000000LL * (mDataSize * 2) / mSampleRate;
+                            if (mNumChannels == 2)
+                                durationUs = 1000000LL * mDataSize /mSampleRate;
+                        }
+                        ALOGE("ADPCM_IMA_QT are not supported ! \n");
+                        break;
+                    case AV_CODEC_ID_PCM_G711_ALAW:
+
+                        if (mBitsPerSample != 8) {
+                            ALOGE("%d BitsPerSample PCM_ALAW are not supported ! \n",mBitsPerSample);
+                            return ERROR_UNSUPPORTED;
+                        } else {
+                            mTrackMeta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_G711_ALAW);
+                            durationUs = 1000000LL * (mDataSize / (mNumChannels * bytesPerSample)) / mSampleRate;
+                        }
+                        break;
+                    case AV_CODEC_ID_PCM_G711_MULAW:
+
+                        if (mBitsPerSample != 8) {
+                            ALOGE("%d BitsPerSample PCM_ALAW are not supported ! \n",mBitsPerSample);
+                            return ERROR_UNSUPPORTED;
+                        } else {
+                            mTrackMeta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_G711_MLAW);
+                            durationUs = 1000000LL * (mDataSize / (mNumChannels * bytesPerSample)) / mSampleRate;
+                        }
+                        break;
+                    case AV_CODEC_ID_QCELP:
+                        mTrackMeta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_QCELP);
+                        break;
+                    case AV_CODEC_ID_PCM_F64BE:
+                        ALOGE("64 bitsPerSample float PCM are not supported ! \n");
+                        return ERROR_UNSUPPORTED;
+                    case AV_CODEC_ID_MACE3:
+                    case AV_CODEC_ID_MACE6:
+                    case AV_CODEC_ID_GSM:
+                    case AV_CODEC_ID_QDM2:
+                    case AV_CODEC_ID_ADPCM_G726:
+                        ALOGE("AV_CODEC_ID_MACE3/AV_CODEC_ID_MACE6/AV_CODEC_ID_GSM/AV_CODEC_ID_QDM2/AV_CODEC_ID_ADPCM_G726 are not supported ! \n");
+                        return ERROR_UNSUPPORTED;
+                    default:
+                        ALOGV("Unknown AIFF decode %d! \n", codec_id);
+                        return ERROR_UNSUPPORTED;
+                    }
+
+                    mWaveFormat = codec_id;
+
+                    ALOGI("mTrackMeta::mNumChannels=%d\n", mNumChannels);
+                    mTrackMeta->setInt32(kKeyChannelCount, mNumChannels);
+
+                    ALOGI("mTrackMeta::mSampleRate=%d\n", mSampleRate);
+                    mTrackMeta->setInt32(kKeySampleRate, mSampleRate);
+
+                    ALOGI("mTrackMeta::mBlockAlign=%d\n", mBlockAlign);
+                    mTrackMeta->setInt32(kKeyBlockAlign, mBlockAlign);
+
+                    ALOGI("mTrackMeta::durationUs=%lld us\n", durationUs);
+                    mTrackMeta->setInt64(kKeyDuration, durationUs);
+
+                    return OK;
+                }
+            }
+            default:{
+                //other Chunks
+                ALOGV("The Unknown Chunk Name [%s] \n", chunkHeader);
+
+                remainingSize -= chunkSize;
+                offset += chunkSize;
+
+                break;
+            }
+        }
+        if (offset & 1) { /* Always even aligned */
+            offset++;
+            remainingSize--;
+        }
+    }
+    return NO_INIT;
+
 }
 
 //-----------------------------------------------------------------------------
 
 AIFFExtractor::AIFFExtractor(const sp<DataSource> &source)
-	: mDataSource(source),
-      mValidFormat(false){
-	mInitCheck = init();
+    : mDataSource(source),
+    mValidFormat(false) {
+    mInitCheck = init();
 }
 
 AIFFExtractor::~AIFFExtractor() {}
 
 sp<MetaData> AIFFExtractor::getMetaData() {
-	
     sp<MetaData> meta = new MetaData;
 
     if (mInitCheck != OK) {
@@ -616,63 +612,62 @@ status_t AIFFSource::stop() {
 }
 
 status_t AIFFSource::start(MetaData *params) {
-		
-	ALOGV("AIFFSource::start \n");
-		
-	CHECK(!mStarted);
-		
-	mGroup = new MediaBufferGroup;
-	mGroup->add_buffer(new MediaBuffer(kMaxFrameSize));
-		
-	if (mBitsPerSample == 8) {
-		// As a temporary buffer for 8->16 bit conversion.
-		mGroup->add_buffer(new MediaBuffer(kMaxFrameSize));
-	}
-		
-	mCurrentPos = mOffset;
-		
-	mStarted = true;
-	
-	return OK;
+
+    ALOGV("AIFFSource::start \n");
+
+    CHECK(!mStarted);
+
+    mGroup = new MediaBufferGroup;
+    mGroup->add_buffer(new MediaBuffer(kMaxFrameSize));
+
+    if (mBitsPerSample == 8) {
+        // As a temporary buffer for 8->16 bit conversion.
+        mGroup->add_buffer(new MediaBuffer(kMaxFrameSize));
+    }
+
+    mCurrentPos = mOffset;
+
+    mStarted = true;
+
+    return OK;
 }
 
 
 status_t AIFFSource::read(MediaBuffer **out, const ReadOptions *options) {
-	*out = NULL;
-	int32_t BlockAlign = mBlockAlign;
-	
-	int64_t seekTimeUs;
+    *out = NULL;
+    int32_t BlockAlign = mBlockAlign;
+
+    int64_t seekTimeUs;
     ReadOptions::SeekMode mode;
 
-	if (options != NULL && options->getSeekTo(&seekTimeUs, &mode)) {
-		int64_t pos;
-		if(mWaveFormat == AV_CODEC_ID_ADPCM_IMA_QT){
-			pos = (seekTimeUs * mSampleRate) / 1000000 * mNumChannels / 2;
-			pos = pos - (pos % BlockAlign);
-		}else{
-			pos = (seekTimeUs * mSampleRate) / 1000000 * mNumChannels * (mBitsPerSample >> 3);
-		}
-		
-		if (pos > mSize) {
+    if (options != NULL && options->getSeekTo(&seekTimeUs, &mode)) {
+        int64_t pos;
+        if (mWaveFormat == AV_CODEC_ID_ADPCM_IMA_QT) {
+            pos = (seekTimeUs * mSampleRate) / 1000000 * mNumChannels / 2;
+            pos = pos - (pos % BlockAlign);
+        } else {
+            pos = (seekTimeUs * mSampleRate) / 1000000 * mNumChannels * (mBitsPerSample >> 3);
+        }
+
+        if (pos > mSize) {
             pos = mSize;
         }
         mCurrentPos = pos + mOffset;
     }
-	
+
     MediaBuffer *buffer;
     status_t err = mGroup->acquire_buffer(&buffer);
     if (err != OK) {
         return err;
     }
 
-	size_t maxBytesToRead;
-	if(mBitsPerSample >= 8)
-	{
-    	maxBytesToRead = mBitsPerSample == 8 ? kMaxFrameSize / 2 : kMaxFrameSize;
-	    maxBytesToRead -= maxBytesToRead%(mNumChannels*mBitsPerSample>>3);		
-	}else if(mWaveFormat == AV_CODEC_ID_ADPCM_IMA_QT){
-		maxBytesToRead = BlockAlign;
-	}
+    size_t maxBytesToRead = 0;
+    if (mBitsPerSample >= 8) {
+        maxBytesToRead = mBitsPerSample == 8 ? kMaxFrameSize / 2 : kMaxFrameSize;
+        maxBytesToRead -= maxBytesToRead%(mNumChannels*mBitsPerSample>>3);
+    } else if (mWaveFormat == AV_CODEC_ID_ADPCM_IMA_QT) {
+        maxBytesToRead = BlockAlign;
+    }
 
     size_t maxBytesAvailable =(mCurrentPos - mOffset >= (off64_t)mSize) ? 0 : mSize - (mCurrentPos - mOffset);
 
@@ -685,142 +680,139 @@ status_t AIFFSource::read(MediaBuffer **out, const ReadOptions *options) {
     if (n <= 0) {
         buffer->release();
         buffer = NULL;
-
         return ERROR_END_OF_STREAM;
     }
 
-	buffer->set_range(0, n);
-	
-	switch(mWaveFormat){
-		
-	case AV_CODEC_ID_PCM_S16BE:{
-		//Convert 16-bit signed BE samples to 16-bit signed LE samples.
-		
-		const uint8_t *src = (const uint8_t *)buffer->data();
-		int16_t *dst = (int16_t *)buffer->data();
-        
-		ssize_t numSamples = n/2;
-		
-        for (size_t i = 0; i < numSamples; ++i) {
-			
-	   		int16_t x = (int16_t)(src[0] << 8 | src[1]);
+    buffer->set_range(0, n);
 
-            *dst++ = (int16_t)x;
-            src += 2;
+    switch (mWaveFormat) {
+
+        case AV_CODEC_ID_PCM_S16BE:{
+            //Convert 16-bit signed BE samples to 16-bit signed LE samples.
+
+            const uint8_t *src = (const uint8_t *)buffer->data();
+            int16_t *dst = (int16_t *)buffer->data();
+
+            ssize_t numSamples = n/2;
+
+            for (size_t i = 0; i < numSamples; ++i) {
+                int16_t x = (int16_t)(src[0] << 8 | src[1]);
+
+                *dst++ = (int16_t)x;
+                src += 2;
+            }
+            break;
         }
-		break;
-	}	
-	case AV_CODEC_ID_PCM_S16LE:{
-		//android direct output is PCM 16bit LE
-		break;
-	}	
-	case AV_CODEC_ID_PCM_S8:{
-		// Convert 8-bit unsigned samples to 16-bit signed.
-		MediaBuffer *tmp;
-        CHECK_EQ(mGroup->acquire_buffer(&tmp), (status_t)OK);
+        case AV_CODEC_ID_PCM_S16LE:{
+            //android direct output is PCM 16bit LE
+            break;
+        }
+        case AV_CODEC_ID_PCM_S8:{
+            // Convert 8-bit unsigned samples to 16-bit signed.
+            MediaBuffer *tmp;
+            CHECK_EQ(mGroup->acquire_buffer(&tmp), (status_t)OK);
 
-        // The new buffer holds the sample number of samples, but each one is 2 bytes wide.
-        tmp->set_range(0, 2 * n);
+            // The new buffer holds the sample number of samples, but each one is 2 bytes wide.
+            tmp->set_range(0, 2 * n);
 
-        int16_t *dst = (int16_t *)tmp->data();
-        const int8_t *src = (const int8_t *)buffer->data();
-        ssize_t numBytes = n;
+            int16_t *dst = (int16_t *)tmp->data();
+            const int8_t *src = (const int8_t *)buffer->data();
+            ssize_t numBytes = n;
 
-        for (size_t i = 0; i < numBytes; i++) {
-        	*dst++ = (int16_t)(*src++) * 256;
-		}
-		
-		buffer->release();
-        buffer = tmp;
-		
-	    break;
-	}
-	case AV_CODEC_ID_PCM_S24BE:{
-        // Convert 24-bit signed samples to 16-bit signed.
+            for (size_t i = 0; i < numBytes; i++) {
+                *dst++ = (int16_t)(*src++) * 256;
+            }
 
-       const uint8_t *src =(const uint8_t *)buffer->data();
-       int16_t *dst = (int16_t *)src;
+            buffer->release();
+            buffer = tmp;
 
-       size_t numSamples = buffer->range_length() / 3;
-       for (size_t i = 0; i < numSamples; ++i) {
-	   		int32_t x = (int32_t)(src[0]<<16 | src[1] << 8 | src[2]);
-            x = (x << 8) >> 8;  // sign extension
+            break;
+        }
+        case AV_CODEC_ID_PCM_S24BE:{
+            // Convert 24-bit signed samples to 16-bit signed.
 
-            x = x >> 8;
-            *dst++ = (int16_t)x;
-            src += 3;
-       }
-        buffer->set_range(buffer->range_offset(), 2 * numSamples);	
+            const uint8_t *src =(const uint8_t *)buffer->data();
+            int16_t *dst = (int16_t *)src;
+
+            size_t numSamples = buffer->range_length() / 3;
+            for (size_t i = 0; i < numSamples; ++i) {
+                int32_t x = (int32_t)(src[0]<<16 | src[1] << 8 | src[2]);
+                x = (x << 8) >> 8;  // sign extension
+
+                x = x >> 8;
+                *dst++ = (int16_t)x;
+                src += 3;
+            }
+            buffer->set_range(buffer->range_offset(), 2 * numSamples);
+            break;
+        }
+        case AV_CODEC_ID_PCM_S32BE:{
+            // Convert 32-bit signed samples to 16-bit signed.
+
+            const uint8_t *src =(const uint8_t *)buffer->data();
+            int16_t *dst = (int16_t *)src;
+
+            size_t numSamples = buffer->range_length() / 4;
+
+            for (size_t i = 0; i < numSamples; ++i) {
+                int16_t x = (int16_t)(src[0] << 8 | src[1]);
+
+                *dst++ = (int16_t)x;
+                src += 4;
+            }
+            buffer->set_range(buffer->range_offset(), 2 * numSamples);
+            break;
+        }
+        case AV_CODEC_ID_PCM_F32BE:{
+            // Convert 32-bit float point samples to 16-bit signed fixed point.
+
+            const float *src =(const float *)buffer->data();
+            int16_t *dst = (int16_t *)src;
+
+            size_t numSamples = buffer->range_length() / 4;
+
+            for (size_t i = 0; i < numSamples; ++i) {
+
+                float x = FloatSwap(*src);
+
+                int32_t y = (int32_t)(x * (1<<15) + 0.5f);
+                y = Clip(y,-32768,32767);
+
+                *dst++ = (int16_t)y;
+                src ++;
+            }
+            buffer->set_range(buffer->range_offset(), 2 * numSamples);
+            break;
+        }
+        default:
         break;
-	}
-	case AV_CODEC_ID_PCM_S32BE:{
-        // Convert 32-bit signed samples to 16-bit signed.
+    }
 
-       const uint8_t *src =(const uint8_t *)buffer->data();
-       int16_t *dst = (int16_t *)src;
-
-       size_t numSamples = buffer->range_length() / 4;
-	   
-       for (size_t i = 0; i < numSamples; ++i) {
-	   		int16_t x = (int16_t)(src[0] << 8 | src[1]);
-  
-            *dst++ = (int16_t)x;
-            src += 4;
-       }
-        buffer->set_range(buffer->range_offset(), 2 * numSamples);	
-        break;
-	}
-	case AV_CODEC_ID_PCM_F32BE:{
-        // Convert 32-bit float point samples to 16-bit signed fixed point.
-
-       const float *src =(const float *)buffer->data();
-       int16_t *dst = (int16_t *)src;
-
-       size_t numSamples = buffer->range_length() / 4;
-	   
-       for (size_t i = 0; i < numSamples; ++i) {
-
-			float x = FloatSwap(*src);
-					
-  			int32_t y = (int32_t)(x * (1<<15) + 0.5f);
-			y = Clip(y,-32768,32767);
-			
-            *dst++ = (int16_t)y;
-            src ++;
-       }
-        buffer->set_range(buffer->range_offset(), 2 * numSamples);	
-        break;
-	}
-	default:
-		break;
-	}
-	
     size_t bytesPerSample = mBitsPerSample >> 3;
 
-	int64_t keytemp;
-	if((mBitsPerSample == 4) || (mWaveFormat == AV_CODEC_ID_ADPCM_IMA_QT)){
-		if(mNumChannels == 1)
-			keytemp = 1000000LL * ((mCurrentPos - mOffset) * 2) / mSampleRate;
-		if(mNumChannels == 2)
-			keytemp = 1000000LL * (mCurrentPos - mOffset) / mSampleRate;
-	}
-	else{
-		keytemp = 1000000LL * (mCurrentPos - mOffset) / (mNumChannels * bytesPerSample) / mSampleRate;
-	}
-	
-	buffer->meta_data()->setInt64(kKeyTime, keytemp);
+    int64_t keytemp;
+    if ((mBitsPerSample == 4) || (mWaveFormat == AV_CODEC_ID_ADPCM_IMA_QT)) {
+        if (mNumChannels == 1)
+            keytemp = 1000000LL * ((mCurrentPos - mOffset) * 2) / mSampleRate;
+        if (mNumChannels == 2)
+            keytemp = 1000000LL * (mCurrentPos - mOffset) / mSampleRate;
+    }
+    else {
+        keytemp = 1000000LL * (mCurrentPos - mOffset) / (mNumChannels * bytesPerSample) / mSampleRate;
+    }
+
+    buffer->meta_data()->setInt64(kKeyTime, keytemp);
     buffer->meta_data()->setInt32(kKeyIsSyncFrame, 1);
     mCurrentPos += n;
 
     *out = buffer;
-	
-	return OK;
+
+    return OK;
 }
 
 sp<MetaData> AIFFSource::getFormat() {
-	
-	ALOGV("AIFFSource::getFormat \n");
-	return mMeta;
+    ALOGV("AIFFSource::getFormat \n");
+    return mMeta;
 }
 
 //--------------------------------------------------------------------------------

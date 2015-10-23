@@ -163,6 +163,10 @@ LOCAL_C_INCLUDES+= \
 
 LOCAL_CFLAGS += -Wno-multichar -Werror -Wno-error=deprecated-declarations -Wall
 
+LOCAL_CFLAGS += -Werror -Wno-unused-parameter -Wno-unused-variable -Wno-sign-compare \
+  -Wno-format -Wno-reorder -Wno-constant-logical-operand -Wno-missing-field-initializers -Wno-sometimes-uninitialized \
+  -Wno-writable-strings -Wno-unused-function
+
 # enable experiments only in userdebug and eng builds
 ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
 LOCAL_CFLAGS += -DENABLE_STAGEFRIGHT_EXPERIMENTS

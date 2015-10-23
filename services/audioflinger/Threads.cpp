@@ -2805,7 +2805,7 @@ bool AudioFlinger::PlaybackThread::threadLoop()
             }
             ALOGVV("[%s %d],mActiveTracks.size() %d,mStandby %d,thread %p,type %d,mId %d",
             __FUNCTION__,__LINE__,mActiveTracks.size(),mStandby,this,mType,mId);
-            if ((!mActiveTracks.size() && systemTime() > standbyTime) ||
+            if ((!mActiveTracks.size() && systemTime() > mStandbyTimeNs) ||
                                    isSuspended()) {
                 // put audio hardware into standby after short delay
                 if (shouldStandby_l()) {

@@ -2132,7 +2132,7 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
                              num_channels,sample_rate,extra_size,__LINE__);
             if (mDataSource->readAt(*offset, extra_buf, extra_size) != (ssize_t)extra_size)
             {
-                delete[] buffer;
+                delete[] extra_buf;
                 extra_buf = NULL;
                 ALOGI("TRACE: ERR-> offset=%lld  line=%d\n", *offset, __LINE__);
                 return ERROR_IO;

@@ -71,7 +71,7 @@ void MediaMetadataRetrieverFactory::unregisterFactory(player_type type) {
 sp<MediaMetadataRetrieverBase> MediaMetadataRetrieverFactory::createRetriever(player_type playerType) {
     sp<MediaMetadataRetrieverBase> p;
     RFactory* factory;
-    status_t init_result;
+    //status_t init_result;
     Mutex::Autolock lock_(&sLock);
 
     if (sFactoryMap.indexOfKey(playerType) < 0) {

@@ -94,10 +94,10 @@ void NuPlayer::HTTPLiveSource::prepareAsync() {
     mLiveSession = new LiveSession(
             notify,
             (mFlags & kFlagIncognito) ? LiveSession::kFlagIncognito : 0,
-            mHTTPService,
-            mInterruptCallback);
+            mHTTPService/*,
+            mInterruptCallback*/);
 
-    mLiveSession->setParentThreadId(mParentThreadId);
+    //mLiveSession->setParentThreadId(mParentThreadId);
 
     mLiveLooper->registerHandler(mLiveSession);
 
@@ -138,9 +138,9 @@ status_t NuPlayer::HTTPLiveSource::feedMoreTSData() {
 status_t NuPlayer::HTTPLiveSource::dequeueAccessUnit(
         bool audio, sp<ABuffer> *accessUnit) {
     if (mBuffering) {
-        if (!mLiveSession->haveSufficientDataOnAVTracks()) {
-            return -EWOULDBLOCK;
-        }
+        //if (!mLiveSession->haveSufficientDataOnAVTracks()) {
+        //    return -EWOULDBLOCK;
+        //}
         mBuffering = false;
         sp<AMessage> notify = dupNotify();
         notify->setInt32("what", kWhatBufferingEnd);
@@ -151,7 +151,7 @@ status_t NuPlayer::HTTPLiveSource::dequeueAccessUnit(
     }
 
     bool needBuffering = false;
-    status_t finalResult = mLiveSession->hasBufferAvailable(audio, &needBuffering);
+    status_t finalResult = 0;//mLiveSession->hasBufferAvailable(audio, &needBuffering);
     if (needBuffering) {
         mBuffering = true;
         sp<AMessage> notify = dupNotify();

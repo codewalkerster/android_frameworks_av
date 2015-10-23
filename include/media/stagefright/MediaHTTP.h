@@ -20,10 +20,13 @@
 
 #include <media/stagefright/foundation/AString.h>
 
-
+#include "include/HTTPBase.h"
 
 namespace android {
 
+class DecryptHandle;
+class DrmManagerClient;
+struct HTTPBase;
 struct IMediaHTTPConnection;
 
 struct MediaHTTP : public HTTPBase {

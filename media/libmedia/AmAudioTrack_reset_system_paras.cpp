@@ -54,7 +54,7 @@ static int amsysfs_set_sysfs_int(const char *path, int val)
 #define AUDIO_FORMAT_DTS_MASTER  0x0E000000
 #define DEFAULT_SYS_SAMPLERATE   48000
 
-audio_format_t AudioTrack_reset_system_samplerate(int samplerate,audio_format_t format,audio_channel_mask_t ChMask,
+audio_format_t AudioTrack_reset_system_samplerate(int samplerate,audio_format_t format,
                                                                     audio_output_flags_t flags,unsigned int *pSampleRateAudiotrak)
 {
     unsigned digital_raw = 0,need_reset_sysfs=0;

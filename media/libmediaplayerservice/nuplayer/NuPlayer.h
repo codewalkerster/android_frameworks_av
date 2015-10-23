@@ -21,6 +21,7 @@
 #include <media/AudioResamplerPublic.h>
 #include <media/MediaPlayerInterface.h>
 #include <media/stagefright/foundation/AHandler.h>
+#include <NativeWindowWrapper.h>
 
 namespace android {
 
@@ -252,6 +253,7 @@ private:
     void handleFlushComplete(bool audio, bool isDecoder);
     void finishFlushIfPossible();
 
+    void onStart();
     void onStart(int64_t startPositionUs = -1);
     void onResume();
     void onPause();

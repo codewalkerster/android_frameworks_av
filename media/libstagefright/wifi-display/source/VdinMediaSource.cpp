@@ -159,7 +159,7 @@ status_t VdinMediaSource::start(MetaData *params) {
     Mutex::Autolock autoLock(mLock);
 
     CHECK(!mStarted);
-    status_t err = -1;
+    //status_t err = -1;
 
     mStartTimeOffsetUs = 0;
     int64_t startTimeUs;
@@ -264,7 +264,7 @@ status_t VdinMediaSource::read(MediaBuffer **buffer, const ReadOptions * /*optio
 
     int64_t cur_pts = 0;
     FrameDataInfo frameDataInfo;
-    int ret = 0;
+    //int ret = 0;
     int count = 0;
     FrameBufferInfo* frame = NULL;
     *buffer = NULL;
@@ -347,7 +347,7 @@ int VdinMediaSource::dataCallBack(aml_screen_buffer_info_t *buffer) {
     int ret = NO_ERROR;
     if ((mStarted) && (mError == false)) {
         if (buffer == NULL || (buffer->buffer_mem == 0)) {
-            ALOGE("aquire_buffer fail, ptr:0x%x", buffer);
+            //ALOGE("aquire_buffer fail, ptr:0x%x", buffer);
             return BAD_VALUE;
         }
         if ((mCanvasMode == true) && (buffer->buffer_canvas == 0)) {

@@ -662,7 +662,7 @@ status_t OMXCodec::configureCodec(const sp<MetaData> &meta) {
 
              if (extradata_1!=NULL) {
                  memset(extradata_1,0,extradata_size_1);
-                 memcpy(extradata_1+1,extradata,extradata_size);
+                 memcpy((char*)extradata_1+1,extradata,extradata_size);
 
                  Split_AsfExtradata_for_Virbis((char*)extradata_1,extradata_size_1,&head0offset,&head1offset,&head2offset);
 
@@ -3949,8 +3949,10 @@ void OMXCodec::setFFmpegFormat(int32_t numChannels, int32_t bitrate, int32_t sam
 
 void OMXCodec::SetDtshdFormat(int32_t sampleRate, int32_t numChannels)
 {
-    OMX_AUDIO_PARAM_DTSHDTYPE dtshd_info = {0};
+    OMX_AUDIO_PARAM_DTSHDTYPE dtshd_info;
     status_t err;
+
+    memset(&dtshd_info, 0, sizeof(OMX_AUDIO_PARAM_DTSHDTYPE));
     InitOMXParams(&dtshd_info);
     dtshd_info.nPortIndex     = kPortIndexInput;
     dtshd_info.nChannels      = numChannels;

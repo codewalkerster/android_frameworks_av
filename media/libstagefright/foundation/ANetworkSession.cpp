@@ -35,6 +35,7 @@
 #include <media/stagefright/foundation/AMessage.h>
 #include <media/stagefright/foundation/hexdump.h>
 
+
 namespace android {
 
 static uint16_t U16_AT(const uint8_t *ptr) {
@@ -293,7 +294,7 @@ status_t ANetworkSession::Session::readMore() {
                 uint32_t connect_ip = ntohl(remoteAddr.sin_addr.s_addr);
                 sp<AMessage> notify = mNotify->dup();
                 notify->setInt32("reason", kWhatRTPConnect);
-                notify->setString("fromAddr", StringPrintf(
+                notify->setString("fromAddr", AStringPrintf(
                             "%u.%u.%u.%u",
                             connect_ip >> 24,
                             (connect_ip >> 16) & 0xff,

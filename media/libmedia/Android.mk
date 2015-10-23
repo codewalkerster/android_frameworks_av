@@ -7,7 +7,7 @@ LOCAL_SRC_FILES:= \
 LOCAL_MODULE:= libmedia_helper
 LOCAL_MODULE_TAGS := optional
 
-LOCAL_C_FLAGS += -Werror -Wno-error=deprecated-declarations -Wall
+LOCAL_C_FLAGS += -Werror -Wsign-compare -Wunused-parameter -Wno-error=deprecated-declarations -Wall
 LOCAL_CLANG := true
 
 include $(BUILD_STATIC_LIBRARY)
@@ -88,7 +88,7 @@ LOCAL_C_INCLUDES := \
     $(call include-path-for, audio-effects) \
     $(call include-path-for, audio-utils)
 
-LOCAL_CFLAGS += -Werror -Wno-error=deprecated-declarations -Wall
+LOCAL_CFLAGS += -Werror -Wunused-parameter -Wno-error=deprecated-declarations -Wall
 LOCAL_CLANG := true
 
 include $(BUILD_SHARED_LIBRARY)

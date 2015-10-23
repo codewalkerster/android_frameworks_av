@@ -27,12 +27,37 @@ LOCAL_C_INCLUDES := \
     $(TOP)/external/curl/include \
     $(TOP)/vendor/amlogic/frameworks/av/LibPlayer/third_parts/libcurl-ffmpeg/include
 
-LOCAL_CFLAGS += -Werror -Wall
+LOCAL_CFLAGS += -Werror -Wno-reorder -Wno-unused-parameter -Wall
 
 # enable experiments only in userdebug and eng builds
 ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
 LOCAL_CFLAGS += -DENABLE_STAGEFRIGHT_EXPERIMENTS
 endif
+
+
+LOCAL_SHARED_LIBRARIES :=       \
+    libbinder                   \
+    libcamera_client            \
+    libcrypto                   \
+    libcutils                   \
+    libdrmframework             \
+    liblog                      \
+    libdl                       \
+    libgui                      \
+    libmedia                    \
+    libmediautils               \
+    libsonivox                  \
+    libstagefright              \
+    libstagefright_foundation   \
+    libstagefright_httplive     \
+    libstagefright_omx          \
+    libstagefright_wfd          \
+    libutils                    \
+    libvorbisidec               \
+
+LOCAL_STATIC_LIBRARIES :=       \
+    libstagefright_rtsp         \
+
 
 LOCAL_CLANG := true
 
@@ -40,5 +65,5 @@ LOCAL_MODULE:= libstagefright_nuplayer
 
 LOCAL_MODULE_TAGS := eng
 
-include $(BUILD_STATIC_LIBRARY)
+include $(BUILD_SHARED_LIBRARY)
 

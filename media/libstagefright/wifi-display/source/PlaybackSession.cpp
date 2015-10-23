@@ -500,7 +500,7 @@ void WifiDisplaySource::PlaybackSession::onMessageReceived(
                 sp<ABuffer> accessUnit;
                 CHECK(msg->findBuffer("accessUnit", &accessUnit));
 
-                const sp<Track> &track = mTracks.valueFor(trackIndex);
+                //const sp<Track> &track = mTracks.valueFor(trackIndex);
 
                 status_t err = mMediaSender->queueAccessUnit(
                         //track->mediaSenderTrackIndex(),

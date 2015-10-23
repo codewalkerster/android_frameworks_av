@@ -60,7 +60,7 @@ MediaSender::MediaSender(
     char val[256];
     if (property_get("media.wfd.wfd-ts-dump", val, NULL) && (!strcasecmp("true", val) || !strcmp("1", val))) {
         mLogFile = fopen("/data/misc/log.ts", "wb");
-        ALOGV("open file to log ts stream:%d", mLogFile);
+        //ALOGV("open file to log ts stream:%d", mLogFile);
     }
 }
 
@@ -510,7 +510,7 @@ status_t MediaSender::packetizeAccessUnit(
     }
 
     //sync with video frame timestamp which from kernel
-    int64_t timeNow64;
+    //int64_t timeNow64;
     struct timeval timeNow;
     gettimeofday(&timeNow, NULL);
     int64_t timeUs = (int64_t)timeNow.tv_sec*1000*1000 + (int64_t)timeNow.tv_usec;

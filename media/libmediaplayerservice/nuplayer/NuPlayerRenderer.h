@@ -114,6 +114,7 @@ private:
         kWhatGetPlaybackSettings = 'gPbS',
         kWhatGetSyncSettings     = 'gSyS',
         kWhatFlush               = 'flus',
+        kWhatAudioSinkChanged    = 'auSC',
         kWhatPause               = 'paus',
         kWhatResume              = 'resm',
         kWhatOpenAudioSink       = 'opnA',

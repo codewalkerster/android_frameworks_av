@@ -55,6 +55,7 @@ struct ElementaryStreamQueue {
     void clear(bool clearFormat);
 
     sp<ABuffer> dequeueAccessUnit();
+    sp<ABuffer> dequeueAccessUnitAC3();
 
     sp<MetaData> getFormat();
 

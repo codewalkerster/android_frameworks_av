@@ -464,7 +464,7 @@ status_t WAVSource::read(
         return err;
     }
 
-    size_t maxBytesToRead;
+    size_t maxBytesToRead = 0;
     if (mBitsPerSample >= 8)
     {
         maxBytesToRead =

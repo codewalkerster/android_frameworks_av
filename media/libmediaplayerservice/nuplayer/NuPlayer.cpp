@@ -171,8 +171,8 @@ Vector<android_thread_id_t> NuPlayer::mThreadId;
 
 NuPlayer::NuPlayer(NUPLAYER_STREAMTYPE type)
     : mUIDValid(false),
-      mStreamType(type),
       mSourceFlags(0),
+      mNewSurface(NULL),
       mOffloadAudio(false),
       mAudioDecoderGeneration(0),
       mVideoDecoderGeneration(0),
@@ -184,11 +184,11 @@ NuPlayer::NuPlayer(NUPLAYER_STREAMTYPE type)
       mScanSourcesGeneration(0),
       mPollDurationGeneration(0),
       mTimedTextGeneration(0),
+      mStreamType(type),
       mFlushingAudio(NONE),
       mFlushingVideo(NONE),
       mResumePending(false),
       mVideoScalingMode(NATIVE_WINDOW_SCALING_MODE_SCALE_TO_WINDOW),
-      mNewSurface(NULL),
       mPlaybackSettings(AUDIO_PLAYBACK_RATE_DEFAULT),
       mVideoFpsHint(-1.f),
       mStarted(false),
@@ -757,7 +757,7 @@ void NuPlayer::onMessageReceived(const sp<AMessage> &msg) {
                     onResume();
                 }
             } else {
-                onStart();
+                //onStart();
             }
             mPausedByClient = false;
             break;
@@ -1354,7 +1354,6 @@ void NuPlayer::onStart(int64_t startPositionUs) {
             return;
         }
     }
-    return OK;
 }
 
 void NuPlayer::onStart() {
@@ -1412,11 +1411,11 @@ void NuPlayer::onStart() {
 
     if (mVideoDecoder != NULL) {
         mVideoDecoder->setRenderer(mRenderer);
-        mRenderer->setHasMedia(false);
+        //mRenderer->setHasMedia(false);
     }
     if (mAudioDecoder != NULL) {
         mAudioDecoder->setRenderer(mRenderer);
-        mRenderer->setHasMedia(true);
+        //mRenderer->setHasMedia(true);
     }
 
     postScanSources();
@@ -1620,15 +1619,15 @@ status_t NuPlayer::instantiateDecoder(bool audio, sp<DecoderBase> *decoder) {
         } else {
             *decoder = new Decoder(notify, mSource, mPID, mRenderer);
         }
-        mRenderer->setHasMedia(true);
+        //mRenderer->setHasMedia(true);
     } else {
         sp<AMessage> notify = new AMessage(kWhatVideoNotify, this);
         ++mVideoDecoderGeneration;
         notify->setInt32("generation", mVideoDecoderGeneration);
 
-        *decoder = new Decoder(
-                notify, mSource, mRenderer, mNativeWindow, mCCDecoder);
-        mRenderer->setHasMedia(false);
+        //*decoder = new Decoder(
+         //       notify, mSource, 0, mRenderer, mNativeWindow, mCCDecoder);
+        //mRenderer->setHasMedia(false);
 
         // enable FRC if high-quality AV sync is requested, even if not
         // directly queuing to display, as this will even improve textureview

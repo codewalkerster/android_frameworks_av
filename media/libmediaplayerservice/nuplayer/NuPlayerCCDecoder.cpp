@@ -195,7 +195,6 @@ bool NuPlayer::CCDecoder::extractFromSEI(const sp<ABuffer> &accessUnit) {
         return false;
     }
 
-    int64_t timeUs;
     CHECK(accessUnit->meta()->findInt64("timeUs", &timeUs));
 
     bool trackAdded = false;

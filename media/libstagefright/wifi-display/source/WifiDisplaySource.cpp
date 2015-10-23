@@ -154,7 +154,7 @@ status_t WifiDisplaySource::resume() {
 }
 
 status_t WifiDisplaySource::setRotation(int degree) {
-    sp<AMessage> msg = new AMessage(kWhatSetRotation, id());
+    sp<AMessage> msg = new AMessage(kWhatSetRotation, this);
     msg->setInt32("degree", degree);
 
     sp<AMessage> response;
@@ -167,7 +167,7 @@ void WifiDisplaySource::onMessageReceived(const sp<AMessage> &msg) {
     switch (msg->what()) {
         case kWhatStart:
         {
-            uint32_t replyID=0;
+            //uint32_t replyID=0;
             //CHECK(msg->senderAwaitsResponse(&replyID));
 
             AString iface;
@@ -586,7 +586,7 @@ void WifiDisplaySource::onMessageReceived(const sp<AMessage> &msg) {
         case kWhatSetRotation:
         {
             if ((mClientSessionID == 0) || (mClientInfo.mPlaybackSession == NULL)) {
-                ALOGE("[%s %d] kWhatSetRotation mClientSessionID:%d mPlaybackSession%x", __FUNCTION__, __LINE__, mClientSessionID, &(mClientInfo.mPlaybackSession));
+                //ALOGE("[%s %d] kWhatSetRotation mClientSessionID:%d mPlaybackSession%x", __FUNCTION__, __LINE__, mClientSessionID, &(mClientInfo.mPlaybackSession));
                 break;
             }
 

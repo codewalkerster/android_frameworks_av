@@ -93,7 +93,7 @@ static sp<MediaMetadataRetrieverBase> createRetriever(player_type playerType)
         }
         case SONIVOX_PLAYER:
             ALOGV("create midi metadata retriever");
-            p = new MidiMetadataRetriever();
+            //p = new MidiMetadataRetriever();
             break;
 
         case AMLOGIC_PLAYER:

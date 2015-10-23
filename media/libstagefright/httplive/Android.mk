@@ -8,19 +8,13 @@ LOCAL_SRC_FILES:=               \
         LiveSession.cpp         \
         M3UParser.cpp           \
         PlaylistFetcher.cpp     \
-        StreamSniffer.cpp
 
 LOCAL_C_INCLUDES:= \
 	$(TOP)/frameworks/av/media/libstagefright \
-	$(TOP)/frameworks/native/include/media/openmax \
-	$(TOP)/external/openssl/include \
-    $(TOP)/external/curl/include \
-    $(TOP)/vendor/amlogic/frameworks/av/LibPlayer/third_parts/libcurl-ffmpeg/include
+	$(TOP)/frameworks/native/include/media/openmax
 
-LOCAL_CFLAGS += -Werror -Wall
+LOCAL_CFLAGS += -Werror -Wno-unused-parameter -Wall
 LOCAL_CLANG := true
-
-LOCAL_STATIC_LIBRARIES := libstagefright_hevcutils libcurl_base libcurl_common
 
 LOCAL_SHARED_LIBRARIES := \
         libbinder \
@@ -30,8 +24,6 @@ LOCAL_SHARED_LIBRARIES := \
         libstagefright \
         libstagefright_foundation \
         libutils \
-        libamffmpeg \
-        libcurl
 
 LOCAL_MODULE:= libstagefright_httplive
 

@@ -846,7 +846,7 @@ status_t TSPacketizer::packetize(
 
         //int64_t nowUs = ALooper::GetNowUs();
 
-        int64_t timeNow64;
+        //int64_t timeNow64;
         struct timeval timeNow;
         gettimeofday(&timeNow, NULL);
         int64_t nowUs = (int64_t)timeNow.tv_sec*1000*1000 + (int64_t)timeNow.tv_usec;

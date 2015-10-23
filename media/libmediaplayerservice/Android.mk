@@ -21,7 +21,6 @@ LOCAL_SRC_FILES:=               \
     StagefrightPlayer.cpp       \
     StagefrightRecorder.cpp     \
     TestPlayerStub.cpp          \
-    VideoFrameScheduler.cpp     \
     MetadataRetrieverFactory.cpp     \
 
 LOCAL_SHARED_LIBRARIES :=       \
@@ -38,15 +37,16 @@ LOCAL_SHARED_LIBRARIES :=       \
     libsonivox                  \
     libstagefright              \
     libstagefright_foundation   \
-    libstagefright_httplive     \
     libstagefright_omx          \
     libstagefright_wfd          \
     libutils                    \
     libvorbisidec               \
+    libstagefright_nuplayer\
+
 
 LOCAL_STATIC_LIBRARIES :=       \
-    libstagefright_nuplayer     \
     libstagefright_rtsp         \
+
 
 LOCAL_C_INCLUDES :=                                                 \
     $(TOP)/frameworks/av/media/libstagefright/include               \
@@ -55,6 +55,7 @@ LOCAL_C_INCLUDES :=                                                 \
     $(TOP)/frameworks/av/media/libstagefright/webm                  \
     $(TOP)/frameworks/native/include/media/openmax                  \
     $(TOP)/external/tremolo/Tremolo                                 \
+    $(TOP)/frameworks/av/media/libstagefright                       \
 
 
 ifeq ($(BUILD_WITH_AMLOGIC_PLAYER),true)
@@ -69,7 +70,10 @@ ifeq ($(BUILD_WITH_AMLOGIC_PLAYER),true)
         $(AMPLAYER_APK_DIR)/amffmpeg/
 endif
 
-LOCAL_CFLAGS += -Werror -Wno-error=deprecated-declarations -Wall
+LOCAL_CFLAGS += -Werror -Wno-unused-parameter -Wno-unused-variable \
+    -Wno-deprecated-declarations -Wno-reorder \
+    -Wno-overloaded-virtual -Wno-error=deprecated-declarations -Wall
+
 LOCAL_CLANG := true
 
 LOCAL_MODULE:= libmediaplayerservice

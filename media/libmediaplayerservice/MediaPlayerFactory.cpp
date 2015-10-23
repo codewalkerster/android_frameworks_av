@@ -242,8 +242,8 @@ class NuPlayerFactory : public MediaPlayerFactory::IFactory {
     virtual float scoreFactory(const sp<IMediaPlayer>& /*client*/,
                                const char* url,
                                float curScore) {
-        static const float kOurScore = 1.0;
-
+        static const float kOurScore = 0.8;
+        mNUStreamType = NU_STREAM_NONE;
         char value[PROPERTY_VALUE_MAX];
         if (property_get("media.hls.disable-nuplayer", value, NULL)
             && (!strcasecmp(value, "true") || !strcmp(value, "1"))) {
@@ -305,10 +305,11 @@ class NuPlayerFactory : public MediaPlayerFactory::IFactory {
     virtual float scoreFactory(const sp<IMediaPlayer>& /*client*/,
                                const sp<IStreamSource>& /*source*/,
                                float /*curScore*/) {
+        mNUStreamType = NU_STREAM_NONE;
         return 0.8;
     }
 
-    virtual sp<MediaPlayerBase> createPlayer() {
+    virtual sp<MediaPlayerBase> createPlayer(pid_t /* pid */) {
         ALOGV(" create NuPlayer");
         return new NuPlayerDriver(mNUStreamType);
     }
@@ -325,10 +326,12 @@ class SonivoxPlayerFactory : public MediaPlayerFactory::IFactory {
         return 1.0;
     }
 
+
     virtual sp<MediaPlayerBase> createPlayer(pid_t pid) {
         ALOGV(" create NuPlayer");
-        return new NuPlayerDriver(pid);
+        return new NuPlayerDriver(NU_STREAM_NONE);
     }
+
 };
 
 class TestPlayerFactory : public MediaPlayerFactory::IFactory {

@@ -227,6 +227,20 @@ public:
 
             void                removeClient(wp<Client> client);
 
+    status_t decode(
+        const sp<IMediaHTTPService> &httpService,
+        const char* url,
+        uint32_t *pSampleRate,
+        int* pNumChannels,
+        audio_format_t* pFormat,
+        const sp<IMemoryHeap>& heap,
+        size_t *pSize);
+
+    status_t decode(int fd, int64_t offset, int64_t length,
+        uint32_t *pSampleRate, int* pNumChannels,
+        audio_format_t* pFormat,
+        const sp<IMemoryHeap>& heap, size_t *pSize);
+
     // For battery usage tracking purpose
     struct BatteryUsageInfo {
         // how many streams are being played by one UID

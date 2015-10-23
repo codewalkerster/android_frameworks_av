@@ -93,7 +93,7 @@ status_t AsfSource::read(
     }    	
 
 	MediaBuffer *packet; 
-	AVPacket pkt={0};
+	AVPacket pkt;//={0};
 	int i;
 	//---------------------------
 	//note: may cause bug!!!
@@ -289,31 +289,31 @@ static const GUID extended_content_header =
 
 /* I am not a number !!! This GUID is the one found on the PC used to
    generate the stream */
-static const GUID my_guid = 
+static const GUID my_guid =
 {
     0, 0, 0, { 0, 0, 0, 0, 0, 0, 0, 0 },
 };
 
 
-static const CodecTag codec_wav_tags[] = 
+static const CodecTag codec_wav_tags[] =
 {
-    { CODEC_ID_MP2, 0x50 },
-    { CODEC_ID_MP3, 0x55 },
+    { CODEC_ID_MP2, 0x50, 0 },
+    { CODEC_ID_MP3, 0x55, 0 },
     { CODEC_ID_AC3, 0x2000 },
-    { CODEC_ID_PCM_S16LE, 0x01 },
-    { CODEC_ID_PCM_U8, 0x01 }, /* must come after s16le in this list */
-    { CODEC_ID_PCM_ALAW, 0x06 },
-    { CODEC_ID_PCM_MULAW, 0x07 },
-    { CODEC_ID_ADPCM_MS, 0x02 },
-    { CODEC_ID_ADPCM_IMA_WAV, 0x11 },
-    { CODEC_ID_ADPCM_IMA_DK4, 0x61 },  /* rogue format number */
-    { CODEC_ID_ADPCM_IMA_DK3, 0x62 },  /* rogue format number */
-    { CODEC_ID_WMAV1, 0x160 },
-    { CODEC_ID_WMAV2, 0x161 },
-    { CODEC_ID_WMAPRO, 0x0162 },
+    { CODEC_ID_PCM_S16LE, 0x01, 0 },
+    { CODEC_ID_PCM_U8, 0x01, 0 }, /* must come after s16le in this list */
+    { CODEC_ID_PCM_ALAW, 0x06, 0 },
+    { CODEC_ID_PCM_MULAW, 0x07, 0 },
+    { CODEC_ID_ADPCM_MS, 0x02, 0 },
+    { CODEC_ID_ADPCM_IMA_WAV, 0x11, 0 },
+    { CODEC_ID_ADPCM_IMA_DK4, 0x61, 0 },  /* rogue format number */
+    { CODEC_ID_ADPCM_IMA_DK3, 0x62, 0 },  /* rogue format number */
+    { CODEC_ID_WMAV1, 0x160, 0 },
+    { CODEC_ID_WMAV2, 0x161, 0 },
+    { CODEC_ID_WMAPRO, 0x0162, 0 },
     /* HACK/FIXME: Does Vorbis in WAV/AVI have an (in)official ID? */
-    { CODEC_ID_VORBIS,          ('V' << 8) + 'o' },
-    { 0, 0 },
+    { CODEC_ID_VORBIS, ('V' << 8) + 'o', 0 },
+    { 0, 0, 0 },
 };
 
 static int/*enum CodecID */codec_get_id(const CodecTag *tags, unsigned int tag)

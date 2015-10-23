@@ -32,7 +32,7 @@ LOCAL_SHARED_LIBRARIES:= \
         libui                           \
         libutils                        \
 
-LOCAL_CFLAGS += -Wno-multichar -Werror -Wall
+LOCAL_CFLAGS += -Wno-multichar -Werror -Wno-unused-variable -Wno-format -Wall
 LOCAL_CLANG := true
 
 LOCAL_MODULE:= libstagefright_wfd

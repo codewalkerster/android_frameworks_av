@@ -6518,7 +6518,7 @@ bool ACodec::ExecutingState::onOMXEvent(
                     outputFormat->post();
                 }
 
-                mCodec->mMetaDataBuffersToSubmit = 0;
+                //mCodec->mMetaDataBuffersToSubmit = 0;
                 CHECK_EQ(mCodec->mOMX->sendCommand(
                             mCodec->mNode,
                             OMX_CommandPortDisable, kPortIndexOutput),

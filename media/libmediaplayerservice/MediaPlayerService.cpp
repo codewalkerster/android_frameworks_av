@@ -17,7 +17,7 @@
 
 // Proxy for media player implementations
 
-//#define LOG_NDEBUG 0
+#define LOG_NDEBUG 0
 #define LOG_TAG "MediaPlayerService"
 #include <utils/Log.h>
 
@@ -1120,6 +1120,7 @@ status_t MediaPlayerService::Client::seekTo(int msec)
 
 status_t MediaPlayerService::Client::reset()
 {
+	  ALOGI("[%d] call  reset", mConnId);
     {
         Mutex::Autolock l(mSourceMutex);
         mExit = true;
@@ -1337,6 +1338,7 @@ int MediaPlayerService::Client::playerSwitchTread(void * arg)
 
 int MediaPlayerService::Client::createAnotherPlayer()
 {
+
     ALOGI("[%s:%d] start create new player!", __FUNCTION__, __LINE__);
     mThreadQuit = false;
     sp<MediaPlayerBase> p;
@@ -1354,7 +1356,7 @@ int MediaPlayerService::Client::createAnotherPlayer()
     }
 
     new_type = AMSUPER_PLAYER;
-    p = MediaPlayerFactory::createPlayer(new_type, this, notify);
+    p = MediaPlayerFactory::createPlayer(new_type, this, notify, mPid);
     if (p.get() == NULL) {
         notify(this, MEDIA_ERROR, MEDIA_ERROR_UNKNOWN, -1, NULL);
         goto QUIT;
@@ -1393,6 +1395,7 @@ QUIT:
     mThreadQuit = true;
     mQuitCondition.signal();
     ALOGI("[%s:%d] end create new player!", __FUNCTION__, __LINE__);
+
     return 0;
 }
 
@@ -1456,127 +1459,6 @@ int Antagonizer::callbackThread(void* user)
 }
 #endif
 
-status_t MediaPlayerService::decode(
-        const sp<IMediaHTTPService> &httpService,
-        const char* url,
-        uint32_t *pSampleRate,
-        int* pNumChannels,
-        audio_format_t* pFormat,
-        const sp<IMemoryHeap>& heap,
-        size_t *pSize)
-{
-    ALOGV("decode(%s)", url);
-    sp<MediaPlayerBase> player;
-    status_t status = BAD_VALUE;
-
-    // Protect our precious, precious DRMd ringtones by only allowing
-    // decoding of http, but not filesystem paths or content Uris.
-    // If the application wants to decode those, it should open a
-    // filedescriptor for them and use that.
-    if (url != NULL && strncmp(url, "http://", 7) != 0) {
-        ALOGD("Can't decode %s by path, use filedescriptor instead", url);
-        return BAD_VALUE;
-    }
-
-    player_type playerType =
-        MediaPlayerFactory::getPlayerType(NULL /* client */, url, httpService);
-    ALOGV("player type = %d", playerType);
-
-    // create the right type of player
-    sp<AudioCache> cache = new AudioCache(heap);
-    player = MediaPlayerFactory::createPlayer(playerType, cache.get(), cache->notify);
-    if (player == NULL) goto Exit;
-    if (player->hardwareOutput()) goto Exit;
-
-    static_cast<MediaPlayerInterface*>(player.get())->setAudioSink(cache);
-
-    // set data source
-    if (player->setDataSource(httpService, url) != NO_ERROR) goto Exit;
-
-    ALOGV("prepare");
-    player->prepareAsync();
-
-    ALOGV("wait for prepare");
-    if (cache->wait() != NO_ERROR) goto Exit;
-
-    ALOGV("start");
-    player->start();
-
-    ALOGV("wait for playback complete");
-    cache->wait();
-    // in case of error, return what was successfully decoded.
-    if (cache->size() == 0) {
-        goto Exit;
-    }
-
-    *pSize = cache->size();
-    *pSampleRate = cache->sampleRate();
-    *pNumChannels = cache->channelCount();
-    *pFormat = cache->format();
-    ALOGV("return size %d sampleRate=%u, channelCount = %d, format = %d",
-          *pSize, *pSampleRate, *pNumChannels, *pFormat);
-    status = NO_ERROR;
-
-Exit:
-    if (player != 0) player->reset();
-    return status;
-}
-
-status_t MediaPlayerService::decode(int fd, int64_t offset, int64_t length,
-                                       uint32_t *pSampleRate, int* pNumChannels,
-                                       audio_format_t* pFormat,
-                                       const sp<IMemoryHeap>& heap, size_t *pSize)
-{
-    ALOGV("decode(%d, %lld, %lld)", fd, offset, length);
-    sp<MediaPlayerBase> player;
-    status_t status = BAD_VALUE;
-
-    player_type playerType = MediaPlayerFactory::getPlayerType(NULL /* client */,
-                                                               fd,
-                                                               offset,
-                                                               length);
-    ALOGV("player type = %d", playerType);
-
-    // create the right type of player
-    sp<AudioCache> cache = new AudioCache(heap);
-    player = MediaPlayerFactory::createPlayer(playerType, cache.get(), cache->notify);
-    if (player == NULL) goto Exit;
-    if (player->hardwareOutput()) goto Exit;
-
-    static_cast<MediaPlayerInterface*>(player.get())->setAudioSink(cache);
-
-    // set data source
-    if (player->setDataSource(fd, offset, length) != NO_ERROR) goto Exit;
-
-    ALOGV("prepare");
-    player->prepareAsync();
-
-    ALOGV("wait for prepare");
-    if (cache->wait() != NO_ERROR) goto Exit;
-
-    ALOGV("start");
-    player->start();
-
-    ALOGV("wait for playback complete");
-    cache->wait();
-    // in case of error, return what was successfully decoded.
-    if (cache->size() == 0) {
-        goto Exit;
-    }
-
-    *pSize = cache->size();
-    *pSampleRate = cache->sampleRate();
-    *pNumChannels = cache->channelCount();
-    *pFormat = cache->format();
-    ALOGV("return size %d, sampleRate=%u, channelCount = %d, format = %d",
-          *pSize, *pSampleRate, *pNumChannels, *pFormat);
-    status = NO_ERROR;
-
-Exit:
-    if (player != 0) player->reset();
-    ::close(fd);
-    return status;
-}
 
 
 #undef LOG_TAG

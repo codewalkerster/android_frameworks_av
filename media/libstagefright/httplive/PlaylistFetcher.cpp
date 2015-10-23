@@ -44,7 +44,7 @@
 #define FSLOGV(stream, fmt, ...) ALOGV("[fetcher-%d] [%s] " fmt, mFetcherID, \
          LiveSession::getNameForStream(stream), ##__VA_ARGS__)
 
-#include "curl_fetch.h"
+//#include "curl_fetch.h"
 
 namespace android {
 
@@ -569,6 +569,7 @@ void PlaylistFetcher::stopAsync(bool clear) {
     msg->post();
 }
 
+/*
 void PlaylistFetcher::changeURI(AString uri) {
     mURI = uri;
 }
@@ -580,6 +581,7 @@ uint32_t PlaylistFetcher::getStreamTypeMask() {
 void PlaylistFetcher::setStreamTypeMask(uint32_t streamMask) {
     mStreamTypeMask = streamMask;
 }
+*/
 
 void PlaylistFetcher::resumeUntilAsync(const sp<AMessage> &params) {
     FLOGV("resumeUntilAsync: params=%s", params->debugString().c_str());
@@ -888,6 +890,7 @@ void PlaylistFetcher::onMonitorQueue() {
         }
     }
 
+    int64_t durationToBufferUs = 0;;
     if (bufferedDataSize && mSegmentBytesPerSec) {
         int64_t adjust_durationUs = (bufferedDataSize / (mSegmentBytesPerSec * 0.9)) * 1E6;
         if (llabs(adjust_durationUs - bufferedDurationUs) > durationToBufferUs) {
@@ -908,14 +911,6 @@ void PlaylistFetcher::onMonitorQueue() {
         msg->setInt32("what", kWhatTemporarilyDoneFetching);
         msg->setString("uri", mURI.c_str());
         msg->post();
-    }
-
-        // delay the next download slightly; hopefully this gives other concurrent fetchers
-        // a better chance to run.
-        // onDownloadNext();
-        sp<AMessage> msg = new AMessage(kWhatDownloadNext, this);
-        msg->setInt32("generation", mMonitorQueueGeneration);
-        msg->post(1000l);
     } else {
         // We'd like to maintain buffering above durationToBufferUs, so try
         // again when buffer just about to go below durationToBufferUs
@@ -936,19 +931,21 @@ void PlaylistFetcher::onMonitorQueue() {
 }
 
 status_t PlaylistFetcher::refreshPlaylist() {
+#if 0
     bool needRefresh = false;
     if (mSession->mBandwidthItems.size() > 1 && mDownloadedNum > 1) {
-        mSession->checkBandwidth(&needRefresh);
+        //mSession->checkBandwidth(&needRefresh);
     }
     if (needRefresh || delayUsToRefreshPlaylist() <= 0) {
         bool unchanged;
         status_t err = OK;
+        /*
         CFContext * cfc_handle = NULL;
         sp<M3UParser> playlist = mSession->fetchPlaylist(
                 mURI.c_str(), mPlaylistHash, &unchanged, err, &cfc_handle);
         if (cfc_handle) {
             curl_fetch_close(cfc_handle);
-        }
+        }*/
 
         // need to retry
         if (err == ERROR_CANNOT_CONNECT) {
@@ -998,6 +995,7 @@ status_t PlaylistFetcher::refreshPlaylist() {
 
         mLastPlaylistFetchTimeUs = ALooper::GetNowUs();
     }
+#endif
     return OK;
 }
 
@@ -1268,7 +1266,7 @@ bool PlaylistFetcher::initDownloadState(
 
     ALOGV("fetching '%s'", uri.c_str());
 
-    sp<DataSource> source;
+    //sp<DataSource> source;
     sp<ABuffer> buffer, tsBuffer;
     // decrypt a junk buffer to prefetch key; since a session uses only one http connection,
     // this avoids interleaved connections to the key and segment file.
@@ -1376,6 +1374,7 @@ void PlaylistFetcher::onDownloadNext() {
         range_length = -1;
     }
 
+#if 0
     // block-wise download
     bool startup = mStartup;
     ssize_t bytesRead, total_size = 0;
@@ -1696,6 +1695,7 @@ FAIL:
     if (cfc_handle) {
         curl_fetch_close(cfc_handle);
     }
+#endif
 }
 
 /*
@@ -1855,6 +1855,7 @@ bool PlaylistFetcher::isStartTimeReached(int64_t timeUs) {
 }
 
 status_t PlaylistFetcher::extractAndQueueAccessUnitsFromTs(const sp<ABuffer> &buffer) {
+#if 0
     if (mTSParser == NULL) {
         // Use TS_TIMESTAMPS_ARE_ABSOLUTE so pts carry over between fetchers.
         mTSParser = new ATSParser(ATSParser::TS_TIMESTAMPS_ARE_ABSOLUTE);
@@ -2130,7 +2131,7 @@ status_t PlaylistFetcher::extractAndQueueAccessUnitsFromTs(const sp<ABuffer> &bu
                 int key = 0;
                 accessUnit->meta()->findInt32("findkeyframe", &key);
                 if (key == 1) {
-                    sp<AMessage> msg = new AMessage(kWhatCodecSpecificData, id());
+                    sp<AMessage> msg = new AMessage(kWhatCodecSpecificData, this);
                     msg->setBuffer("buffer", accessUnit);
                     msg->post();
                 }
@@ -2168,7 +2169,7 @@ status_t PlaylistFetcher::extractAndQueueAccessUnitsFromTs(const sp<ABuffer> &bu
         FLOGV("reached stop point for all streams");
         return ERROR_OUT_OF_RANGE;
     }
-
+#endif
     return OK;
 }
 

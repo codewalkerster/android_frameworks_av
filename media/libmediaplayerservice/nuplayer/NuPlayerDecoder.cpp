@@ -581,6 +581,7 @@ bool NuPlayer::Decoder::handleAnOutputBuffer(
     sp<ABuffer> buffer;
     mCodec->getOutputBuffer(index, &buffer);
 
+    status_t res = 0;
     if (index >= mOutputBuffers.size()) {
         for (size_t i = mOutputBuffers.size(); i <= index; ++i) {
             mOutputBuffers.add();
@@ -792,10 +793,6 @@ status_t NuPlayer::Decoder::fetchInputData(sp<AMessage> &reply) {
                 reply->setInt32("err", err);
                 return OK;
             }
-        }
-
-            reply->setInt32("err", err);
-            return ERROR_END_OF_STREAM;
         }
 
         dropAccessUnit = false;

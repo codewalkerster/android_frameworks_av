@@ -171,9 +171,10 @@ static unsigned parseAC3SyncFrame(
     return payloadSize;
 }
 
+/*
 static bool IsSeeminglyValidAC3Header(const uint8_t *ptr, size_t size) {
     return parseAC3SyncFrame(ptr, size, NULL) > 0;
-}
+}*/
 
 static bool IsSeeminglyValidADTSHeader(
         const uint8_t *ptr, size_t size, size_t *frameLength) {
@@ -398,11 +399,6 @@ status_t ElementaryStreamQueue::appendData(
 
                 data = &ptr[startOffset];
                 size -= startOffset;
-                break;
-            }
-
-            case PCM_AUDIO:
-            {
                 break;
             }
 
@@ -903,15 +899,10 @@ int64_t ElementaryStreamQueue::fetchTimestamp(size_t size) {
     return timeUs;
 }
 
-struct NALPosition {
-    size_t nalOffset;
-    size_t nalSize;
-};
-
 sp<ABuffer> ElementaryStreamQueue::dequeueAccessUnitH265() {
 
-	if (mFormat == NULL) {
-        size_t stopOffset;
+    if (mFormat == NULL) {
+        //size_t stopOffset;
         sp<ABuffer> spsBuffer;
         size_t size = mBuffer->size();
         const uint8_t *data = mBuffer->data();

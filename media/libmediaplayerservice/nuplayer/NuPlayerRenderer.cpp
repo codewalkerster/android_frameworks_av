@@ -306,8 +306,8 @@ void NuPlayer::Renderer::signalTimeDiscontinuity() {
     Mutex::Autolock autoLock(mLock);
     // CHECK(mAudioQueue.empty());
     // CHECK(mVideoQueue.empty());
-    setAudioFirstAnchorTime(-1);
-    setAnchorTime(-1, -1);
+    //setAudioFirstAnchorTime(-1);
+    //setAnchorTime(-1, -1);
     setVideoLateByUs(0);
     mLastAudioQueueTimeUs = -1;
     mLastVideoQueueTimeUs = -1;
@@ -318,7 +318,7 @@ void NuPlayer::Renderer::signalTimeDiscontinuity() {
 }
 
 void NuPlayer::Renderer::signalAudioSinkChanged() {
-    (new AMessage(kWhatAudioSinkChanged, id()))->post();
+    (new AMessage(kWhatAudioSinkChanged, this))->post();
 }
 
 void NuPlayer::Renderer::signalDisableOffloadAudio() {
@@ -350,6 +350,7 @@ void NuPlayer::Renderer::setAudioParameter(sp<AMessage> para) {
     ALOGI("[%s:%d] audio channel : %d, sample-rate : %d", __FUNCTION__, __LINE__, mChannel, mSampleRate);
 }
 
+/*
 // Called on any threads, except renderer's thread.
 status_t NuPlayer::Renderer::getCurrentPosition(int64_t *mediaUs) {
     {
@@ -362,6 +363,7 @@ status_t NuPlayer::Renderer::getCurrentPosition(int64_t *mediaUs) {
     }
     return getCurrentPositionFromAnchor(mediaUs, ALooper::GetNowUs());
 }
+*/
 
 // Called on only renderer's thread.
 status_t NuPlayer::Renderer::getCurrentPositionOnLooper(int64_t *mediaUs) {
@@ -383,10 +385,12 @@ status_t NuPlayer::Renderer::getCurrentPositionOnLooper(
 
 // Called either with mLock acquired or on renderer's thread.
 bool NuPlayer::Renderer::getCurrentPositionIfPaused_l(int64_t *mediaUs) {
+    /*
     if (!mPaused || mPausePositionMediaTimeUs < 0ll) {
         return false;
     }
     *mediaUs = mPausePositionMediaTimeUs;
+    */
     return true;
 }
 
@@ -1382,7 +1386,7 @@ void NuPlayer::Renderer::onQueueBuffer(const sp<AMessage> &msg) {
 #endif
 
     postDrainAudioQueue_l();
-    postDrainVideoQueue_l();
+    //postDrainVideoQueue_l();
 }
 
 void NuPlayer::Renderer::syncQueuesDone_l() {

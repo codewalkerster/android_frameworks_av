@@ -954,7 +954,8 @@ bool MediaCodec::handleDequeueOutputBuffer(const sp<AReplyToken> &replyID, bool 
         PostReplyWithError(replyID, INFO_FORMAT_CHANGED);
         mFlags &= ~kFlagOutputFormatChanged;
     } else if (mFlags & kFlagAudioReconfig) {
-        response->setInt32("err", INFO_AUDIO_RECONFIG);
+        //response->setInt32("err", INFO_AUDIO_RECONFIG);
+        PostReplyWithError(replyID, INFO_AUDIO_RECONFIG);
         mFlags &= ~kFlagAudioReconfig;
     } else {
         sp<AMessage> response = new AMessage;
