@@ -53,6 +53,10 @@ struct MediaCodec : public AHandler {
         CB_OUTPUT_FORMAT_CHANGED = 4,
     };
 
+    enum {
+        NU_AUDIO_RECONFIG = 1,
+    };
+
     struct BatteryNotifier;
 
     static sp<MediaCodec> CreateByType(
@@ -68,6 +72,9 @@ struct MediaCodec : public AHandler {
             uint32_t flags);
 
     status_t setCallback(const sp<AMessage> &callback);
+
+    // for nuplayerdecoder.
+    void setNuplayerNotify(const sp<AMessage> &notify);
 
     status_t createInputSurface(sp<IGraphicBufferProducer>* bufferProducer);
 
@@ -132,8 +139,6 @@ struct MediaCodec : public AHandler {
     status_t getOutputBuffer(size_t index, sp<ABuffer> *buffer);
     status_t getOutputFormat(size_t index, sp<AMessage> *format);
     status_t getInputBuffer(size_t index, sp<ABuffer> *buffer);
-
-    void getAudioParameter(sp<AMessage> &para);
 
     status_t requestIDRFrame();
 
@@ -209,7 +214,6 @@ private:
         kFlagGatherCodecSpecificData    = 512,
         kFlagIsAsync                    = 1024,
         kFlagIsComponentAllocated       = 2048,
-        kFlagAudioReconfig              = 4096,
     };
 
     struct BufferInfo {
@@ -233,8 +237,8 @@ private:
     SoftwareRenderer *mSoftRenderer;
     sp<AMessage> mOutputFormat;
     sp<AMessage> mInputFormat;
-    sp<AMessage> mAudioParameter;
     sp<AMessage> mCallback;
+    sp<AMessage> mNuNotify;
 
     bool mBatteryStatNotified;
     bool mIsVideo;
