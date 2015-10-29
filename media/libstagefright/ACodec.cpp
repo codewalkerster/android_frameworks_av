@@ -1237,7 +1237,11 @@ status_t ACodec::configureCodec(
     }
 
     bool low_latency_mode = false;
-    if (mFlags & kFlagLowLatencyMode) {
+    int32_t low_latency_mode_l = 0;
+    if (msg->findInt32("low-latency", &low_latency_mode_l)) {
+        low_latency_mode = (bool) low_latency_mode_l;
+    }
+    if (low_latency_mode || (mFlags & kFlagLowLatencyMode)) {
         low_latency_mode = true;
         mOMX->setParameter(
                 mNode,
