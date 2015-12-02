@@ -737,8 +737,8 @@ status_t MediaPlayerService::Client::setDataSource(
         close(fd);
         return mStatus;
     } else {
-        player_type playerType = MediaPlayerFactory::getPlayerType(this, url, httpService);
-        if (playerType == NU_PLAYER) {
+        player_type playerType = MediaPlayerFactory::getPlayerType(this, url);
+        if (playerType == AMNUPLAYER) {
             mHTTPService = httpService;
             if (mURI) {
                 free((void *)mURI);

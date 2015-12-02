@@ -27,7 +27,7 @@ namespace android {
 
 struct ABuffer;
 struct AnotherPacketSource;
-//class DataSource;
+class DataSource;
 struct HTTPBase;
 struct LiveDataSource;
 struct M3UParser;
@@ -51,8 +51,6 @@ struct PlaylistFetcher : public AHandler {
         kWhatStopReached,
         kWhatPlaylistFetched,
         kWhatMetadataDetected,
-        kWhatCodecSpecificData,
-        kWhatTemporarilyDoneFetching,
     };
 
     PlaylistFetcher(
@@ -108,15 +106,6 @@ private:
 
     struct DownloadState;
 
-    static const AString DumpPath;
-    int32_t mDumpMode; // 1: one whole file; 2: independent file
-    FILE * mDumpHandle;
-
-    int64_t mSegmentBytesPerSec;
-
-    int64_t mFailureAnchorTimeUs;
-    int64_t mOpenFailureRetryUs;
-
     static const int64_t kMaxMonitorDelayUs;
     static const int32_t kNumSkipFrames;
 
@@ -154,13 +143,8 @@ private:
     int64_t mPlaylistTimeUs;
     sp<M3UParser> mPlaylist;
     int32_t mSeqNumber;
-    int32_t mDownloadedNum;
     int32_t mNumRetries;
     bool mStartup;
-    bool mAdaptive;
-    bool mFetchingNotify;
-    bool mPrepared;
-    bool mPostPrepared;
     bool mIDRFound;
     int32_t mSeekMode;
     bool mTimeChangeSignaled;

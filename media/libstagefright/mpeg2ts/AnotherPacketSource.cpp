@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "NU-AnotherPacketSource"
+#define LOG_TAG "AnotherPacketSource"
 
 #include "AnotherPacketSource.h"
 
@@ -46,9 +46,7 @@ AnotherPacketSource::AnotherPacketSource(const sp<MetaData> &meta)
       mLastQueuedTimeUs(0),
       mEOSResult(OK),
       mLatestEnqueuedMeta(NULL),
-      mLatestDequeuedMeta(NULL),
-      mQueuedDiscontinuityCount(0),
-      mEstimatedBytePerSec(0) {
+      mLatestDequeuedMeta(NULL) {
     setFormat(meta);
 
     mDiscontinuitySegments.push_back(DiscontinuitySegment());
@@ -357,7 +355,7 @@ void AnotherPacketSource::queueDiscontinuity(
 }
 
 void AnotherPacketSource::signalEOS(status_t result) {
-    //CHECK(result != OK);
+    CHECK(result != OK);
 
     Mutex::Autolock autoLock(mLock);
     mEOSResult = result;
@@ -380,73 +378,20 @@ bool AnotherPacketSource::hasBufferAvailable(status_t *finalResult) {
 
 bool AnotherPacketSource::hasDataBufferAvailable(status_t *finalResult) {
     Mutex::Autolock autoLock(mLock);
-    return getBufferedDurationUs_l(finalResult);
-}
-
-int64_t AnotherPacketSource::getBufferedDataSize() {
-    Mutex::Autolock autoLock(mLock);
-    if (mBuffers.empty()) {
-        return 0;
+    *finalResult = OK;
+    if (!mEnabled) {
+        return false;
     }
-    int64_t data_size_bytes = 0;
-    List<sp<ABuffer> >::iterator it = mBuffers.begin();
-    while (it != mBuffers.end()) {
-        const sp<ABuffer> &buffer = *it;
-        data_size_bytes += buffer->size();
-        ++it;
+    List<sp<ABuffer> >::iterator it;
+    for (it = mBuffers.begin(); it != mBuffers.end(); it++) {
+        int32_t discontinuity;
+        if (!(*it)->meta()->findInt32("discontinuity", &discontinuity)) {
+            return true;
+        }
     }
-    return data_size_bytes;
-}
 
-int64_t AnotherPacketSource::getEstimatedBytesPerSec() {
-    Mutex::Autolock autoLock(mLock);
-    return mEstimatedBytePerSec;
-}
-
-int64_t AnotherPacketSource::getBufferedDurationUs_l(status_t *finalResult, int64_t *estimateBytePerSec) {
     *finalResult = mEOSResult;
-
-    if (mBuffers.empty()) {
-        return 0;
-    }
-
-    int64_t time1 = -1;
-    int64_t time2 = -1;
-    int64_t durationUs = 0;
-    int64_t dataSize = 0;
-
-    List<sp<ABuffer> >::iterator it = mBuffers.begin();
-    while (it != mBuffers.end()) {
-        const sp<ABuffer> &buffer = *it;
-
-        dataSize += buffer->size();
-
-        int64_t timeUs;
-        if (buffer->meta()->findInt64("timeUs", &timeUs)) {
-            if (time1 < 0 || timeUs < time1) {
-                time1 = timeUs;
-            }
-
-            if (time2 < 0 || timeUs > time2) {
-                time2 = timeUs;
-            }
-        } else {
-            // This is a discontinuity, reset everything.
-            durationUs += time2 - time1;
-            time1 = time2 = -1;
-        }
-    }
-
-    int64_t result_dur = durationUs + (time2 - time1);
-    if (estimateBytePerSec) {
-        if (result_dur > 2000000) {
-            *estimateBytePerSec = dataSize / 2;
-        } else {
-            *estimateBytePerSec = 0;
-        }
-    }
-
-    return result_dur;
+    return false;
 }
 
 size_t AnotherPacketSource::getAvailableBufferCount(status_t *finalResult) {

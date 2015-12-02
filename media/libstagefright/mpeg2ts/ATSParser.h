@@ -49,9 +49,6 @@ struct ATSParser : public RefBase {
         DISCONTINUITY_FORMAT_ONLY       =
             DISCONTINUITY_AUDIO_FORMAT
                 | DISCONTINUITY_VIDEO_FORMAT,
-
-        // data corrupt because of network error.
-        DISCONTINUITY_DATA_CORRUPTION   = 32,
     };
 
     enum Flags {

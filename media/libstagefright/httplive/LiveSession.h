@@ -110,7 +110,6 @@ struct LiveSession : public AHandler {
         kWhatBufferingEnd,
         kWhatBufferingUpdate,
         kWhatMetadataDetected,
-        kWhatSourceReady,
     };
 
 protected:

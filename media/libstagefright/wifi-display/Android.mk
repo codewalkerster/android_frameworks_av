@@ -40,28 +40,3 @@ LOCAL_MODULE:= libstagefright_wfd
 LOCAL_MODULE_TAGS:= optional
 
 include $(BUILD_SHARED_LIBRARY)
-################################################################################
-
-include $(CLEAR_VARS)
-
-LOCAL_SRC_FILES:= \
-        wfd.cpp                 \
-
-LOCAL_SHARED_LIBRARIES:= \
-        libbinder                       \
-        libgui                          \
-        libmedia                        \
-        libstagefright                  \
-        libstagefright_foundation       \
-        libstagefright_wfd              \
-        libutils                        \
-        libcutils                       \
-        liblog                          \
-
-LOCAL_MODULE:= wfd
-
-LOCAL_MODULE_TAGS := optional
-
-include $(BUILD_EXECUTABLE)
-
-################################################################################
