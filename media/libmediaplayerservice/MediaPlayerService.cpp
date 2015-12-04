@@ -329,6 +329,12 @@ sp<IMediaMetadataRetriever> MediaPlayerService::createMetadataRetriever()
 sp<IMediaPlayer> MediaPlayerService::create(const sp<IMediaPlayerClient>& client,
         int audioSessionId)
 {
+    if (client == NULL && mClients.size() > 0) {
+        ALOGV("[create]mClients.size():%d\n", mClients.size());
+        sp<Client> clt = mClients[mClients.size() - 1].promote();
+        return clt;
+    }
+
     pid_t pid = IPCThreadState::self()->getCallingPid();
     int32_t connId = android_atomic_inc(&mNextConnId);
 
