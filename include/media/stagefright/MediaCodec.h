@@ -61,6 +61,10 @@ struct MediaCodec : public AHandler {
         CB_RESOURCE_RECLAIMED = 5,
     };
 
+    enum {
+        NU_AUDIO_RECONFIG = 1,
+    };
+
     static const pid_t kNoPid = -1;
 
     static sp<MediaCodec> CreateByType(
@@ -80,6 +84,9 @@ struct MediaCodec : public AHandler {
             uint32_t flags);
 
     status_t setCallback(const sp<AMessage> &callback);
+
+    // for nuplayerdecoder.
+    void setNuplayerNotify(const sp<AMessage> &notify);
 
     status_t setOnFrameRenderedNotification(const sp<AMessage> &notify);
 
@@ -151,7 +158,6 @@ struct MediaCodec : public AHandler {
     status_t getOutputFormat(size_t index, sp<AMessage> *format);
     status_t getInputBuffer(size_t index, sp<ABuffer> *buffer);
 
-    void getAudioParameter(sp<AMessage> &para);
     status_t setSurface(const sp<Surface> &nativeWindow);
 
     status_t requestIDRFrame();
@@ -243,7 +249,6 @@ private:
         kFlagIsAsync                    = 1024,
         kFlagIsComponentAllocated       = 2048,
         kFlagPushBlankBuffersOnShutdown = 4096,
-        kFlagAudioReconfig              = 8192,
     };
 
     struct BufferInfo {
@@ -294,8 +299,8 @@ private:
 
     sp<AMessage> mOutputFormat;
     sp<AMessage> mInputFormat;
-    sp<AMessage> mAudioParameter;
     sp<AMessage> mCallback;
+    sp<AMessage> mNuNotify;
     sp<AMessage> mOnFrameRenderedNotification;
     sp<MemoryDealer> mDealer;
 

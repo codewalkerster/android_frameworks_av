@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "NU-HTTPLiveSource"
+#define LOG_TAG "HTTPLiveSource"
 #include <utils/Log.h>
 
 #include "HTTPLiveSource.h"
@@ -37,20 +37,17 @@ NuPlayer::HTTPLiveSource::HTTPLiveSource(
         const sp<AMessage> &notify,
         const sp<IMediaHTTPService> &httpService,
         const char *url,
-        const KeyedVector<String8, String8> *headers,
-        interruptcallback pfunc)
+        const KeyedVector<String8, String8> *headers)
     : Source(notify),
       mHTTPService(httpService),
       mURL(url),
-      mBuffering(false),
       mFlags(0),
       mFinalResult(OK),
       mOffset(0),
       mFetchSubtitleDataGeneration(0),
       mFetchMetaDataGeneration(0),
       mHasMetadata(false),
-      mMetadataSelected(false),
-      mInterruptCallback(pfunc) {
+      mMetadataSelected(false) {
     if (headers) {
         mExtraHeaders = *headers;
 
@@ -66,7 +63,6 @@ NuPlayer::HTTPLiveSource::HTTPLiveSource(
 }
 
 NuPlayer::HTTPLiveSource::~HTTPLiveSource() {
-    ALOGI("[%s:%d] start !", __FUNCTION__, __LINE__);
     if (mLiveSession != NULL) {
         mLiveSession->disconnect();
 
@@ -77,7 +73,6 @@ NuPlayer::HTTPLiveSource::~HTTPLiveSource() {
         mLiveSession.clear();
         mLiveLooper.clear();
     }
-    ALOGI("[%s:%d] end !", __FUNCTION__, __LINE__);
 }
 
 void NuPlayer::HTTPLiveSource::prepareAsync() {
@@ -94,23 +89,15 @@ void NuPlayer::HTTPLiveSource::prepareAsync() {
     mLiveSession = new LiveSession(
             notify,
             (mFlags & kFlagIncognito) ? LiveSession::kFlagIncognito : 0,
-            mHTTPService/*,
-            mInterruptCallback*/);
-
-    //mLiveSession->setParentThreadId(mParentThreadId);
+            mHTTPService);
 
     mLiveLooper->registerHandler(mLiveSession);
 
     mLiveSession->connectAsync(
             mURL.c_str(), mExtraHeaders.isEmpty() ? NULL : &mExtraHeaders);
-
 }
 
 void NuPlayer::HTTPLiveSource::start() {
-}
-
-void NuPlayer::HTTPLiveSource::setParentThreadId(android_thread_id_t thread_id) {
-    mParentThreadId = thread_id;
 }
 
 sp<AMessage> NuPlayer::HTTPLiveSource::getFormat(bool audio) {
@@ -137,32 +124,6 @@ status_t NuPlayer::HTTPLiveSource::feedMoreTSData() {
 
 status_t NuPlayer::HTTPLiveSource::dequeueAccessUnit(
         bool audio, sp<ABuffer> *accessUnit) {
-    if (mBuffering) {
-        //if (!mLiveSession->haveSufficientDataOnAVTracks()) {
-        //    return -EWOULDBLOCK;
-        //}
-        mBuffering = false;
-        sp<AMessage> notify = dupNotify();
-        notify->setInt32("what", kWhatBufferingEnd);
-        notify->post();
-        notify->setInt32("what", kWhatResumeOnBufferingEnd);
-        notify->post();
-        ALOGI("HTTPLiveSource buffering end!\n");
-    }
-
-    bool needBuffering = false;
-    status_t finalResult = 0;//mLiveSession->hasBufferAvailable(audio, &needBuffering);
-    if (needBuffering) {
-        mBuffering = true;
-        sp<AMessage> notify = dupNotify();
-        notify->setInt32("what", kWhatPauseOnBufferingStart);
-        notify->post();
-        notify->setInt32("what", kWhatBufferingStart);
-        notify->post();
-        ALOGI("HTTPLiveSource buffering start!\n");
-        return finalResult;
-    }
-
     return mLiveSession->dequeueAccessUnit(
             audio ? LiveSession::STREAMTYPE_AUDIO
                   : LiveSession::STREAMTYPE_VIDEO,
@@ -218,7 +179,6 @@ status_t NuPlayer::HTTPLiveSource::selectTrack(size_t trackIndex, bool select, i
         mMetadataSelected = select;
     }
 
-#if 0
     if (err == OK) {
         int32_t &generation = isSub ? mFetchSubtitleDataGeneration : mFetchMetaDataGeneration;
         generation++;
@@ -229,7 +189,7 @@ status_t NuPlayer::HTTPLiveSource::selectTrack(size_t trackIndex, bool select, i
             msg->post();
         }
     }
-#endif
+
     // LiveSession::selectTrack returns BAD_VALUE when selecting the currently
     // selected track, or unselecting a non-selected track. In this case it's an
     // no-op so we return OK.
@@ -324,19 +284,11 @@ void NuPlayer::HTTPLiveSource::onMessageReceived(const sp<AMessage> &msg) {
 void NuPlayer::HTTPLiveSource::onSessionNotify(const sp<AMessage> &msg) {
     int32_t what;
     CHECK(msg->findInt32("what", &what));
-    ALOGI("session notify : %d\n", what);
 
     switch (what) {
         case LiveSession::kWhatPrepared:
         {
             // notify the current size here if we have it, otherwise report an initial size of (0,0)
-            ALOGI("session notify prepared!\n");
-
-            sp<AMessage> notify = dupNotify();
-            notify->setInt32("what", kWhatSourceReady);
-            notify->setInt32("err", 0);
-            notify->post();
-
             sp<AMessage> format = getFormat(false /* audio */);
             int32_t width;
             int32_t height;
@@ -366,7 +318,6 @@ void NuPlayer::HTTPLiveSource::onSessionNotify(const sp<AMessage> &msg) {
 
         case LiveSession::kWhatPreparationFailed:
         {
-            ALOGI("session notify preparation failed!\n");
             status_t err;
             CHECK(msg->findInt32("err", &err));
 
@@ -376,7 +327,6 @@ void NuPlayer::HTTPLiveSource::onSessionNotify(const sp<AMessage> &msg) {
 
         case LiveSession::kWhatStreamsChanged:
         {
-            ALOGI("session notify streams changed!\n");
             uint32_t changedMask;
             CHECK(msg->findInt32(
                         "changedMask", (int32_t *)&changedMask));
@@ -439,25 +389,6 @@ void NuPlayer::HTTPLiveSource::onSessionNotify(const sp<AMessage> &msg) {
 
         case LiveSession::kWhatError:
         {
-            int32_t err;
-            CHECK(msg->findInt32("err", &err));
-            if (err == ERROR_UNSUPPORTED) {
-                sp<AMessage> notify = dupNotify();
-                notify->setInt32("what", kWhatSourceReady);
-                notify->setInt32("err", 1);
-                notify->post();
-            }
-            break;
-        }
-
-        case LiveSession::kWhatSourceReady:
-        {
-            sp<AMessage> notify = dupNotify();
-            notify->setInt32("what", kWhatSourceReady);
-            int32_t err;
-            CHECK(msg->findInt32("err", &err));
-            notify->setInt32("err", err);
-            notify->post();
             break;
         }
 

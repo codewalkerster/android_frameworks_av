@@ -23,9 +23,7 @@ LOCAL_C_INCLUDES := \
 	$(TOP)/frameworks/av/media/libstagefright/rtsp                \
 	$(TOP)/frameworks/av/media/libstagefright/timedtext           \
 	$(TOP)/frameworks/av/media/libmediaplayerservice              \
-	$(TOP)/frameworks/native/include/media/openmax                \
-    $(TOP)/external/curl/include \
-    $(TOP)/vendor/amlogic/frameworks/av/LibPlayer/third_parts/libcurl-ffmpeg/include
+	$(TOP)/frameworks/native/include/media/openmax
 
 LOCAL_CFLAGS += -Werror -Wno-reorder -Wno-unused-parameter -Wall
 

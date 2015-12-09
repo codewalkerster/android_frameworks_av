@@ -57,7 +57,6 @@ struct NuPlayer::Source : public AHandler {
         kWhatQueueDecoderShutdown,
         kWhatDrmNoLicense,
         kWhatInstantiateSecureDecoders,
-        kWhatSourceReady,
     };
 
     // The provides message is used to notify the player about various
@@ -119,7 +118,6 @@ struct NuPlayer::Source : public AHandler {
         return false;
     }
 
-    virtual void setParentThreadId(android_thread_id_t) {}
     virtual bool isStreaming() const {
         return true;
     }

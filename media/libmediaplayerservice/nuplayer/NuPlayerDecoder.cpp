@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "NU-NuPlayerDecoder"
+#define LOG_TAG "NuPlayerDecoder"
 #include <utils/Log.h>
 #include <inttypes.h>
 
@@ -38,9 +38,6 @@
 
 #include "avc_utils.h"
 #include "ATSParser.h"
-
-#define ES_AUDIO_DUMP_PATH    "/data/tmp/nuplayer_audio_es.bit"
-#define ES_VIDEO_DUMP_PATH    "/data/tmp/nuplayer_video_es.bit"
 
 namespace android {
 
@@ -74,35 +71,15 @@ NuPlayer::Decoder::Decoder(
       mTimeChangePending(false),
       mPaused(true),
       mResumePending(false),
-      mComponentName("decoder"),
-      mDumpMode(-1),
-      mAudioHandle(NULL),
-      mVideoHandle(NULL) {
+      mComponentName("decoder") {
     mCodecLooper = new ALooper;
     mCodecLooper->setName("NPDecoder-CL");
     mCodecLooper->start(false, false, ANDROID_PRIORITY_AUDIO);
-
-    char value[PROPERTY_VALUE_MAX];
-    if (property_get("media.hls.es-dumpmode", value, NULL)) {
-        mDumpMode = atoi(value);
-        if (mDumpMode == 1 || mDumpMode == 3) {
-            mAudioHandle = fopen(ES_AUDIO_DUMP_PATH, "ab+");
-        }
-        if (mDumpMode == 2 || mDumpMode == 3) {
-            mVideoHandle = fopen(ES_VIDEO_DUMP_PATH, "ab+");
-        }
-    }
 }
 
 NuPlayer::Decoder::~Decoder() {
     mCodec->release();
     releaseAndResetMediaBuffers();
-    if (mAudioHandle) {
-        fclose(mAudioHandle);
-    }
-    if (mVideoHandle) {
-        fclose(mVideoHandle);
-    }
 }
 
 sp<AMessage> NuPlayer::Decoder::getStats() const {
@@ -387,19 +364,19 @@ void NuPlayer::Decoder::doFlush(bool notifyComplete) {
     if (mCCDecoder != NULL) {
         mCCDecoder->flush();
     }
-    ALOGI("[%s:%d] %s flushing ", __FUNCTION__, __LINE__, mIsAudio ? "audio" : "video");
+
     if (mRenderer != NULL) {
         mRenderer->flush(mIsAudio, notifyComplete);
         mRenderer->signalTimeDiscontinuity();
     }
-    ALOGI("[%s:%d] %s flushing ", __FUNCTION__, __LINE__, mIsAudio ? "audio" : "video");
+
     status_t err = OK;
     if (mCodec != NULL) {
         err = mCodec->flush();
         mCSDsToSubmit = mCSDsForCurrentFormat; // copy operator
         ++mBufferGeneration;
     }
-    ALOGI("[%s:%d] %s flushing ", __FUNCTION__, __LINE__, mIsAudio ? "audio" : "video");
+
     if (err != OK) {
         ALOGE("failed to flush %s (err=%d)", mComponentName.c_str(), err);
         handleError(err);
@@ -581,29 +558,10 @@ bool NuPlayer::Decoder::handleAnOutputBuffer(
     sp<ABuffer> buffer;
     mCodec->getOutputBuffer(index, &buffer);
 
-    status_t res = 0;
     if (index >= mOutputBuffers.size()) {
         for (size_t i = mOutputBuffers.size(); i <= index; ++i) {
             mOutputBuffers.add();
         }
-        return true;
-    } else if (res == INFO_DISCONTINUITY) {
-        // nothing to do
-        return true;
-    } else if (res == INFO_AUDIO_RECONFIG) {
-        sp<AMessage> audio_para;
-        mCodec->getAudioParameter(audio_para);
-        if (mRenderer != NULL) {
-            mRenderer->setAudioParameter(audio_para);
-        }
-        return true;
-    } else if (res != OK) {
-        if (res != -EAGAIN) {
-            ALOGE("Failed to dequeue output buffer for %s (err=%d)",
-                    mComponentName.c_str(), res);
-            handleError(res);
-        }
-        return false;
     }
 
     mOutputBuffers.editItemAt(index) = buffer;
@@ -727,7 +685,6 @@ status_t NuPlayer::Decoder::fetchInputData(sp<AMessage> &reply) {
         if (err == -EWOULDBLOCK) {
             return err;
         } else if (err != OK) {
-            ALOGI("dequeue error : %d in fetch input data.", err);
             if (err == INFO_DISCONTINUITY) {
                 int32_t type;
                 CHECK(accessUnit->meta()->findInt32("discontinuity", &type));
@@ -752,29 +709,15 @@ status_t NuPlayer::Decoder::fetchInputData(sp<AMessage> &reply) {
                     formatChange = !seamlessFormatChange;
                 }
 
-#if 0
-                if (timeChange) {
-                    sp<AMessage> msg = mNotify->dup();
-                    msg->setInt32("what", kWhatInputDiscontinuity);
-                    msg->setInt32("formatChange", formatChange);
-                    msg->post();
-                }
-#endif
+                // For format or time change, return EOS to queue EOS input,
+                // then wait for EOS on output.
                 if (formatChange /* not seamless */) {
-                    // must change decoder
-                    // return EOS and wait to be killed
-                    //mFormatChangePending = true;
-                    //return ERROR_END_OF_STREAM;
-                    err = OK;
+                    mFormatChangePending = true;
+                    err = ERROR_END_OF_STREAM;
                 } else if (timeChange) {
-                    // need to flush
-                    // TODO: Ideally we shouldn't need a flush upon time
-                    // discontinuity, flushing will cause loss of frames.
-                    // We probably should queue a time change marker to the
-                    // output queue, and handles it in renderer instead.
-                    //rememberCodecSpecificData(newFormat);
-                    //onFlush(false /* notifyComplete */);
-                    err = OK;
+                    rememberCodecSpecificData(newFormat);
+                    mTimeChangePending = true;
+                    err = ERROR_END_OF_STREAM;
                 } else if (seamlessFormatChange) {
                     // reuse existing decoder and don't flush
                     rememberCodecSpecificData(newFormat);
@@ -785,28 +728,23 @@ status_t NuPlayer::Decoder::fetchInputData(sp<AMessage> &reply) {
                 }
             }
 
-            // continue to fetch input data
-            // prevent blocking in OMX fillbuffer callback.
-            if (err == OK) {
-                continue;
-            } else {
-                reply->setInt32("err", err);
-                return OK;
-            }
+            // reply should only be returned without a buffer set
+            // when there is an error (including EOS)
+            CHECK(err != OK);
+
+            reply->setInt32("err", err);
+            return ERROR_END_OF_STREAM;
         }
 
         dropAccessUnit = false;
-#if 0
         if (!mIsAudio
                 && !mIsSecure
                 && mRenderer->getVideoLateByUs() > 100000ll
                 && mIsVideoAVC
                 && !IsAVCReferenceFrame(accessUnit)) {
             dropAccessUnit = true;
-            ++mNumFramesDropped;
-            ALOGI("decoder need to drop this AU, late : %lld us, dropped frames : %lld\n", mRenderer->getVideoLateByUs(), mNumFramesDropped);
+            ++mNumInputFramesDropped;
         }
-#endif
     } while (dropAccessUnit);
 
     // ALOGV("returned a valid buffer of %s data", mIsAudio ? "mIsAudio" : "video");
@@ -820,15 +758,6 @@ status_t NuPlayer::Decoder::fetchInputData(sp<AMessage> &reply) {
 
     if (mCCDecoder != NULL) {
         mCCDecoder->decode(accessUnit);
-    }
-
-    if (mAudioHandle && mIsAudio) {
-        fwrite(accessUnit->data(), 1, accessUnit->size(), mAudioHandle);
-        fflush(mAudioHandle);
-    }
-    if (mVideoHandle && !mIsAudio) {
-        fwrite(accessUnit->data(), 1, accessUnit->size(), mVideoHandle);
-        fflush(mVideoHandle);
     }
 
     reply->setBuffer("buffer", accessUnit);

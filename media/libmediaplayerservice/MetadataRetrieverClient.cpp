@@ -86,6 +86,7 @@ static sp<MediaMetadataRetrieverBase> createRetriever(player_type playerType)
     sp<MediaMetadataRetrieverBase> p;
     switch (playerType) {
         case STAGEFRIGHT_PLAYER:
+        case AMNUPLAYER:
         case NU_PLAYER:
         {
             p = new StagefrightMetadataRetriever;
@@ -132,7 +133,7 @@ status_t MetadataRetrieverClient::setDataSource(
     // pass NULL to getPlayerType to indicate that there is no outer
     // IMediaPlayer to consider during selection.
     player_type playerType =
-        MediaPlayerFactory::getPlayerType(NULL /* client */, url, httpService);
+        MediaPlayerFactory::getPlayerType(NULL /* client */, url);
     ALOGV("player type = %d", playerType);
     sp<MediaMetadataRetrieverBase> p = createRetriever(playerType);
     if (p == NULL) return NO_INIT;

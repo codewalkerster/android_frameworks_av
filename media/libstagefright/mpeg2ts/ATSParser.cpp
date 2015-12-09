@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "NU-ATSParser"
+#define LOG_TAG "ATSParser"
 #include <utils/Log.h>
 
 #include "ATSParser.h"

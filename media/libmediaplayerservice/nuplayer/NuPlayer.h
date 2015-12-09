@@ -21,7 +21,6 @@
 #include <media/AudioResamplerPublic.h>
 #include <media/MediaPlayerInterface.h>
 #include <media/stagefright/foundation/AHandler.h>
-#include <NativeWindowWrapper.h>
 
 namespace android {
 
@@ -33,10 +32,8 @@ class IDataSource;
 class MetaData;
 struct NuPlayerDriver;
 
-typedef int32_t (*interruptcallback)(android_thread_id_t thread_id);
-
 struct NuPlayer : public AHandler {
-    NuPlayer(NUPLAYER_STREAMTYPE type = NU_STREAM_NONE);
+    NuPlayer(pid_t pid);
 
     void setUID(uid_t uid);
 
@@ -85,10 +82,6 @@ struct NuPlayer : public AHandler {
     sp<MetaData> getFileMeta();
     float getFrameRate();
 
-    static void thread_interrupt();
-    static void thread_uninterrupt();
-    static int32_t interrupt_callback(android_thread_id_t thread_id);
-
 protected:
     virtual ~NuPlayer();
 
@@ -97,9 +90,6 @@ protected:
 public:
     struct NuPlayerStreamListener;
     struct Source;
-
-    static Mutex mThreadLock;
-    static Vector<android_thread_id_t> mThreadId; // store the thread ids which need to be interrupted.
 
 private:
     struct Decoder;
@@ -152,8 +142,6 @@ private:
     pid_t mPID;
     sp<Source> mSource;
     uint32_t mSourceFlags;
-    sp<NativeWindowWrapper> mNativeWindow;
-    sp<Surface> mNewSurface;
     sp<Surface> mSurface;
     sp<MediaPlayerBase::AudioSink> mAudioSink;
     sp<DecoderBase> mVideoDecoder;
@@ -178,8 +166,6 @@ private:
 
     int32_t mPollDurationGeneration;
     int32_t mTimedTextGeneration;
-
-    NUPLAYER_STREAMTYPE mStreamType;
 
     enum FlushStatus {
         NONE,
@@ -221,7 +207,6 @@ private:
     // still become true, when we pause internally due to buffering.
     bool mPausedByClient;
 
-    android_thread_id_t mSelfThreadId;
     // Pause state as requested by source (internally) due to buffering
     bool mPausedForBuffering;
 
@@ -253,7 +238,6 @@ private:
     void handleFlushComplete(bool audio, bool isDecoder);
     void finishFlushIfPossible();
 
-    void onStart();
     void onStart(int64_t startPositionUs = -1);
     void onResume();
     void onPause();

@@ -69,7 +69,6 @@ struct NuPlayer::Renderer : public AHandler {
     void resume();
 
     void setVideoFrameRate(float fps);
-    void setAudioParameter(sp<AMessage> para);
 
     status_t getCurrentPosition(int64_t *mediaUs);
     int64_t getVideoLateByUs();
@@ -114,7 +113,6 @@ private:
         kWhatGetPlaybackSettings = 'gPbS',
         kWhatGetSyncSettings     = 'gSyS',
         kWhatFlush               = 'flus',
-        kWhatAudioSinkChanged    = 'auSC',
         kWhatPause               = 'paus',
         kWhatResume              = 'resm',
         kWhatOpenAudioSink       = 'opnA',
@@ -134,7 +132,6 @@ private:
     };
 
     static const int64_t kMinPositionUpdateDelayUs;
-    static const int64_t kFrameJitterThresholdUs;
 
     sp<MediaPlayerBase::AudioSink> mAudioSink;
     sp<AMessage> mNotify;
@@ -145,18 +142,6 @@ private:
     uint32_t mNumFramesWritten;
     sp<VideoFrameScheduler> mVideoScheduler;
 
-    int64_t mLastAudioQueueTimeUs;
-    int64_t mLastVideoQueueTimeUs;
-    int64_t mAudioFrameDurationUs;
-    int64_t mVideoFrameDurationUs;
-    int64_t mAudioFrameIntervalUs;
-    int64_t mVideoFrameIntervalUs;
-    uint32_t mLastAudioFrameSize;
-    int32_t mChannel;
-    int32_t mSampleRate;
-
-    bool mDebug;
-    bool mRenderStarted;
     bool mDrainAudioQueuePending;
     bool mDrainVideoQueuePending;
     int32_t mAudioQueueGeneration;
@@ -241,8 +226,6 @@ private:
 
     void prepareForMediaRenderingStart_l();
     void notifyIfMediaRenderingStarted_l();
-
-    void checkFrameDiscontinuity(sp<ABuffer> &buffer, int32_t isAudio);
 
     void onQueueBuffer(const sp<AMessage> &msg);
     void onQueueEOS(const sp<AMessage> &msg);

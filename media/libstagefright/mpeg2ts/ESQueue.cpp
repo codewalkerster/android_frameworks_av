@@ -15,7 +15,7 @@
  */
 
 //#define LOG_NDEBUG 0
-#define LOG_TAG "NU-ESQueue"
+#define LOG_TAG "ESQueue"
 #include <media/stagefright/foundation/ADebug.h>
 
 #include "ESQueue.h"
