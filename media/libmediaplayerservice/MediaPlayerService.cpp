@@ -329,9 +329,16 @@ sp<IMediaMetadataRetriever> MediaPlayerService::createMetadataRetriever()
 sp<IMediaPlayer> MediaPlayerService::create(const sp<IMediaPlayerClient>& client,
         int audioSessionId)
 {
+    int i = 0;
+    sp<Client> clt;
     if (client == NULL && mClients.size() > 0) {
         ALOGV("[create]mClients.size():%d\n", mClients.size());
-        sp<Client> clt = mClients[mClients.size() - 1].promote();
+        for (i = mClients.size() - 1; i >= 0; i-- ) {
+            clt = mClients[i].promote();
+            if (clt->getPlayer() != NULL) {
+                break;
+            }
+        }
         return clt;
     }
 
