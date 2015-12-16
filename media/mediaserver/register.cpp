@@ -51,18 +51,6 @@ static bool  LoadAndInitAmlogicMediaFactory(void)
         return false;
     }
 
-    init = (init_fun)gLibAmlMedia->lookup("_ZN7android35AmlogicMetadataRetrieverFactoryInitEv");
-
-    if (init == NULL) {
-       ALOGE("AmlogicMetadataRetrieverFactoryInit failed:%s", gLibAmlMedia->lastError());
-       return false;
-    }
-    err = init();
-    if (err != 0) {
-        ALOGE("AmlogicMetadataRetrieverFactoryInit failed:%s", gLibAmlMedia->lastError());
-        return false;
-    }
-
    return true;
 }
 
@@ -93,12 +81,41 @@ static bool LoadAndInitAmlogicScreenMediaSource()
     }
     return true;
 }
+
+static sp<SharedLibrary> gLibAmlThumbNail;
+static bool  LoadAndInitAmlogicMetadataRetrieverFactory(void)
+{
+    int err;
+    String8 name("libamlogic_metadata_retriever.so");
+    gLibAmlThumbNail = new SharedLibrary(name);
+    if (!*gLibAmlThumbNail) {
+       ALOGE("load libamlogic_metadata_retriever.so for AmlogicMetadataRetriever failed:%s", gLibAmlThumbNail->lastError());
+       gLibAmlThumbNail.clear();
+       return false;
+    }
+    typedef int (*init_fun)(void);
+
+    init_fun init = (init_fun)gLibAmlThumbNail->lookup("_ZN7android35AmlogicMetadataRetrieverFactoryInitEv");
+
+    if (init == NULL) {
+       ALOGE("AmlogicMetadataRetrieverFactoryInit failed:%s", gLibAmlThumbNail->lastError());
+       return false;
+    }
+    err = init();
+    if (err != 0) {
+        ALOGE("AmlogicMetadataRetrieverFactoryInit failed:%s", gLibAmlThumbNail->lastError());
+        return false;
+    }
+
+   return true;
+}
 }
 
 void registerExtensions()
 {
     android::LoadAndInitAmlogicMediaFactory();
     android::LoadAndInitAmlogicScreenMediaSource();
+    android::LoadAndInitAmlogicMetadataRetrieverFactory();
 }
 
 
