@@ -1352,7 +1352,9 @@ status_t AudioTrack::createTrack_l()
         }
     }
     // Make sure that application is notified with sufficient margin before underrun
-    if (mSharedBuffer == 0 && audio_is_linear_pcm(mFormat)) {
+    //here FIX raw bistream mNotificationFramesAct == 0 issue,which cause app has
+    //no chance to fill the data
+    if (mSharedBuffer == 0 /*&& audio_is_linear_pcm(mFormat)*/) {
         // Theoretically double-buffering is not required for fast tracks,
         // due to tighter scheduling.  But in practice, to accommodate kernels with
         // scheduling jitter, and apps with computation jitter, we use double-buffering
