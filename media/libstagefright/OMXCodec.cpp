@@ -828,7 +828,7 @@ status_t OMXCodec::configureCodec(const sp<MetaData> &meta) {
          CHECK(meta->findInt32(kKeyExtraDataSize,&extradata_size));
 
          setApeFormat(sample_rate, channels,bitwidth,(char*)extradata,extradata_size);
-    }else if(!strcasecmp(MEDIA_MIMETYPE_AUDIO_FFMPEG, mMIME)){
+    } else if (!strcasecmp(MEDIA_MIMETYPE_AUDIO_FFMPEG, mMIME)) {
          int32_t samplerate, channels, extradata_size, bitrate, blockalign, codec_id;
          const void *extradata;
          uint32_t type;
@@ -839,23 +839,58 @@ status_t OMXCodec::configureCodec(const sp<MetaData> &meta) {
          CHECK(meta->findInt32(kKeyBlockAlign, &blockalign));
          CHECK(meta->findInt32(kKeyCodecID, &codec_id));
          CHECK(meta->findInt32(kKeyExtraDataSize, &extradata_size));
-         if(extradata_size > 0)
+         if (extradata_size > 0)
              CHECK(meta->findData(kKeyExtraData, &type, &extradata, &size));
          setFFmpegFormat(channels, bitrate, samplerate,
                        blockalign, codec_id, extradata_size, (char *)extradata);
-    }else if(!strcasecmp(MEDIA_MIMETYPE_VIDEO_WMV2, mMIME)){
-         int32_t extradata_size, width, height;
-         const void *extradata;
-		 uint32_t type;
-		 size_t size;
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_WMV2, mMIME)) {
+        int32_t extradata_size, width, height;
+        const void *extradata;
+        uint32_t type;
+        size_t size;
 
-         CHECK(meta->findData(kKeyExtraData, &type, &extradata, &size));
-         CHECK(meta->findInt32(kKeyExtraDataSize,&extradata_size));
-		 CHECK(meta->findInt32(kKeyWidth,&width));
-		 CHECK(meta->findInt32(kKeyHeight,&height));
+        CHECK(meta->findData(kKeyExtraData, &type, &extradata, &size));
+        CHECK(meta->findInt32(kKeyExtraDataSize,&extradata_size));
+        CHECK(meta->findInt32(kKeyWidth,&width));
+        CHECK(meta->findInt32(kKeyHeight,&height));
 
-         ALOGE("[%s %d]", __FUNCTION__, __LINE__);
-		 setVideoInfoFormat((char *)extradata, extradata_size, width, height);
+        setVideoInfoFormat((char *)extradata, extradata_size, width, height);
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_WMV1, mMIME)) {
+        int32_t extradata_size, width, height;
+        const void *extradata;
+        uint32_t type;
+        size_t size;
+
+        meta->findData(kKeyExtraData, &type, &extradata, &size);
+        meta->findInt32(kKeyExtraDataSize,&extradata_size);
+        meta->findInt32(kKeyWidth,&width);
+        meta->findInt32(kKeyHeight,&height);
+
+        setVideoInfoFormat((char *)extradata, extradata_size, width, height);
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_RM10, mMIME)) {
+        int32_t extradata_size, width, height;
+        const void *extradata;
+        uint32_t type;
+        size_t size;
+
+        meta->findData(kKeyExtraData, &type, &extradata, &size);
+        meta->findInt32(kKeyExtraDataSize,&extradata_size);
+        meta->findInt32(kKeyWidth,&width);
+        meta->findInt32(kKeyHeight,&height);
+
+        setVideoInfoFormat((char *)extradata, extradata_size, width, height);
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_RM20, mMIME)) {
+        int32_t extradata_size, width, height;
+        const void *extradata;
+        uint32_t type;
+        size_t size;
+
+        meta->findData(kKeyExtraData, &type, &extradata, &size);
+        meta->findInt32(kKeyExtraDataSize,&extradata_size);
+        meta->findInt32(kKeyWidth,&width);
+        meta->findInt32(kKeyHeight,&height);
+
+        setVideoInfoFormat((char *)extradata, extradata_size, width, height);
     }
 
     if (!strncasecmp(mMIME, "video/", 6)) {
@@ -1111,9 +1146,15 @@ void OMXCodec::setVideoInputFormat(
         compressionFormat = OMX_VIDEO_CodingMPEG4;
     } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_H263, mime)) {
         compressionFormat = OMX_VIDEO_CodingH263;
-    }else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_RM, mime)) {
-        compressionFormat = OMX_VIDEO_CodingRV;
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_RM10, mime)) {
+        compressionFormat = OMX_VIDEO_CodingRV10;
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_RM20, mime)) {
+        compressionFormat = OMX_VIDEO_CodingRV20;
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_RM40, mime)) {
+        compressionFormat = OMX_VIDEO_CodingRV40;
     } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_WMV2, mime)) {
+        compressionFormat = OMX_VIDEO_CodingWMV;
+    }else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_WMV1, mime)) {
         compressionFormat = OMX_VIDEO_CodingWMV;
     } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_MPEG2, mime)) {
         compressionFormat = OMX_VIDEO_CodingMPEG2;
@@ -1540,16 +1581,20 @@ status_t OMXCodec::setVideoOutputFormat(
                !strcasecmp(MEDIA_MIMETYPE_VIDEO_VP6A, mime) ||
                !strcasecmp(MEDIA_MIMETYPE_VIDEO_VP6F, mime)) {
         compressionFormat = OMX_VIDEO_CodingVPX;
-	} else if(!strcasecmp(MEDIA_MIMETYPE_VIDEO_HEVC, mime)) {
+    } else if(!strcasecmp(MEDIA_MIMETYPE_VIDEO_HEVC, mime)) {
         compressionFormat = OMX_VIDEO_CodingHEVC;
-    }
-    else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_RM, mime)) {
-        compressionFormat = OMX_VIDEO_CodingRV;
-    }
-    else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_WMV2, mime)) {
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_RM10, mime)) {
+        compressionFormat = OMX_VIDEO_CodingRV10;
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_RM20, mime)) {
+        compressionFormat = OMX_VIDEO_CodingRV20;
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_RM40, mime)) {
+        compressionFormat = OMX_VIDEO_CodingRV40;
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_WMV1, mime)) {
+        compressionFormat = OMX_VIDEO_CodingWMV;
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_WMV2, mime)) {
         compressionFormat = OMX_VIDEO_CodingWMV;
 #endif
-    }else {
+    } else {
         ALOGE("Not a supported video mime type: %s", mime);
         CHECK(!"Should not be here. Not a supported video mime type.");
     }

@@ -1635,10 +1635,6 @@ status_t ACodec::setComponentRole(
             "audio_decoder.ac3", "audio_encoder.ac3" },
         { MEDIA_MIMETYPE_AUDIO_EAC3,
             "audio_decoder.eac3", "audio_encoder.eac3" },
-
-        { MEDIA_MIMETYPE_VIDEO_RM,
-            "video_decoder.rm", "video_encoder.rm"},
-
 #ifdef USE_AM_SOFT_DEMUXER_CODEC
         { MEDIA_MIMETYPE_VIDEO_VP6,
             "video_decoder.amvp6", "video_encoder.amvp6" },
@@ -1648,8 +1644,14 @@ status_t ACodec::setComponentRole(
             "video_decoder.amvp6f", "video_encoder.amvp6f" },
         { MEDIA_MIMETYPE_VIDEO_HEVC,
             "video_decoder.amh265", "video_encoder.amh265" },
-        { MEDIA_MIMETYPE_VIDEO_RM,
-            "video_decoder.rm", "video_encoder.rm"}, 
+        { MEDIA_MIMETYPE_VIDEO_RM10,
+            "video_decoder.rm10", "video_encoder.rm10"},
+        { MEDIA_MIMETYPE_VIDEO_RM20,
+            "video_decoder.rm20", "video_encoder.rm20"},
+        { MEDIA_MIMETYPE_VIDEO_RM40,
+            "video_decoder.rm40", "video_encoder.rm40"},
+        { MEDIA_MIMETYPE_VIDEO_WMV1,
+            "video_decoder.wmv1", "video_encoder.wmv1"},
 #endif
     };
 
@@ -2940,11 +2942,14 @@ static const struct VideoCodingMapEntry {
     { MEDIA_MIMETYPE_VIDEO_VP8, OMX_VIDEO_CodingVP8 },
     { MEDIA_MIMETYPE_VIDEO_VP9, OMX_VIDEO_CodingVP9 },
     { MEDIA_MIMETYPE_VIDEO_HEVC, OMX_VIDEO_CodingHEVC },
-    { MEDIA_MIMETYPE_VIDEO_RM, OMX_VIDEO_CodingRV},
 #ifdef USE_AM_SOFT_DEMUXER_CODEC
     { MEDIA_MIMETYPE_VIDEO_VP6, OMX_VIDEO_CodingVPX },
     { MEDIA_MIMETYPE_VIDEO_VP6F, OMX_VIDEO_CodingVPX },
     { MEDIA_MIMETYPE_VIDEO_VP6A, OMX_VIDEO_CodingVPX },
+    { MEDIA_MIMETYPE_VIDEO_RM10, OMX_VIDEO_CodingRV10},
+    { MEDIA_MIMETYPE_VIDEO_RM20, OMX_VIDEO_CodingRV20},
+    { MEDIA_MIMETYPE_VIDEO_RM40, OMX_VIDEO_CodingRV40},
+    { MEDIA_MIMETYPE_VIDEO_WMV1, OMX_VIDEO_CodingWMV},
 #endif
 
 };
