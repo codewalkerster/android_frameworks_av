@@ -2026,6 +2026,14 @@ status_t CameraService::BasicClient::dump(int, const Vector<String16>&) {
     return OK;
 }
 
+status_t CameraService::BasicClient::dump(int, const Vector<String16>&) {
+    // No dumping of clients directly over Binder,
+    // must go through CameraService::dump
+    android_errorWriteWithInfoLog(SN_EVENT_LOG_ID, "26265403",
+            IPCThreadState::self()->getCallingUid(), NULL, 0);
+    return OK;
+}
+
 String16 CameraService::BasicClient::getPackageName() const {
     return mClientPackageName;
 }
