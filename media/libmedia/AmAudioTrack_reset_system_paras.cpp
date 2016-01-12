@@ -47,18 +47,14 @@ static int amsysfs_set_sysfs_int(const char *path, int val)
     }
     return -1;
 }
-//TODO:the following to copy defined according to
-//         </system/core/include/system/audio.h>
-//should add to  </system/core/include/system/audio.h> some day
-#define AUDIO_FORMAT_DTS_HD      0x0D000000
-#define AUDIO_FORMAT_DTS_MASTER  0x0E000000
 #define DEFAULT_SYS_SAMPLERATE   48000
-
+#define AUDIO_FORMAT_DTS_MASTER          0x0E000000UL
 audio_format_t AudioTrack_reset_system_samplerate(int samplerate,audio_format_t format,
                                                                     audio_output_flags_t flags,unsigned int *pSampleRateAudiotrak)
 {
     unsigned digital_raw = 0,need_reset_sysfs=0;
     audio_io_handle_t handle = -1;
+    status_t ret;
     if (!(flags & AUDIO_OUTPUT_FLAG_DIRECT))
     {
         if (format ==( audio_format_t)AUDIO_FORMAT_DTS_HD || format == ( audio_format_t)AUDIO_FORMAT_DTS_MASTER)
@@ -153,12 +149,12 @@ audio_format_t AudioTrack_reset_system_samplerate(int samplerate,audio_format_t 
              if (samplerate == 192000 || samplerate == 384000 || samplerate == 768000 ||
                  samplerate == 176400 || samplerate == 352800 || samplerate == 705600)
              {
-                samplerate >>= 2;
+                //samplerate >>= 2;
                 need_reset_sysfs = samplerate;
                 amsysfs_set_sysfs_int("/sys/class/audiodsp/digital_codec",8);
              }
-             ALOGI("[%s %d]Change format [AUDIO_FORMAT_DTS_MASTER] to [AUDIO_FORMAT_DTS]\n",__FUNCTION__,__LINE__);
-             format = AUDIO_FORMAT_DTS;
+             //ALOGI("[%s %d]Change format [AUDIO_FORMAT_DTS_MASTER] to [AUDIO_FORMAT_DTS]\n",__FUNCTION__,__LINE__);
+             //format = AUDIO_FORMAT_DTS;
          }
     }else if(!digital_raw && format == AUDIO_FORMAT_DTS && flags == AUDIO_OUTPUT_FLAG_DIRECT)
     {    //DTSHD 88.2k/96k HD-PCM directoutput ,now just DTS_M6 decoder can support it:
@@ -182,11 +178,16 @@ audio_format_t AudioTrack_reset_system_samplerate(int samplerate,audio_format_t 
             char str[64];
             memset(str,0,sizeof(str));
             sprintf(str,"sampling_rate=%d",need_reset_sysfs);
-            AudioSystem::setParameters(handle, String8(str));
+            ret = AudioSystem::setParameters(handle, String8(str));
+            if (ret == NO_ERROR) {
+                ALOGI("[%s %d]handle/%d reset AudioSysFS/%d for rawoutput Success! [format/0x%x]\n",
+                    __FUNCTION__,__LINE__,handle,need_reset_sysfs,format);
+            }
+            else {
+                ALOGE("AudioSystem::setParameters failed\n");
+            }
             AudioSystem::releaseOutput(handle, AUDIO_STREAM_DEFAULT, AUDIO_SESSION_OUTPUT_STAGE);
-            ALOGI("[%s %d]handle/%d reset AudioSysFS/%d for rawoutput Success! [format/0x%x]\n",
-                __FUNCTION__,__LINE__,handle,need_reset_sysfs,format);
-        }else{
+        } else {
             ALOGI("[%s %d]WARNIN:handle/%d reset AudioSysFS/%d for rawoutput failed! [format/0x%x]\n",
                 __FUNCTION__,__LINE__,handle,need_reset_sysfs,format);
         }
@@ -197,8 +198,11 @@ audio_format_t AudioTrack_reset_system_samplerate(int samplerate,audio_format_t 
 void AudioTrack_restore_system_samplerate(audio_format_t format,audio_output_flags_t flags ,unsigned int SampleRateAudiotrake)
 {
     audio_io_handle_t handle = -1;
+    if (audio_is_raw_data(format) || (flags & AUDIO_OUTPUT_FLAG_DIRECT)) {
+        amsysfs_set_sysfs_int("/sys/class/audiodsp/digital_codec",0);
+    }
     if (!(flags & AUDIO_OUTPUT_FLAG_DIRECT) ||
-        !(format==AUDIO_FORMAT_DTS || format == AUDIO_FORMAT_AC3 || format == AUDIO_FORMAT_E_AC3 || format == AUDIO_FORMAT_TRUEHD) ||
+        !audio_is_raw_data(format) ||
         (SampleRateAudiotrake == DEFAULT_SYS_SAMPLERATE) ){
         return;
     }
@@ -219,7 +223,6 @@ void AudioTrack_restore_system_samplerate(audio_format_t format,audio_output_fla
     }else{
         ALOGI("[%s %d]WARNIN: handle/%d resetore AudioSysFs failed!\n",__FUNCTION__,__LINE__,handle);
     }
-    amsysfs_set_sysfs_int("/sys/class/audiodsp/digital_codec",0);
 }
 
 }
