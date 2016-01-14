@@ -329,16 +329,29 @@ sp<IMediaMetadataRetriever> MediaPlayerService::createMetadataRetriever()
 sp<IMediaPlayer> MediaPlayerService::create(const sp<IMediaPlayerClient>& client,
         int audioSessionId)
 {
-    int i = 0;
-    sp<Client> clt;
-    if (client == NULL && mClients.size() > 0) {
+    if (client == NULL) {
+        sp<Client> clt = NULL;
+
         ALOGV("[create]mClients.size():%d\n", mClients.size());
-        for (i = mClients.size() - 1; i >= 0; i-- ) {
-            clt = mClients[i].promote();
-            if (clt->getPlayer() != NULL) {
-                break;
+        int32_t connid = 0;
+        for (size_t i = 0; i < mClients.size(); i++) {
+            sp<Client> clttmp = mClients[i].promote();
+            if (clttmp->getPlayer() != NULL) {
+                //ALOGV("[create] mConnId(%d), mPid(%d), mUID(%d) \n", clttmp->mConnId, clttmp->mPid, clttmp->mUID);
+                if (clttmp->mConnId > connid) {
+                    connid = clttmp->mConnId;
+                    clt = clttmp;
+                }
             }
         }
+
+        if (clt != NULL) {
+            ALOGV("[create] return clt mConnId(%d), mPid(%d), mUID(%d) \n", clt->mConnId, clt->mPid, clt->mUID);
+        }
+        else {
+            ALOGV("[create] return clt = NULL \n");
+        }
+
         return clt;
     }
 
