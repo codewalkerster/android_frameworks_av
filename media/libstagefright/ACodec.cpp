@@ -1634,7 +1634,7 @@ status_t ACodec::setComponentRole(
         { MEDIA_MIMETYPE_AUDIO_AC3,
             "audio_decoder.ac3", "audio_encoder.ac3" },
         { MEDIA_MIMETYPE_AUDIO_EAC3,
-            "audio_decoder.eac3", "audio_encoder.eac3" },
+            "audio_decoder.ec3", "audio_encoder.ec3" },
 #ifdef USE_AM_SOFT_DEMUXER_CODEC
         { MEDIA_MIMETYPE_VIDEO_VP6,
             "video_decoder.amvp6", "video_encoder.amvp6" },
@@ -4427,7 +4427,7 @@ status_t ACodec::getPortFormat(OMX_U32 portIndex, sp<AMessage> &notify) {
                     notify->setInt32("sample-rate", params.nSampleRate);
                     break;
                 }
-
+                case OMX_AUDIO_CodingDDP:
                 case OMX_AUDIO_CodingAndroidEAC3:
                 {
                     OMX_AUDIO_PARAM_ANDROID_EAC3TYPE params;
