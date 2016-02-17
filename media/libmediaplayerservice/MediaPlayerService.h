@@ -214,6 +214,7 @@ public:
     virtual sp<IMediaMetadataRetriever> createMetadataRetriever();
 
     virtual sp<IMediaPlayer>    create(const sp<IMediaPlayerClient>& client, int audioSessionId);
+    virtual void setMediaPlayerClient(const sp<IMediaPlayerClient>& client);
 
     virtual sp<IMediaCodecList> getCodecList() const;
     virtual sp<IOMX>            getOMX();
@@ -441,6 +442,7 @@ private:
                 int32_t                     mNextConnId;
                 sp<IOMX>                    mOMX;
                 sp<ICrypto>                 mCrypto;
+                static sp<IMediaPlayerClient> mNotifyClient;
 };
 
 // ----------------------------------------------------------------------------

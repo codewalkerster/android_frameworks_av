@@ -49,6 +49,7 @@ enum {
     PULL_BATTERY_DATA,
     LISTEN_FOR_REMOTE_DISPLAY,
     GET_CODEC_LIST,
+    SET_MEDIA_PLAYER_CLIENT,
 };
 
 class BpMediaPlayerService: public BpInterface<IMediaPlayerService>
@@ -147,6 +148,13 @@ public:
         remote()->transact(GET_CODEC_LIST, data, &reply);
         return interface_cast<IMediaCodecList>(reply.readStrongBinder());
     }
+
+    virtual void setMediaPlayerClient(const sp<IMediaPlayerClient>& client) {
+        Parcel data, reply;
+        data.writeInterfaceToken(IMediaPlayerService::getInterfaceDescriptor());
+        data.writeStrongBinder(IInterface::asBinder(client));
+        remote()->transact(SET_MEDIA_PLAYER_CLIENT, data, &reply);
+    }
 };
 
 IMPLEMENT_META_INTERFACE(MediaPlayerService, "android.media.IMediaPlayerService");
@@ -231,6 +239,13 @@ status_t BnMediaPlayerService::onTransact(
             reply->writeStrongBinder(IInterface::asBinder(mcl));
             return NO_ERROR;
         } break;
+        case SET_MEDIA_PLAYER_CLIENT: {
+            CHECK_INTERFACE(IMediaPlayerService, data, reply);
+            sp<IMediaPlayerClient> client =
+                interface_cast<IMediaPlayerClient>(data.readStrongBinder());
+            setMediaPlayerClient(client);
+            return NO_ERROR;
+        }break;
         default:
             return BBinder::onTransact(code, data, reply, flags);
     }

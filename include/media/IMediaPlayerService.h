@@ -91,6 +91,7 @@ public:
 
     virtual void addBatteryData(uint32_t params) = 0;
     virtual status_t pullBatteryData(Parcel* reply) = 0;
+    virtual void setMediaPlayerClient(const sp<IMediaPlayerClient>& client) = 0;
 };
 
 // ----------------------------------------------------------------------------

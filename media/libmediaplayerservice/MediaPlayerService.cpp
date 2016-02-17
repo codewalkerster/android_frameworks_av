@@ -373,6 +373,11 @@ sp<IMediaPlayer> MediaPlayerService::create(const sp<IMediaPlayerClient>& client
     return c;
 }
 
+sp<IMediaPlayerClient> android::MediaPlayerService::mNotifyClient;
+void MediaPlayerService::setMediaPlayerClient(const sp<IMediaPlayerClient>& client) {
+    mNotifyClient = client;
+}
+
 sp<IMediaCodecList> MediaPlayerService::getCodecList() const {
     return MediaCodecList::getLocalInstance();
 }
@@ -661,6 +666,8 @@ void MediaPlayerService::Client::disconnect()
 #endif
         p->reset();
     }
+
+    mNotifyClient = NULL;
 
     disconnectNativeWindow();
 
@@ -1352,6 +1359,11 @@ void MediaPlayerService::Client::notify(
     if (c != NULL) {
         ALOGV("[%d] notify (%p, %d, %d, %d)", client->mConnId, cookie, msg, ext1, ext2);
         c->notify(msg, ext1, ext2, obj);
+    }
+
+    if (mNotifyClient != NULL) {
+        ALOGV("mNotifyClient->notify (%d, %d, %d)", msg, ext1, ext2);
+        mNotifyClient->notify(msg, ext1, ext2, obj);
     }
 }
 
