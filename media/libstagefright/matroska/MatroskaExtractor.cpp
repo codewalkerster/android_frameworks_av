@@ -32,6 +32,7 @@
 #include <media/stagefright/Utils.h>
 #include <utils/String8.h>
 #include <inttypes.h>
+#include <media/stagefright/AmMediaDefsExt.h>
 
 #define MKTAG(a,b,c,d) ((d) | ((c) << 8) | ((b) << 16) | ((a) << 24))
 

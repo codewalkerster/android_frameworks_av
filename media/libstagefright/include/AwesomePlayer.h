@@ -29,7 +29,6 @@
 #include <media/stagefright/MetaData.h>
 #include <utils/threads.h>
 #include <drm/DrmManagerClient.h>
-#include <player.h>
 
 namespace android {
 
@@ -110,8 +109,6 @@ struct AwesomePlayer {
     void postAudioTearDown();
     status_t dump(int fd, const Vector<String16> &args) const;
 
-    status_t setHEVCFlag(bool flag);
-    bool getHEVCFlag();
 
 private:
     friend struct AwesomeEvent;
@@ -182,7 +179,6 @@ private:
     int32_t mMediaRenderingStartGeneration;
     int32_t mStartGeneration;
 
-    bool mHEVC;
     bool m_openHEVC;
     bool m_vpx;
 
@@ -366,10 +362,6 @@ private:
     status_t setVideoScalingMode(int32_t mode);
     status_t setVideoScalingMode_l(int32_t mode);
     status_t getTrackInfo(Parcel* reply) const;
-    status_t updateMediaInfo(void);
-    status_t getMediaInfo(Parcel* reply);
-    aformat_t audioTypeConvert(enum CodecID id, pfile_type File_type);
-
     status_t selectAudioTrack_l(const sp<MediaSource>& source, size_t trackIndex);
 
     // when select is true, the given track is selected.
@@ -382,7 +374,6 @@ private:
     AwesomePlayer &operator=(const AwesomePlayer &);
 
 public:
-    media_info_t        mStreamInfo;
     ssize_t mActiveVideoTrackIndex;
 };
 

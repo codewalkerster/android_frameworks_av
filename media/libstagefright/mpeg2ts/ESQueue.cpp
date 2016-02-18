@@ -30,18 +30,16 @@
 #include <media/stagefright/Utils.h>
 
 #include "include/avc_utils.h"
-#include "include/HEVC_utils.h"
 
-#include <netinet/in.h>
 #include <inttypes.h>
+#include <netinet/in.h>
 
 namespace android {
 
 ElementaryStreamQueue::ElementaryStreamQueue(Mode mode, uint32_t flags)
     : mMode(mode),
       mFlags(flags),
-      mEOSReached(false),
-      mHevcFindKey(false) {
+      mEOSReached(false) {
 }
 
 sp<MetaData> ElementaryStreamQueue::getFormat() {
@@ -171,10 +169,9 @@ static unsigned parseAC3SyncFrame(
     return payloadSize;
 }
 
-/*
 static bool IsSeeminglyValidAC3Header(const uint8_t *ptr, size_t size) {
     return parseAC3SyncFrame(ptr, size, NULL) > 0;
-}*/
+}
 
 static bool IsSeeminglyValidADTSHeader(
         const uint8_t *ptr, size_t size, size_t *frameLength) {
@@ -248,15 +245,6 @@ static bool IsSeeminglyValidMPEGAudioHeader(const uint8_t *ptr, size_t size) {
     return true;
 }
 
-#if defined(DOLBY_UDC) && defined(DOLBY_UDC_STREAMING_HLS)
-static bool IsSeeminglyValidDDPAudioHeader(const uint8_t *ptr, size_t size) {
-    if (size < 2) return false;
-    if (ptr[0] == 0x0b && ptr[1] == 0x77) return true;
-    if (ptr[0] == 0x77 && ptr[1] == 0x0b) return true;
-    return false;
-}
-#endif // DOLBY_UDC && DOLBY_UDC_STREAMING_HLS
-
 status_t ElementaryStreamQueue::appendData(
         const void *data, size_t size, int64_t timeUs) {
 
@@ -267,7 +255,6 @@ status_t ElementaryStreamQueue::appendData(
     if (mBuffer == NULL || mBuffer->size() == 0) {
         switch (mMode) {
             case H264:
-            case H265:
             case MPEG_VIDEO:
             {
 #if 0
@@ -375,6 +362,33 @@ status_t ElementaryStreamQueue::appendData(
                 break;
             }
 
+            case AC3:
+            {
+                uint8_t *ptr = (uint8_t *)data;
+
+                ssize_t startOffset = -1;
+                for (size_t i = 0; i < size; ++i) {
+                    if (IsSeeminglyValidAC3Header(&ptr[i], size - i)) {
+                        startOffset = i;
+                        break;
+                    }
+                }
+
+                if (startOffset < 0) {
+                    return ERROR_MALFORMED;
+                }
+
+                if (startOffset > 0) {
+                    ALOGI("found something resembling an AC3 syncword at "
+                          "offset %zd",
+                          startOffset);
+                }
+
+                data = &ptr[startOffset];
+                size -= startOffset;
+                break;
+            }
+
             case MPEG_AUDIO:
             {
                 uint8_t *ptr = (uint8_t *)data;
@@ -402,36 +416,6 @@ status_t ElementaryStreamQueue::appendData(
                 break;
             }
 
-#if defined(DOLBY_UDC) && defined(DOLBY_UDC_STREAMING_HLS)
-            case DDP_AC3_AUDIO:
-            case DDP_EC3_AUDIO:
-            {
-                uint8_t *ptr = (uint8_t *)data;
-
-                ssize_t startOffset = -1;
-                for (size_t i = 0; i < size; ++i) {
-                    if (IsSeeminglyValidDDPAudioHeader(&ptr[i], size - i)) {
-                        startOffset = i;
-                        break;
-                    }
-                }
-
-                if (startOffset < 0) {
-                    return ERROR_MALFORMED;
-                }
-
-                if (startOffset > 0) {
-                    ALOGI("found something resembling a DDP audio "
-                         "syncword at offset %ld",
-                         startOffset);
-                }
-
-                data = &ptr[startOffset];
-                size -= startOffset;
-                break;
-            }
-
-#endif // DOLBY_UDC && DOLBY_UDC_STREAMING_HLS
             case PCM_AUDIO:
             case METADATA:
             {
@@ -508,21 +492,16 @@ sp<ABuffer> ElementaryStreamQueue::dequeueAccessUnit() {
     switch (mMode) {
         case H264:
             return dequeueAccessUnitH264();
-        case H265:
-            return dequeueAccessUnitH265();
         case AAC:
             return dequeueAccessUnitAAC();
+        case AC3:
+            return dequeueAccessUnitAC3();
         case MPEG_VIDEO:
             return dequeueAccessUnitMPEGVideo();
         case MPEG4_VIDEO:
             return dequeueAccessUnitMPEG4Video();
         case PCM_AUDIO:
             return dequeueAccessUnitPCMAudio();
-#if defined(DOLBY_UDC) && defined(DOLBY_UDC_STREAMING_HLS)
-        case DDP_AC3_AUDIO:
-        case DDP_EC3_AUDIO:
-            return dequeueAccessUnitDDP();
-#endif // DOLBY_UDC && DOLBY_UDC_STREAMING_HLS
         case METADATA:
             return dequeueAccessUnitMetadata();
         default:
@@ -771,99 +750,6 @@ sp<ABuffer> ElementaryStreamQueue::dequeueAccessUnitAAC() {
     return accessUnit;
 }
 
-#if defined(DOLBY_UDC) && defined(DOLBY_UDC_STREAMING_HLS)
-static int
-calc_dd_frame_size(int code)
-{
-    /* tables lifted from TrueHDDecoder.cxx in DMG's decoder framework */
-    static const int FrameSize32K[] = { 96, 96, 120, 120, 144, 144, 168, 168, 192, 192, 240, 240, 288, 288, 336, 336, 384, 384, 480, 480, 576, 576, 672, 672, 768, 768, 960, 960, 1152, 1152, 1344, 1344, 1536, 1536, 1728, 1728, 1920, 1920 };
-    static const int FrameSize44K[] = { 69, 70, 87, 88, 104, 105, 121, 122, 139, 140, 174, 175, 208, 209, 243, 244, 278, 279, 348, 349, 417, 418, 487, 488, 557, 558, 696, 697, 835, 836, 975, 976, 114, 1115, 1253, 1254, 1393, 1394 };
-    static const int FrameSize48K[] = { 64, 64, 80, 80, 96, 96, 112, 112, 128, 128, 160, 160, 192, 192, 224, 224, 256, 256, 320, 320, 384, 384, 448, 448, 512, 512, 640, 640, 768, 768, 896, 896, 1024, 1024, 1152, 1152, 1280, 1280 };
-
-    int fscod = (code >> 6) & 0x3;
-    int frmsizcod = code & 0x3f;
-
-    if (fscod == 0) return 2 * FrameSize48K[frmsizcod];
-    if (fscod == 1) return 2 * FrameSize44K[frmsizcod];
-    if (fscod == 2) return 2 * FrameSize32K[frmsizcod];
-
-    return 0;
-}
-
-sp<ABuffer> ElementaryStreamQueue::dequeueAccessUnitDDP() {
-    unsigned int size;
-    unsigned char* ptr;
-    unsigned int i;
-    int bsid;
-    size_t frame_size = 0;
-    size_t auSize = 0;
-
-    size = mBuffer->size();
-    ptr = mBuffer->data();
-
-    /* parse the header */
-    if (size <= 6)
-    {
-        return NULL;
-    }
-
-    if (mFormat == NULL)
-    {
-        sp<MetaData> meta = new MetaData;
-        //TODO: Shoud this be EC3 or AC3 or if statement?
-        meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_AUDIO_EC3);
-
-        // Zero values entered to prevent crash
-        int32_t sampleRate = 0;
-        int32_t numChannels = 0;
-        meta->setInt32(kKeySampleRate, sampleRate);
-        meta->setInt32(kKeyChannelCount, numChannels);
-
-        mFormat = meta;
-    }
-
-    bsid = (ptr[5] >> 3) & 0x1f;
-    if (bsid > 10 && bsid <= 16)
-    {
-        frame_size = 2 * ((((ptr[2] << 8) | ptr[3]) & 0x7ff) + 1);
-    }
-    else
-    {
-        frame_size = calc_dd_frame_size(ptr[4]);
-    }
-
-    if (size < frame_size) {
-        ALOGW("Buffer size insufficient for frame size");
-        return NULL;
-    }
-
-    auSize += frame_size;
-
-    // Make Timestamp
-    int64_t timeUs = -1;
-    if (!mRangeInfos.empty())
-        timeUs = fetchTimestamp(frame_size);
-    else
-        ALOGW("Timestamp not created because mRangeInfos was empty");
-
-    // Now create an access unit
-    sp<ABuffer> accessUnit = new ABuffer(auSize);
-    // Put data into buffer
-    memcpy(accessUnit->data(), mBuffer->data(), frame_size);
-
-    memmove(mBuffer->data(), mBuffer->data() + frame_size, mBuffer->size() - frame_size);
-    mBuffer->setRange(0, mBuffer->size() - frame_size);
-
-    accessUnit->meta()->setInt64("timeUs", timeUs);
-    if (timeUs >= 0) {
-        accessUnit->meta()->setInt64("timeUs", timeUs);
-    } else {
-        ALOGW("no time for DDP access unit");
-    }
-
-    return accessUnit;
-}
-#endif // DOLBY_UDC && DOLBY_UDC_STREAMING_HLS
 int64_t ElementaryStreamQueue::fetchTimestamp(size_t size) {
     int64_t timeUs = -1;
     bool first = true;
@@ -897,71 +783,6 @@ int64_t ElementaryStreamQueue::fetchTimestamp(size_t size) {
     }
 
     return timeUs;
-}
-
-sp<ABuffer> ElementaryStreamQueue::dequeueAccessUnitH265() {
-
-    if (mFormat == NULL) {
-        //size_t stopOffset;
-        sp<ABuffer> spsBuffer;
-        size_t size = mBuffer->size();
-        const uint8_t *data = mBuffer->data();
-        const uint8_t *nalStart;
-        size_t nalSize;
-        while ((HEVC_getNextNALUnit(&data, &size, &nalStart, &nalSize, true) == OK)) {
-            if (((nalStart[0] >> 1) & 0x3f) == 33) { //SPS
-                int ret;
-                struct hevc_info info;
-                ret = HEVC_decode_SPS(nalStart + 2, nalSize - 2, &info);
-                if (ret == 0) {
-                    sp<MetaData> meta = new MetaData;
-                    meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_HEVC);
-                    meta->setInt32(kKeyWidth, info.mwidth);
-                    meta->setInt32(kKeyHeight, info.mheight);
-                    mFormat = meta;
-                    ALOGI("found HEVC video codec config (%d x %d)", info.mwidth, info.mheight);
-                }
-            }
-        }
-    }
-
-    // source has been released when seek. metadata could be null here, assign it.
-    if (mFormat == NULL) {
-        sp<MetaData> meta = new MetaData;
-        meta->setCString(kKeyMIMEType, MEDIA_MIMETYPE_VIDEO_HEVC);
-        // set width&height temporarily, avoid play failed.
-        meta->setInt32(kKeyWidth, 0);
-        meta->setInt32(kKeyHeight, 0);
-        mFormat = meta;
-    }
-
-    int keyframe = 0;
-    if (mBuffer->size() > 0) {
-        if (!mHevcFindKey) {
-            keyframe = HEVC_parse_keyframe(mBuffer->data(), mBuffer->size());
-            if (keyframe == 1) {
-                mHevcFindKey = true;
-            } else {
-                fetchTimestamp(mBuffer->size());
-                mBuffer->setRange(0, mBuffer->size() - mBuffer->size());
-                return NULL;
-            }
-        }
-
-        sp<ABuffer> accessUnit = new ABuffer(mBuffer->size());
-        memcpy(accessUnit->data(), mBuffer->data(), mBuffer->size());
-
-        int64_t timeUs = fetchTimestamp(mBuffer->size());
-        CHECK_GE(timeUs, 0ll);
-        accessUnit->meta()->setInt64("timeUs", timeUs);
-        if (keyframe == 1) {
-            accessUnit->meta()->setInt32("findkeyframe", 1);
-        }
-        mBuffer->setRange(0, mBuffer->size() - mBuffer->size());
-        return accessUnit;
-    }
-    mBuffer->setRange(0, mBuffer->size() - mBuffer->size());
-    return NULL;
 }
 
 sp<ABuffer> ElementaryStreamQueue::dequeueAccessUnitH264() {
@@ -1088,12 +909,6 @@ sp<ABuffer> ElementaryStreamQueue::dequeueAccessUnitH264() {
 
             if (mFormat == NULL) {
                 mFormat = MakeAVCCodecSpecificData(accessUnit);
-                if (mFormat != NULL) {
-                    int32_t width, height;
-                    mFormat->findInt32(kKeyWidth, &width);
-                    mFormat->findInt32(kKeyHeight, &height);
-                    ALOGI("found AVC video codec config (%d x %d)", width, height);
-                }
             }
 
             return accessUnit;

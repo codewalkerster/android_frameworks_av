@@ -5,7 +5,6 @@ ifeq ($(TARGET_DEVICE), manta)
     LOCAL_CFLAGS += -DSURFACE_IS_BGR32
 endif
 
-USE_AM_SOFT_DEMUXER_CODEC := true
 
 LOCAL_SRC_FILES:=                     \
         FrameDropper.cpp              \
@@ -38,9 +37,8 @@ LOCAL_SHARED_LIBRARIES :=               \
 
 LOCAL_MODULE:= libstagefright_omx
 
-ifeq ($(USE_AM_SOFT_DEMUXER_CODEC),true)
-LOCAL_CFLAGS += -DUSE_AM_SOFT_DEMUXER_CODEC
-endif
+
+include  $(TOP)/frameworks/av/amlogic/config.mk
 
 LOCAL_CFLAGS += -Werror -Wall
 LOCAL_CLANG := true

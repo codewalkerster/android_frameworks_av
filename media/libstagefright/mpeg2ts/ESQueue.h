@@ -32,15 +32,11 @@ struct ElementaryStreamQueue {
     enum Mode {
         H264,
         AAC,
+        AC3,
         MPEG_AUDIO,
         MPEG_VIDEO,
         MPEG4_VIDEO,
         PCM_AUDIO,
-#if defined(DOLBY_UDC) && defined(DOLBY_UDC_STREAMING_HLS)
-        DDP_AC3_AUDIO,
-        DDP_EC3_AUDIO,
-#endif // DOLBY_UDC && DOLBY_UDC_STREAMING_HLS
-        H265,
         METADATA,
     };
 
@@ -55,7 +51,6 @@ struct ElementaryStreamQueue {
     void clear(bool clearFormat);
 
     sp<ABuffer> dequeueAccessUnit();
-    sp<ABuffer> dequeueAccessUnitAC3();
 
     sp<MetaData> getFormat();
 
@@ -69,24 +64,18 @@ private:
     uint32_t mFlags;
     bool mEOSReached;
 
-    // hevc seek
-    bool mHevcFindKey;
-
     sp<ABuffer> mBuffer;
     List<RangeInfo> mRangeInfos;
 
     sp<MetaData> mFormat;
 
     sp<ABuffer> dequeueAccessUnitH264();
-    sp<ABuffer> dequeueAccessUnitH265();
     sp<ABuffer> dequeueAccessUnitAAC();
+    sp<ABuffer> dequeueAccessUnitAC3();
     sp<ABuffer> dequeueAccessUnitMPEGAudio();
     sp<ABuffer> dequeueAccessUnitMPEGVideo();
     sp<ABuffer> dequeueAccessUnitMPEG4Video();
     sp<ABuffer> dequeueAccessUnitPCMAudio();
-#if defined(DOLBY_UDC) && defined(DOLBY_UDC_STREAMING_HLS)
-    sp<ABuffer> dequeueAccessUnitDDP();
-#endif // DOLBY_UDC && DOLBY_UDC_STREAMING_HLS
     sp<ABuffer> dequeueAccessUnitMetadata();
 
     // consume a logical (compressed) access unit of size "size",

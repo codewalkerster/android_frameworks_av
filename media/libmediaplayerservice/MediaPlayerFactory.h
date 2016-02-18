@@ -68,7 +68,7 @@ class MediaPlayerFactory {
                                             void* cookie,
                                             notify_callback_f notifyFunc,
                                             pid_t pid);
-
+	static player_type getDefaultPlayerType();
     static void registerBuiltinFactories();
 
   private:

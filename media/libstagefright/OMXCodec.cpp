@@ -55,19 +55,10 @@
 #include <OMX_AsString.h>
 
 #include "include/avc_utils.h"
-#ifdef USE_AM_SOFT_DEMUXER_CODEC
-//#include <media/stagefright/AmMediaDefsExt.h>
-//
-#endif
 
-#include <media/stagefright/AmMetaDataExt.h>
-#include  <libavcodec/avcodec.h>
-
-
-#ifdef USE_AM_SOFT_DEMUXER_CODEC
+#ifdef WITH_AMLOGIC_MEDIA_EX_SUPPORT
 #include <media/stagefright/AmMediaDefsExt.h>
 #include <media/stagefright/AmMetaDataExt.h>
-#include  <libavcodec/avcodec.h>
 #endif
 
 namespace android {
@@ -656,26 +647,22 @@ status_t OMXCodec::configureCodec(const sp<MetaData> &meta) {
 
          meta->findData(kKeyExtraData, &type, &extradata, &size);
          meta->findInt32(kKeyExtraDataSize, &extradata_size);
-	 if (extradata_size > 21) {
-             int extradata_size_1 = extradata_size+10;
-             void *extradata_1 = malloc(extradata_size_1);
+        if (extradata_size > 21) {
+            int extradata_size_1 = extradata_size+10;
+            void *extradata_1 = malloc(extradata_size_1);
+            head0offset = head1offset = head2offset = 0;
 
-             if (extradata_1!=NULL) {
-                 memset(extradata_1,0,extradata_size_1);
-                 memcpy((char*)extradata_1+1,extradata,extradata_size);
-
-                 Split_AsfExtradata_for_Virbis((char*)extradata_1,extradata_size_1,&head0offset,&head1offset,&head2offset);
-
-                 ALOGI("[%s %d]head0offset/%d head1offset/%d head2offset/%d size/%d\n", __FUNCTION__, __LINE__,
-                           head0offset,head1offset,head2offset,size);
-
-                 if (head0offset>=1 && head1offset>head0offset)
-                     addCodecSpecificData((char*)extradata_1+(head0offset-1), head1offset-(head0offset-1));
-
-                 if (head2offset>=1)
-                     addCodecSpecificData((char*)extradata_1+(head2offset-1), extradata_size+1-(head2offset-1));
-
-                 free(extradata_1);
+            if (extradata_1 != NULL) {
+                memset(extradata_1, 0, extradata_size_1);
+                memcpy((char *)extradata_1 + 1, extradata,extradata_size);
+                Split_AsfExtradata_for_Virbis((char *)extradata_1, extradata_size_1, &head0offset, &head1offset, &head2offset);
+                ALOGI("[%s %d]head0offset/%d head1offset/%d head2offset/%d size/%d\n",
+                    __FUNCTION__, __LINE__, head0offset, head1offset, head2offset, size);
+                if (head0offset >=1 && head1offset > head0offset)
+                    addCodecSpecificData((char*)extradata_1 + (head0offset - 1), head1offset - (head0offset - 1));
+                if (head2offset >= 1)
+                    addCodecSpecificData((char*)extradata_1 + (head2offset - 1), extradata_size + 1 - (head2offset - 1));
+                free(extradata_1);
             }
         }
     }
@@ -768,7 +755,7 @@ status_t OMXCodec::configureCodec(const sp<MetaData> &meta) {
         //setG711Format(numChannels);
         setG711Format(numChannels, sampleRate, blockalign);
     } else if ((!strcasecmp(MEDIA_MIMETYPE_AUDIO_ADPCM_IMA, mMIME)) ||
-               (!strcasecmp(MEDIA_MIMETYPE_AUDIO_ADPCM_MS, mMIME))) {	  
+               (!strcasecmp(MEDIA_MIMETYPE_AUDIO_ADPCM_MS, mMIME))) {
         int32_t adpcmnumChannels;
         int32_t adpcmsampleRate;
         int32_t adpcmblockalign;
@@ -776,7 +763,7 @@ status_t OMXCodec::configureCodec(const sp<MetaData> &meta) {
         CHECK(meta->findInt32(kKeyChannelCount, &adpcmnumChannels));
         CHECK(meta->findInt32(kKeySampleRate, &adpcmsampleRate));
         CHECK(meta->findInt32(kKeyBlockAlign, &adpcmblockalign));
-		
+
         setADPCMFormat(adpcmnumChannels, adpcmsampleRate, adpcmblockalign);
     } else if (!strcasecmp(MEDIA_MIMETYPE_AUDIO_RAW, mMIME)) {
         CHECK(!mIsEncoder);
@@ -787,7 +774,7 @@ status_t OMXCodec::configureCodec(const sp<MetaData> &meta) {
 
         setRawAudioFormat(kPortIndexInput, sampleRate, numChannels);
     } else if (!strcasecmp(MEDIA_MIMETYPE_AUDIO_WMA, mMIME) ||
-			   !strcasecmp(MEDIA_MIMETYPE_AUDIO_WMAPRO, mMIME)) {
+               !strcasecmp(MEDIA_MIMETYPE_AUDIO_WMAPRO, mMIME)) {
         int32_t sample_rate,channels,bit_rate,codec_id,extradata_size,block_align;
         const void *extradata;
         uint32_t type;
@@ -805,16 +792,16 @@ status_t OMXCodec::configureCodec(const sp<MetaData> &meta) {
 
         setAsfFormat(sample_rate, channels, bit_rate,codec_id,block_align,(char*)extradata,extradata_size);
     } else if (!strcasecmp(MEDIA_MIMETYPE_AUDIO_ALAC, mMIME)) {
-		 int32_t sample_rate,channels,extradata_size;
-		 const void *extradata;
-		 uint32_t type;
-		 size_t size;
+         int32_t sample_rate,channels,extradata_size;
+         const void *extradata;
+         uint32_t type;
+         size_t size;
          CHECK(meta->findInt32(kKeySampleRate,&sample_rate));
-		 CHECK(meta->findInt32(kKeyChannelCount,&channels));
-		 CHECK(meta->findData(kKeyExtraData, &type, &extradata, &size));
+         CHECK(meta->findInt32(kKeyChannelCount,&channels));
+         CHECK(meta->findData(kKeyExtraData, &type, &extradata, &size));
          CHECK(meta->findInt32(kKeyExtraDataSize,&extradata_size));
 
-		 setAlacFormat(sample_rate, channels,(char*)extradata,extradata_size);
+         setAlacFormat(sample_rate, channels,(char*)extradata,extradata_size);
     } else if (!strcasecmp(MEDIA_MIMETYPE_AUDIO_APE, mMIME)) {
          int32_t sample_rate,channels,extradata_size,bitwidth;
          const void *extradata;
@@ -822,8 +809,11 @@ status_t OMXCodec::configureCodec(const sp<MetaData> &meta) {
          size_t size;
          CHECK(meta->findInt32(kKeySampleRate,&sample_rate));
          CHECK(meta->findInt32(kKeyChannelCount,&channels));
+#ifdef WITH_AMLOGIC_MEDIA_EX_SUPPORT
          CHECK(meta->findInt32(kKeyPCMBitsPerSample,&bitwidth));
-         
+#else
+         bitwidth =0;
+#endif
          CHECK(meta->findData(kKeyExtraData, &type, &extradata, &size));
          CHECK(meta->findInt32(kKeyExtraDataSize,&extradata_size));
 
@@ -1164,8 +1154,10 @@ void OMXCodec::setVideoInputFormat(
         compressionFormat = static_cast<OMX_VIDEO_CODINGTYPE>(OMX_VIDEO_CodingVC1);
     } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_WMV3, mime)) {
         compressionFormat = static_cast<OMX_VIDEO_CODINGTYPE>(OMX_VIDEO_CodingWMV3);
+#ifdef WITH_AMLOGIC_MEDIA_EX_SUPPORT
     } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_MJPEG, mime)) {
         compressionFormat = OMX_VIDEO_CodingMJPEG;
+#endif
     } else {
         ALOGE("Not a supported video mime type: %s", mime);
         CHECK(!"Should not be here. Not a supported video mime type.");
@@ -1574,10 +1566,10 @@ status_t OMXCodec::setVideoOutputFormat(
         compressionFormat = static_cast<OMX_VIDEO_CODINGTYPE>(OMX_VIDEO_CodingVC1);
     } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_WMV3, mime)) {
         compressionFormat = static_cast<OMX_VIDEO_CODINGTYPE>(OMX_VIDEO_CodingWMV3);
+#ifdef WITH_AMLOGIC_MEDIA_EX_SUPPORT
     } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_MJPEG, mime)) {
         compressionFormat = OMX_VIDEO_CodingMJPEG;
-#ifdef USE_AM_SOFT_DEMUXER_CODEC 
-    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_VP6, mime)  ||
+    } else if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_VP6, mime) ||
                !strcasecmp(MEDIA_MIMETYPE_VIDEO_VP6A, mime) ||
                !strcasecmp(MEDIA_MIMETYPE_VIDEO_VP6F, mime)) {
         compressionFormat = OMX_VIDEO_CodingVPX;
@@ -1768,7 +1760,7 @@ OMXCodec::OMXCodec(
 
 
     if ((!strncmp(componentName, "OMX.google.", 11)) ||
-	    (!strncmp(componentName, "AML.google.", 11))) {
+        (!strncmp(componentName, "AML.google.", 11))) {
         ALOGD("current node %s use MS",componentName);
         mNodeUseMS = true;
     } else
@@ -1849,13 +1841,13 @@ void OMXCodec::setComponentRole(
              "audio_decoder.dtshd", "audio_encoder.dtshd" },
         { MEDIA_MIMETYPE_AUDIO_APE,
              "audio_decoder.ape", "audio_encoder.ape" },
-		{ MEDIA_MIMETYPE_AUDIO_TRUEHD,
-		 "audio_decoder.truehd", "audio_encoder.truehd" },
+        { MEDIA_MIMETYPE_AUDIO_TRUEHD,
+         "audio_decoder.truehd", "audio_encoder.truehd" },
         { MEDIA_MIMETYPE_AUDIO_MSGSM,
             "audio_decoder.gsm", "audio_encoder.gsm" },
         { MEDIA_MIMETYPE_VIDEO_MPEG2,
             "video_decoder.mpeg2", "video_encoder.mpeg2" },
-#ifdef USE_AM_SOFT_DEMUXER_CODEC
+#ifdef WITH_AMLOGIC_MEDIA_EX_SUPPORT
         { MEDIA_MIMETYPE_VIDEO_VP6,
             "video_decoder.amvp6", "video_encoder.amvp6" },
         { MEDIA_MIMETYPE_VIDEO_VP6A,
@@ -2161,7 +2153,7 @@ status_t OMXCodec::allocateOutputBuffersFromNativeWindow() {
     }
 
     if(!strcmp(mComponentName, "OMX.google.h265.decoder")
-		&& def.format.video.eColorFormat == OMX_AML_COLOR_FormatYV12) {
+        && def.format.video.eColorFormat == OMX_AML_COLOR_FormatYV12) {
         err = native_window_set_buffers_geometry(
             mNativeWindow.get(),
             def.format.video.nFrameWidth,
@@ -3363,7 +3355,7 @@ bool OMXCodec::drainInputBuffer(BufferInfo *info) {
                         && targetTimeUs >= 0) {
 
                     CODEC_LOGV("targetTimeUs = %lld us", targetTimeUs);
-			        if(mNodeUseMS) //make the us to ms,or the compare in omx_message::FILL_BUFFER_DONE may fail
+                    if (mNodeUseMS) //make the us to ms,or the compare in omx_message::FILL_BUFFER_DONE may fail
                         mTargetTimeUs = (targetTimeUs+500)/1000*1000;
                     else
                         mTargetTimeUs = targetTimeUs;
@@ -3437,8 +3429,8 @@ bool OMXCodec::drainInputBuffer(BufferInfo *info) {
         int64_t lastBufferTimeUs;
         CHECK(srcBuffer->meta_data()->findInt64(kKeyTime, &lastBufferTimeUs));
         if(lastBufferTimeUs < 0){
-			ALOGW("lastBufferTimeUs < 0, %d.need check \n",lastBufferTimeUs);
-			lastBufferTimeUs = 0;
+            ALOGW("lastBufferTimeUs < 0, %d.need check \n",lastBufferTimeUs);
+            lastBufferTimeUs = 0;
         }
         CHECK(lastBufferTimeUs >= 0);
         srcBuffer->meta_data()->findInt32(kKeyIsSyncFrame, &iskeyframe);
@@ -3885,7 +3877,7 @@ void OMXCodec::setRawAdpcmFormat(
     pcmParams.bInterleaved = OMX_TRUE;
     pcmParams.nBitPerSample = 16;
     pcmParams.nSamplingRate = sampleRate;
-	pcmParams.nBlockAlign = blockalign;
+    pcmParams.nBlockAlign = blockalign;
     pcmParams.ePCMMode = OMX_AUDIO_PCMModeLinear;
 
     CHECK_EQ(getOMXChannelMapping(
@@ -3898,34 +3890,20 @@ void OMXCodec::setRawAdpcmFormat(
 }
 
 void OMXCodec::setAsfFormat(int32_t sampleRate, int32_t numChannels , int32_t bitRate,
-									 int32_t codec_id,  int32_t block_align,char* extradata,int32_t extradata_size)
+                                     int32_t codec_id,  int32_t block_align,char* extradata,int32_t extradata_size)
 {
       OMX_AUDIO_PARAM_ASFTYPE asf_info;
-	  status_t err;
-	  int32_t codec_tag;
+      status_t err;
       InitOMXParams(&asf_info);
       asf_info.nPortIndex = kPortIndexInput;
-      switch(codec_id){
-		case CODEC_ID_WMAV1:
-			codec_tag = 0x0160;
-			break;
-		case CODEC_ID_WMAV2:
-			codec_tag = 0x0161;
-			break;
-		case CODEC_ID_WMAPRO:
-			codec_tag = 0x0162;
-			break;
-		default:
-			ALOGE("codec id not implemented %x \n",codec_id);	
-      }
-      ALOGI("wma codec id %x,codec tag %x \n",codec_id,codec_tag);
+      ALOGI("wma codec id %x\n",codec_id);
       //status_t err = mOMX->getParameter(
       //          mNode, OMX_IndexParamAudioAsf, &asf_info, sizeof(asf_info));
       //CHECK_EQ(err, (status_t)OK);
 
       asf_info.nChannels      = numChannels;
       asf_info.nSamplesPerSec = sampleRate;
-      asf_info.wFormatTag     = codec_tag;
+      asf_info.wFormatTag     = codec_id & 0xffff; /*only 16 bit formatTag*/
       asf_info.nAvgBitratePerSec=bitRate;
       asf_info.nBlockAlign    =block_align;
       asf_info.extradata_size =extradata_size;
@@ -3940,15 +3918,15 @@ void OMXCodec::setAsfFormat(int32_t sampleRate, int32_t numChannels , int32_t bi
 
 void OMXCodec::setAlacFormat(int32_t sampleRate, int32_t numChannels , char* extradata,int32_t extradata_size)
 {
-	OMX_AUDIO_PARAM_ALACTYPE alac_info;
-	status_t err;
+    OMX_AUDIO_PARAM_ALACTYPE alac_info;
+    status_t err;
     InitOMXParams(&alac_info);
     alac_info.nPortIndex     = kPortIndexInput;
-	alac_info.nChannels      = numChannels;
+    alac_info.nChannels      = numChannels;
     alac_info.nSamplesPerSec = sampleRate;
     alac_info.extradata_size = extradata_size;
-	alac_info.extradata      =(OMX_U8*)extradata;
-	err = mOMX->setParameter(mNode, OMX_IndexParamAudioAlac, &alac_info, sizeof(alac_info));
+    alac_info.extradata      =(OMX_U8*)extradata;
+    err = mOMX->setParameter(mNode, OMX_IndexParamAudioAlac, &alac_info, sizeof(alac_info));
     if (err != OK) {
         CODEC_LOGE("setParameter('OMX_IndexParamAudioAlac') failed (err = %d)", err);
     }
@@ -3957,23 +3935,23 @@ void OMXCodec::setAlacFormat(int32_t sampleRate, int32_t numChannels , char* ext
 
 void OMXCodec::setApeFormat(int32_t sampleRate, int32_t numChannels ,int bitwidth, char* extradata,int32_t extradata_size)
 {
-	OMX_AUDIO_PARAM_APETYPE ape_info;
-	status_t err;
-	InitOMXParams(&ape_info);
-	ape_info.nPortIndex     = kPortIndexInput;
-	ape_info.nChannels      = numChannels;
-	ape_info.nSamplesPerSec = sampleRate;
-	ape_info.wBitsPerSample = bitwidth;
-	ape_info.extradata_size = extradata_size;
-	ape_info.extradata      =(OMX_U8*)extradata;
-	err = mOMX->setParameter(mNode, OMX_IndexParamAudioApe, &ape_info, sizeof(ape_info));
-	if (err != OK) {
+    OMX_AUDIO_PARAM_APETYPE ape_info;
+    status_t err;
+    InitOMXParams(&ape_info);
+    ape_info.nPortIndex     = kPortIndexInput;
+    ape_info.nChannels      = numChannels;
+    ape_info.nSamplesPerSec = sampleRate;
+    ape_info.wBitsPerSample = bitwidth;
+    ape_info.extradata_size = extradata_size;
+    ape_info.extradata      =(OMX_U8*)extradata;
+    err = mOMX->setParameter(mNode, OMX_IndexParamAudioApe, &ape_info, sizeof(ape_info));
+    if (err != OK) {
         CODEC_LOGE("setParameter('OMX_IndexParamAudioAlac') failed (err = %d)", err);
-	}
+    }
 }
 
 void OMXCodec::setFFmpegFormat(int32_t numChannels, int32_t bitrate, int32_t sampleRate, int32_t blockalign,
-	                                  int32_t codec_id, int32_t extradata_size, char* extradata)
+                                      int32_t codec_id, int32_t extradata_size, char* extradata)
 {
     OMX_AUDIO_PARAM_FFMPEGTYPE ffmpeg_info;
     status_t err;
@@ -4010,19 +3988,19 @@ void OMXCodec::SetDtshdFormat(int32_t sampleRate, int32_t numChannels)
 void OMXCodec::setVideoInfoFormat(char* extradata,int32_t extradata_size, int32_t width, int32_t height)
 {
 
-	OMX_VIDEO_INFO video_info;
-	status_t err;
-	InitOMXParams(&video_info);
-	video_info.nPortIndex     = kPortIndexInput;
-	video_info.nExtraDataSize = extradata_size;
-	video_info.mExtraData      =(OMX_U8*)extradata;
-	video_info.width = width;
-	video_info.height = height;
-	err = mOMX->setParameter(mNode, OMX_IndexParamVideoInfo, &video_info, sizeof(video_info));
+    OMX_VIDEO_INFO video_info;
+    status_t err;
+    InitOMXParams(&video_info);
+    video_info.nPortIndex     = kPortIndexInput;
+    video_info.nExtraDataSize = extradata_size;
+    video_info.mExtraData      =(OMX_U8*)extradata;
+    video_info.width = width;
+    video_info.height = height;
+    err = mOMX->setParameter(mNode, OMX_IndexParamVideoInfo, &video_info, sizeof(video_info));
 
-	if (err != OK) {
+    if (err != OK) {
         CODEC_LOGE("setParameter('OMX_IndexParamVideoInfo') failed (err = %d)", err);
-	}
+    }
 }
 
 

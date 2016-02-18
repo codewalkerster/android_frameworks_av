@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-//#define LOG_NDEBUG 0
+#define LOG_NDEBUG 0
 #define LOG_TAG "MediaExtractor"
 #include <utils/Log.h>
 
@@ -29,15 +29,6 @@
 #include "include/WVMExtractor.h"
 #include "include/FLACExtractor.h"
 #include "include/AACExtractor.h"
-#include "include/ADIFExtractor.h"
-#include "include/ADTSExtractor.h"
-#include "include/LATMExtractor.h"
-#include "include/AsfExtractor.h"
-#include "include/SStreamingExtractor.h"
-#include "include/DDPExtractor.h"
-#include "include/DtshdExtractor.h"
-#include "include/AIFFExtractor.h"
-#include "include/THDExtractor.h"
 #include "include/MidiExtractor.h"
 
 #include "matroska/MatroskaExtractor.h"
@@ -49,8 +40,8 @@
 #include <media/stagefright/MetaData.h>
 #include <utils/String8.h>
 
-#ifdef USE_AM_SOFT_DEMUXER_CODEC
-#include <media/stagefright/AmMediaExtractorPlugin.h>
+#ifdef WITH_AMLOGIC_MEDIA_EX_SUPPORT
+#include <media/amlogic/amExtratorSupport.h>
 #endif
 
 namespace android {
@@ -63,63 +54,32 @@ uint32_t MediaExtractor::flags() const {
     return CAN_SEEK_BACKWARD | CAN_SEEK_FORWARD | CAN_PAUSE | CAN_SEEK;
 }
 
-#ifdef USE_AM_SOFT_DEMUXER_CODEC
-//static
-sp<MediaExtractor> MediaExtractor::CreateEx(const sp<DataSource> &dataSource, bool isHEVC)
-{
-    float confidence = 0;
-    String8 mime("");
-    sp<AMessage> meta(NULL);
-    if (!dataSource->sniff(&mime, &confidence, &meta)) {
-        confidence = 0;
-    }
-
-    float am_confidence = 0;
-    String8 am_mime("");
-    sp<AMessage> am_meta(NULL);
-    if(!sniffAmExtFormat(dataSource, &am_mime, &am_confidence, &am_meta)) {
-        am_confidence = 0;
-    }
- 
-    ALOGI("[%s %d]for WMA: force useing Amffmpeg extractor[am_confidence/%f confidence/%f ammine/%s mime/%s]\n",
-         __FUNCTION__,__LINE__,am_confidence,confidence,am_mime.string(),mime.string());
-    if(!strcmp(mime.string(),MEDIA_MIMETYPE_AUDIO_WMA)&& confidence>0 &&
-       !strcmp(am_mime.string(),MEDIA_MIMETYPE_CONTAINER_ASF)&&am_confidence>0)
-    {   //since amffpeg extractor is well performaced,why not use it,any quesion for this modification,contact me-->BUG#94436
-        confidence=0;
-    }
-
-    sp<MediaExtractor> extractor = NULL;
-    if(am_confidence > confidence || isHEVC) {     // if hevc/h.265, use ffmpeg extractor anyhow.
-        mime = am_mime;
-        extractor = createAmMediaExtractor(dataSource, mime.string());
-    }
-
-    if(NULL == extractor.get()) {
-        extractor = MediaExtractor::Create(dataSource, mime.string());
-    }
-
-    return extractor;
-}
-#endif
 
 // static
 sp<MediaExtractor> MediaExtractor::Create(
-        const sp<DataSource> &source, const char *mime) {
+    const sp<DataSource> &source, const char *mime)
+{
     sp<AMessage> meta;
-
+    sp<MediaExtractor> extractor;
     String8 tmp;
+    int is_sniff_from_ffmpeg = 0;
     if (mime == NULL) {
         float confidence;
-        if (!source->sniff(&tmp, &confidence, &meta)) {
-            ALOGV("FAILED to autodetect media content.");
 
-            return NULL;
+        if (!source->sniff(&tmp, &confidence, &meta)) {
+#ifdef WITH_AMLOGIC_MEDIA_EX_SUPPORT
+            if (!sniffFFmpegFormat(source, &tmp, &confidence, &meta))
+#endif
+            {
+                ALOGE("FAILED to autodetect media content.");
+                return NULL;
+            }
+            is_sniff_from_ffmpeg = 1;
         }
 
         mime = tmp.string();
-        ALOGV("Autodetected media content as '%s' with confidence %.2f",
-             mime, confidence);
+        ALOGE("Autodetected media content as '%s' with confidence %.2f from_ffmpeg=%d",
+              mime, confidence, is_sniff_from_ffmpeg);
     }
 
     bool isDrm = false;
@@ -127,7 +87,7 @@ sp<MediaExtractor> MediaExtractor::Create(
     // type is "es_based" or "container_based" and
     // original is the content's cleartext MIME type
     if (!strncmp(mime, "drm+", 4)) {
-        const char *originalMime = strchr(mime+4, '+');
+        const char *originalMime = strchr(mime + 4, '+');
         if (originalMime == NULL) {
             // second + not found
             return NULL;
@@ -145,13 +105,23 @@ sp<MediaExtractor> MediaExtractor::Create(
     }
 
     MediaExtractor *ret = NULL;
-    if (!strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MPEG4)
-            || !strcasecmp(mime, "audio/mp4")) {
+#ifdef WITH_AMLOGIC_MEDIA_EX_SUPPORT
+    if (is_sniff_from_ffmpeg) {
+        extractor = createFFmpegExtractor(source, mime);
+        if (extractor != NULL) {
+            ret = extractor.get();
+        }
+    }
+#endif
+    if (ret != NULL) {
+        /**/
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MPEG4)
+               || !strcasecmp(mime, "audio/mp4")) {
         ret = new MPEG4Extractor(source);
     } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_MPEG)) {
         ret = new MP3Extractor(source, meta);
     } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AMR_NB)
-            || !strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AMR_WB)) {
+               || !strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AMR_WB)) {
         ret = new AMRExtractor(source);
     } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_FLAC)) {
         ret = new FLACExtractor(source);
@@ -168,36 +138,27 @@ sp<MediaExtractor> MediaExtractor::Create(
         return new WVMExtractor(source);
     } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AAC_ADTS)) {
         ret = new AACExtractor(source, meta);
-    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AAC_ADIF)) {
-        ret = new ADIFExtractor(source);
-    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AAC_LATM)) {
-        ret = new LATMExtractor(source);
-    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_ADTS_PROFILE)) {
-        ret = new ADTSExtractor(source);
     } else if (!strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MPEG2PS)) {
         ret = new MPEG2PSExtractor(source);
-    } else if(!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_WMA)||!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_WMAPRO)){
-        ret = new AsfExtractor(source);
-    }else if(!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_DTSHD)){
-        ret = new DtshdExtractor(source);
-    } else if(!strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_AIFF)){
-        ret = new AIFFExtractor(source);
-    } else if(!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_TRUEHD)){
-        ret = new THDExtractor(source);
-    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_DDP)) {
-        ret = new DDPExtractor(source);
     } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_MIDI)) {
         ret = new MidiExtractor(source);
     }
-
-    if (ret != NULL) {
-       if (isDrm) {
-           ret->setDrmFlag(true);
-       } else {
-           ret->setDrmFlag(false);
-       }
+#ifdef WITH_AMLOGIC_MEDIA_EX_SUPPORT
+    if (ret == NULL) {
+        extractor = createAmExExtractor(source, mime, meta);
+        if (extractor != NULL) {
+            ret = extractor.get();
+        }
     }
-
+#endif
+    if (ret != NULL) {
+        if (isDrm) {
+            ret->setDrmFlag(true);
+        } else {
+            ret->setDrmFlag(false);
+        }
+    }
+    ALOGE("return createAmExExtractor. ret %x\n", ret);
     return ret;
 }
 

@@ -54,7 +54,7 @@
 
 #include "include/avc_utils.h"
 
-#ifdef USE_AM_SOFT_DEMUXER_CODEC
+#ifdef WITH_AMLOGIC_MEDIA_EX_SUPPORT
 #include <media/stagefright/AmMediaDefsExt.h>
 #endif
 
@@ -899,7 +899,7 @@ status_t ACodec::setupNativeWindowSizeFormatAndUsage(
     }
 
     if (!strcmp(mComponentName.c_str(), "OMX.google.h265.decoder")
-	&& def.format.video.eColorFormat == OMX_AML_COLOR_FormatYV12) {
+      && def.format.video.eColorFormat == OMX_AML_COLOR_FormatYV12) {
         err = native_window_set_buffers_geometry(
             mNativeWindow.get(),
             def.format.video.nFrameWidth,
@@ -1617,8 +1617,7 @@ status_t ACodec::setComponentRole(
             "video_decoder.vc1", "video_encoder.vc1" },
         { MEDIA_MIMETYPE_VIDEO_WVC1,
             "video_decoder.vc1", "video_encoder.vc1" },
-        { MEDIA_MIMETYPE_VIDEO_MJPEG,
-            "video_decoder.mjpeg", "video_encoder.mjpeg" },
+
         { MEDIA_MIMETYPE_VIDEO_VP8,
             "video_decoder.vp8", "video_encoder.vp8" },
         { MEDIA_MIMETYPE_VIDEO_VP9,
@@ -1635,7 +1634,9 @@ status_t ACodec::setComponentRole(
             "audio_decoder.ac3", "audio_encoder.ac3" },
         { MEDIA_MIMETYPE_AUDIO_EAC3,
             "audio_decoder.ec3", "audio_encoder.ec3" },
-#ifdef USE_AM_SOFT_DEMUXER_CODEC
+#ifdef WITH_AMLOGIC_MEDIA_EX_SUPPORT
+        { MEDIA_MIMETYPE_VIDEO_MJPEG,
+            "video_decoder.mjpeg", "video_encoder.mjpeg" },
         { MEDIA_MIMETYPE_VIDEO_VP6,
             "video_decoder.amvp6", "video_encoder.amvp6" },
         { MEDIA_MIMETYPE_VIDEO_VP6A,
@@ -2937,12 +2938,12 @@ static const struct VideoCodingMapEntry {
     { MEDIA_MIMETYPE_VIDEO_MPEG2, OMX_VIDEO_CodingMPEG2 },
     { MEDIA_MIMETYPE_VIDEO_VC1, static_cast<OMX_VIDEO_CODINGTYPE>(OMX_VIDEO_CodingVC1) },
     { MEDIA_MIMETYPE_VIDEO_WVC1, static_cast<OMX_VIDEO_CODINGTYPE>(OMX_VIDEO_CodingVC1) },
-    { MEDIA_MIMETYPE_VIDEO_MJPEG, static_cast<OMX_VIDEO_CODINGTYPE>(OMX_VIDEO_CodingMJPEG) },
     { MEDIA_MIMETYPE_VIDEO_WMV3, static_cast<OMX_VIDEO_CODINGTYPE>(OMX_VIDEO_CodingWMV3) },
     { MEDIA_MIMETYPE_VIDEO_VP8, OMX_VIDEO_CodingVP8 },
     { MEDIA_MIMETYPE_VIDEO_VP9, OMX_VIDEO_CodingVP9 },
     { MEDIA_MIMETYPE_VIDEO_HEVC, OMX_VIDEO_CodingHEVC },
-#ifdef USE_AM_SOFT_DEMUXER_CODEC
+#ifdef WITH_AMLOGIC_MEDIA_EX_SUPPORT
+    { MEDIA_MIMETYPE_VIDEO_MJPEG, static_cast<OMX_VIDEO_CODINGTYPE>(OMX_VIDEO_CodingMJPEG) },
     { MEDIA_MIMETYPE_VIDEO_VP6, OMX_VIDEO_CodingVPX },
     { MEDIA_MIMETYPE_VIDEO_VP6F, OMX_VIDEO_CodingVPX },
     { MEDIA_MIMETYPE_VIDEO_VP6A, OMX_VIDEO_CodingVPX },
@@ -3950,8 +3951,8 @@ bool ACodec::describeDefaultColorFormat(DescribeColorFormatParams &params) {
     if (fmt != OMX_COLOR_FormatYUV420Planar &&
         fmt != OMX_COLOR_FormatYUV420PackedPlanar &&
         fmt != OMX_COLOR_FormatYUV420SemiPlanar &&
-        fmt != OMX_COLOR_FormatYUV420PackedSemiPlanar &&
-        fmt != HAL_PIXEL_FORMAT_YV12) {
+        fmt != OMX_COLOR_FormatYUV420PackedSemiPlanar /*&&
+        fmt != HAL_PIXEL_FORMAT_YV12 */) {
         ALOGW("do not know color format 0x%x = %d", fmt, fmt);
         return false;
     }

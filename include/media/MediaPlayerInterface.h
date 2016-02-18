@@ -278,15 +278,6 @@ public:
         return INVALID_OPERATION;
     }
 
-    // hack for hevc/h.265 mp4/ts etc. support, avoid cts fail
-    //virtual status_t setHEVCFlag(bool flag) {
-    //    return INVALID_OPERATION;
-    //}
-
-    virtual bool getHEVCFlag() {
-        return false;
-    }
-
 private:
     friend class MediaPlayerService;
 

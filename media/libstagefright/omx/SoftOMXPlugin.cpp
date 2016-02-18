@@ -44,7 +44,7 @@ static const struct {
     { "OMX.google.amrwb.decoder", "amrdec", "audio_decoder.amrwb" },
     { "OMX.google.amrwb.encoder", "amrwbenc", "audio_encoder.amrwb" },
     { "OMX.google.h264.decoder", "h264dec", "video_decoder.avc" },
-#ifdef USE_AM_SOFT_DEMUXER_CODEC
+#ifdef WITH_AMLOGIC_MEDIA_EX_SUPPORT
     { "OMX.google.vp6.decoder", "amsoftdec", "video_decoder.amvp6" },
     { "OMX.google.vp6a.decoder", "amsoftdec", "video_decoder.amvp6a" },
     { "OMX.google.vp6f.decoder", "amsoftdec", "video_decoder.amvp6f" },

@@ -34,14 +34,16 @@
 #include "StagefrightPlayer.h"
 #include "nuplayer/NuPlayerDriver.h"
 
-namespace android {
+namespace android
+{
 
 Mutex MediaPlayerFactory::sLock;
 MediaPlayerFactory::tFactoryMap MediaPlayerFactory::sFactoryMap;
 bool MediaPlayerFactory::sInitComplete = false;
 
 status_t MediaPlayerFactory::registerFactory_l(IFactory* factory,
-                                               player_type type) {
+        player_type type)
+{
     if (NULL == factory) {
         ALOGE("Failed to register MediaPlayerFactory of type %d, factory is"
               " NULL.", type);
@@ -63,23 +65,28 @@ status_t MediaPlayerFactory::registerFactory_l(IFactory* factory,
     return OK;
 }
 
-static player_type getDefaultPlayerType() {
+player_type MediaPlayerFactory::getDefaultPlayerType()
+{
     char value[PROPERTY_VALUE_MAX];
     if (property_get("media.stagefright.use-awesome", value, NULL)
-            && (!strcmp("1", value) || !strcasecmp("true", value))) {
+        && (!strcmp("1", value) || !strcasecmp("true", value))) {
         return STAGEFRIGHT_PLAYER;
     }
-
-    return AMNUPLAYER;
+    if (sFactoryMap.indexOfKey(AMNUPLAYER) >= 0) {
+        return AMNUPLAYER;
+    }
+    return NU_PLAYER;
 }
 
 status_t MediaPlayerFactory::registerFactory(IFactory* factory,
-                                             player_type type) {
+        player_type type)
+{
     Mutex::Autolock lock_(&sLock);
     return registerFactory_l(factory, type);
 }
 
-void MediaPlayerFactory::unregisterFactory(player_type type) {
+void MediaPlayerFactory::unregisterFactory(player_type type)
+{
     Mutex::Autolock lock_(&sLock);
     sFactoryMap.removeItem(type);
 }
@@ -109,34 +116,39 @@ void MediaPlayerFactory::unregisterFactory(player_type type) {
     return ret;
 
 player_type MediaPlayerFactory::getPlayerType(const sp<IMediaPlayer>& client,
-                                              const char* url) {
+        const char* url)
+{
     GET_PLAYER_TYPE_IMPL(client, url);
 }
 
 player_type MediaPlayerFactory::getPlayerType(const sp<IMediaPlayer>& client,
-                                              int fd,
-                                              int64_t offset,
-                                              int64_t length) {
+        int fd,
+        int64_t offset,
+        int64_t length)
+{
     GET_PLAYER_TYPE_IMPL(client, fd, offset, length);
 }
 
 player_type MediaPlayerFactory::getPlayerType(const sp<IMediaPlayer>& client,
-                                              const sp<IStreamSource> &source) {
+        const sp<IStreamSource> &source)
+{
     GET_PLAYER_TYPE_IMPL(client, source);
 }
 
 player_type MediaPlayerFactory::getPlayerType(const sp<IMediaPlayer>& client,
-                                              const sp<DataSource> &source) {
+        const sp<DataSource> &source)
+{
     GET_PLAYER_TYPE_IMPL(client, source);
 }
 
 #undef GET_PLAYER_TYPE_IMPL
 
 sp<MediaPlayerBase> MediaPlayerFactory::createPlayer(
-        player_type playerType,
-        void* cookie,
-        notify_callback_f notifyFunc,
-        pid_t pid) {
+    player_type playerType,
+    void* cookie,
+    notify_callback_f notifyFunc,
+    pid_t pid)
+{
     sp<MediaPlayerBase> p;
     IFactory* factory;
     status_t init_result;
@@ -154,7 +166,7 @@ sp<MediaPlayerBase> MediaPlayerFactory::createPlayer(
 
     if (p == NULL) {
         ALOGE("Failed to create player object of type %d, create failed",
-               playerType);
+              playerType);
         return p;
     }
 
@@ -177,8 +189,9 @@ sp<MediaPlayerBase> MediaPlayerFactory::createPlayer(
  *****************************************************************************/
 
 class StagefrightPlayerFactory :
-    public MediaPlayerFactory::IFactory {
-  public:
+    public MediaPlayerFactory::IFactory
+{
+public:
     virtual float scoreFactory(const sp<IMediaPlayer>& /*client*/,
                                int fd,
                                int64_t offset,
@@ -193,7 +206,7 @@ class StagefrightPlayerFactory :
             }
         }
 
-        if (getDefaultPlayerType() == STAGEFRIGHT_PLAYER) {
+        if (MediaPlayerFactory::getDefaultPlayerType() == STAGEFRIGHT_PLAYER) {
             char buf[20];
             lseek(fd, offset, SEEK_SET);
             read(fd, buf, sizeof(buf));
@@ -202,8 +215,9 @@ class StagefrightPlayerFactory :
             uint32_t ident = *((uint32_t*)buf);
 
             // Ogg vorbis?
-            if (ident == 0x5367674f) // 'OggS'
+            if (ident == 0x5367674f) { // 'OggS'
                 return 1.0;
+            }
         }
 
         return 0.0;
@@ -222,19 +236,20 @@ class StagefrightPlayerFactory :
         ALOGV(" create StagefrightPlayer");
         return new StagefrightPlayer();
     }
-  private:
+private:
     bool legacyDrm() {
         char value[PROPERTY_VALUE_MAX];
         if (property_get("persist.sys.media.legacy-drm", value, NULL)
-                && (!strcmp("1", value) || !strcasecmp("true", value))) {
+            && (!strcmp("1", value) || !strcasecmp("true", value))) {
             return true;
         }
         return false;
     }
 };
 
-class NuPlayerFactory : public MediaPlayerFactory::IFactory {
-  public:
+class NuPlayerFactory : public MediaPlayerFactory::IFactory
+{
+public:
     virtual float scoreFactory(const sp<IMediaPlayer>& /*client*/,
                                const char* url,
                                float curScore) {
@@ -246,18 +261,19 @@ class NuPlayerFactory : public MediaPlayerFactory::IFactory {
             return 1.1;
         }
 
-        if (kOurScore <= curScore)
+        if (kOurScore <= curScore) {
             return 0.0;
+        }
 
         if (!strncasecmp("http://", url, 7)
-                || !strncasecmp("https://", url, 8)
-                || !strncasecmp("file://", url, 7)) {
+            || !strncasecmp("https://", url, 8)
+            || !strncasecmp("file://", url, 7)) {
             size_t len = strlen(url);
             if (len >= 5 && !strcasecmp(".m3u8", &url[len - 5])) {
                 return kOurScore;
             }
 
-            if (strstr(url,"m3u8")) {
+            if (strstr(url, "m3u8")) {
                 return kOurScore;
             }
 
@@ -292,8 +308,9 @@ class NuPlayerFactory : public MediaPlayerFactory::IFactory {
     }
 };
 
-class TestPlayerFactory : public MediaPlayerFactory::IFactory {
-  public:
+class TestPlayerFactory : public MediaPlayerFactory::IFactory
+{
+public:
     virtual float scoreFactory(const sp<IMediaPlayer>& /*client*/,
                                const char* url,
                                float /*curScore*/) {
@@ -310,11 +327,13 @@ class TestPlayerFactory : public MediaPlayerFactory::IFactory {
     }
 };
 
-void MediaPlayerFactory::registerBuiltinFactories() {
+void MediaPlayerFactory::registerBuiltinFactories()
+{
     Mutex::Autolock lock_(&sLock);
 
-    if (sInitComplete)
+    if (sInitComplete) {
         return;
+    }
 
     registerFactory_l(new StagefrightPlayerFactory(), STAGEFRIGHT_PLAYER);
     registerFactory_l(new NuPlayerFactory(), NU_PLAYER);

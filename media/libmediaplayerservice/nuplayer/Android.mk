@@ -56,7 +56,7 @@ LOCAL_SHARED_LIBRARIES :=       \
 LOCAL_STATIC_LIBRARIES :=       \
     libstagefright_rtsp         \
 
-
+include  $(TOP)/frameworks/av/amlogic/config.mk
 LOCAL_CLANG := true
 
 LOCAL_MODULE:= libstagefright_nuplayer

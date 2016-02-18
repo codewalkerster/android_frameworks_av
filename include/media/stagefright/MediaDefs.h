@@ -17,7 +17,7 @@
 #ifndef MEDIA_DEFS_H_
 
 #define MEDIA_DEFS_H_
-#include <media/stagefright/AmMediaDefsExt.h>
+
 namespace android {
 
 extern const char *MEDIA_MIMETYPE_IMAGE_JPEG;

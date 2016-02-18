@@ -1,3 +1,5 @@
+
+
 /*
  * Copyright (C) 2013 The Android Open Source Project
  *
@@ -13,20 +15,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#define LOG_TAG "Register"
+#define LOG_TAG "AmSupportModules"
 #include <utils/Log.h>
-#include <cutils/properties.h>
-#include <utils/threads.h>
-#include <utils/KeyedVector.h>
+#include "AmSupportModules_priv.h"
 
-#include "RegisterExtensions.h"
-#include "../libmediaplayerservice/SharedLibrary.h"
-#include <AmSupportModules.h>
-
-
-void registerExtensions()
+namespace android
 {
-    android::LoadAndInitAmlogicSupport();
+
+
+void LoadAndInitAmlogicSupport(void)
+{
+    LoadAndInitAmlogicMediaFactory();
+    LoadAndInitAmlogicScreenMediaSource();
+    LoadAndInitAmlogicMetadataRetrieverFactory();
+}
 
 }
+
 

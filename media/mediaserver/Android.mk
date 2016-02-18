@@ -2,6 +2,7 @@ LOCAL_PATH:= $(call my-dir)
 
 ifneq ($(BOARD_USE_CUSTOM_MEDIASERVEREXTENSIONS),true)
 include $(CLEAR_VARS)
+include  $(TOP)/frameworks/av/amlogic/config.mk
 LOCAL_SRC_FILES := register.cpp
 LOCAL_MODULE := libregistermsext
 LOCAL_MODULE_TAGS := optional
@@ -30,6 +31,10 @@ LOCAL_SHARED_LIBRARIES := \
 	libbinder \
 	libsoundtriggerservice \
 	libradioservice
+
+ifneq ($(BOARD_USE_CUSTOM_MEDIASERVEREXTENSIONS),true)
+LOCAL_SHARED_LIBRARIES += libmedia_amlogic_support
+endif
 
 LOCAL_STATIC_LIBRARIES := \
         libicuandroid_utils \

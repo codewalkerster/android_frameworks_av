@@ -19,6 +19,7 @@
 #define MEDIA_EXTRACTOR_H_
 
 #include <utils/RefBase.h>
+#include <media/stagefright/foundation/AMessage.h>
 
 namespace android {
 
@@ -28,11 +29,14 @@ class MetaData;
 
 class MediaExtractor : public RefBase {
 public:
+
+	typedef sp<MediaExtractor> (*CreateFunc)(
+            const sp<DataSource> &, const sp<AMessage> &);
+	static int RegisterExtractor_l(const char *mime, CreateFunc *func);
     static sp<MediaExtractor> Create(
             const sp<DataSource> &source, const char *mime = NULL);
-    static sp<MediaExtractor> CreateEx(
-            const sp<DataSource> &dataSource, const bool isHEVC);
-
+	static sp<MediaExtractor> ExCreate(
+			const sp<DataSource> &source, const char *mime, const sp<AMessage> &meta);
     virtual size_t countTracks() = 0;
     virtual sp<MediaSource> getTrack(size_t index) = 0;
 

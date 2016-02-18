@@ -6,6 +6,8 @@ LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
 
+
+
 LOCAL_SRC_FILES:=               \
     ActivityManager.cpp         \
     Crypto.cpp                  \
@@ -58,21 +60,12 @@ LOCAL_C_INCLUDES :=                                                 \
     $(TOP)/frameworks/av/media/libstagefright                       \
 
 
-ifeq ($(BUILD_WITH_AMLOGIC_PLAYER),true)
-    AMPLAYER_APK_DIR=$(TOP)/vendor/amlogic/frameworks/av/LibPlayer/
-    LOCAL_C_INCLUDES += \
-        $(AMPLAYER_APK_DIR)/amplayer/player/include     \
-        $(AMPLAYER_APK_DIR)/amplayer/control/include    \
-        $(AMPLAYER_APK_DIR)/amadec/include              \
-        $(AMPLAYER_APK_DIR)/amcodec/include             \
-        $(AMPLAYER_APK_DIR)/amavutils/include           \
-        $(AMPLAYER_APK_DIR)/amvdec/include           \
-        $(AMPLAYER_APK_DIR)/amffmpeg/
-endif
 
 LOCAL_CFLAGS += -Werror -Wno-unused-parameter -Wno-unused-variable \
     -Wno-deprecated-declarations -Wno-reorder \
     -Wno-overloaded-virtual -Wno-error=deprecated-declarations -Wall
+
+include  $(TOP)/frameworks/av/amlogic/config.mk
 
 LOCAL_CLANG := true
 
