@@ -329,7 +329,7 @@ sp<IMediaMetadataRetriever> MediaPlayerService::createMetadataRetriever()
 sp<IMediaPlayer> MediaPlayerService::create(const sp<IMediaPlayerClient>& client,
         int audioSessionId)
 {
-    if (client == NULL) {
+    if (client == NULL && mClients.size() > 0) {
         sp<Client> clt = NULL;
 
         ALOGV("[create]mClients.size():%d\n", mClients.size());
