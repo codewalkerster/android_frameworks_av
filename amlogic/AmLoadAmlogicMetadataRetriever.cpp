@@ -20,18 +20,17 @@
 #include <utils/threads.h>
 #include <utils/KeyedVector.h>
 
-#include "../media/libmediaplayerservice/SharedLibrary.h"
 #include "AmSupportModules_priv.h"
 
 namespace android
 {
 
-static sp<SharedLibrary> gLibAmlThumbNail;
+static sp<AmSharedLibrary> gLibAmlThumbNail;
 bool  LoadAndInitAmlogicMetadataRetrieverFactory(void)
 {
     int err;
     String8 name("libamlogic_metadata_retriever.so");
-    gLibAmlThumbNail = new SharedLibrary(name);
+    gLibAmlThumbNail = new AmSharedLibrary(name);
     if (!*gLibAmlThumbNail) {
         ALOGE("load libamlogic_metadata_retriever.so for AmlogicMetadataRetriever failed:%s", gLibAmlThumbNail->lastError());
         gLibAmlThumbNail.clear();

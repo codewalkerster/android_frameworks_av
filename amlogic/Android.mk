@@ -9,6 +9,7 @@ LOCAL_SRC_FILES:= \
 	AmLoadAmlogicMetadataRetriever.cpp\
 	AmLoadAmlogicPlayers.cpp\
 	AmSupportModules.cpp\
+	AmSharedLibrary.cpp\
 
 
 LOCAL_C_INCLUDES+= \
@@ -19,7 +20,9 @@ LOCAL_SHARED_LIBRARIES := \
         libcutils \
         libdl \
         libutils \
-	 libmediaplayerservice\
+
+
+#	 libmediaplayerservice\
 
 
 include  $(TOP)/frameworks/av/amlogic/config.mk

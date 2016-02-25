@@ -22,17 +22,16 @@
 
 
 #include "AmSupportModules_priv.h"
-#include "../media/libmediaplayerservice/SharedLibrary.h"
 
 namespace android
 {
 
-static sp<SharedLibrary> gLibAmlScreenSource;
+static sp<AmSharedLibrary> gLibAmlScreenSource;
 bool LoadAndInitAmlogicScreenMediaSource(void)
 {
     int err;
     String8 name("libstagefright_screenmediasource.so");
-    gLibAmlScreenSource = new SharedLibrary(name);
+    gLibAmlScreenSource = new AmSharedLibrary(name);
     if (!*gLibAmlScreenSource) {
         ALOGE("load libstagefright_screenmediasource.so for libstagefright_screenmediasource failed:%s", gLibAmlScreenSource->lastError());
         gLibAmlScreenSource.clear();

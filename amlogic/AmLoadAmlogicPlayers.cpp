@@ -20,18 +20,17 @@
 #include <utils/threads.h>
 #include <utils/KeyedVector.h>
 
-#include "../media/libmediaplayerservice/SharedLibrary.h"
 #include "AmSupportModules_priv.h"
 
 namespace android
 {
 
-static sp<SharedLibrary> gLibAmlMedia;
+static sp<AmSharedLibrary> gLibAmlMedia;
 bool  LoadAndInitAmlogicMediaFactory(void)
 {
     int err;
     String8 name("libmedia_amlogic.so");
-    gLibAmlMedia = new SharedLibrary(name);
+    gLibAmlMedia = new AmSharedLibrary(name);
     if (!*gLibAmlMedia) {
         ALOGE("load libmedia_amlogic.so for amlogicmedia failed:%s", gLibAmlMedia->lastError());
         gLibAmlMedia.clear();
