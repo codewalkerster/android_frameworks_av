@@ -206,6 +206,7 @@ enum media_parameter_keys {
     KEY_PARAMETER_AML_PLAYER_SET_DISPLAY_MODE       = 2011,     // string, set display mode
     KEY_PARAMETER_AML_PLAYER_GET_DTS_ASSET_TOTAL    = 2012,     // string, get dts asset total number
     KEY_PARAMETER_AML_PLAYER_SET_DTS_ASSET          = 2013,     // string, set dts asset 
+    KEY_PARAMETER_AML_PLAYER_SWITCH_VIDEO_TRACK     = 2015,     //string,refer to video track index,set only
     KEY_PARAMETER_AML_PLAYER_HWBUFFER_STATE         = 3001,     // string,refer to stream buffer info
     KEY_PARAMETER_AML_PLAYER_RESET_BUFFER           = 8000,     // top level seek..player need to reset & clearbuffers
     KEY_PARAMETER_AML_PLAYER_FREERUN_MODE           = 8002,     // play ASAP...
