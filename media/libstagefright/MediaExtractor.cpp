@@ -42,6 +42,7 @@
 
 #ifdef WITH_AMLOGIC_MEDIA_EX_SUPPORT
 #include <media/amlogic/amExtratorSupport.h>
+#include <media/stagefright/AmMediaDefsExt.h>
 #endif
 
 namespace android {
@@ -59,23 +60,44 @@ uint32_t MediaExtractor::flags() const {
 sp<MediaExtractor> MediaExtractor::Create(
     const sp<DataSource> &source, const char *mime)
 {
-    sp<AMessage> meta;
+    sp<AMessage> meta(NULL);
     sp<MediaExtractor> extractor;
-    String8 tmp;
+    String8 tmp("");
     int is_sniff_from_ffmpeg = 0;
     if (mime == NULL) {
-        float confidence;
+        float confidence = 0;
 
         if (!source->sniff(&tmp, &confidence, &meta)) {
+            confidence = 0;
+        }
 #ifdef WITH_AMLOGIC_MEDIA_EX_SUPPORT
-            if (!sniffFFmpegFormat(source, &tmp, &confidence, &meta))
-#endif
+        if (confidence <= 0.01 ||
+        (!strcmp(tmp.string(), MEDIA_MIMETYPE_AUDIO_WMA)))
+        {
+            float ffconfidence = 0;
+            String8 tmpffmpeg("");
+            sp<AMessage> ffmeta(NULL);
+            if (!sniffFFmpegFormat(source, &tmpffmpeg, &ffconfidence, &ffmeta))
             {
                 ALOGE("FAILED to autodetect media content.");
                 return NULL;
+            } else {
+                if (confidence == 0 ||
+                   ffconfidence > confidence ||
+                   strcmp(tmpffmpeg.string(), tmp.string())) {
+                    is_sniff_from_ffmpeg = 1;
+                    confidence = ffconfidence;
+                    tmp = tmpffmpeg;
+                }
             }
-            is_sniff_from_ffmpeg = 1;
         }
+#else
+    if (confidence == 0) {
+        ALOGE("FAILED to autodetect media content from datasource.");
+        return NULL;
+    }
+#endif
+
 
         mime = tmp.string();
         ALOGE("Autodetected media content as '%s' with confidence %.2f from_ffmpeg=%d",
