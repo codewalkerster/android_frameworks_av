@@ -668,7 +668,12 @@ audio_devices_t Engine::getDeviceForInputSource(audio_source_t inputSource) cons
             break;
 
         case AUDIO_POLICY_FORCE_SPEAKER:
-            if (availableDeviceTypes & AUDIO_DEVICE_IN_BACK_MIC) {
+            /* for usb audio voice comminication app, USB need as first primary usb in device */
+            /* here ingore AUDIO_POLICY_FORCE_SPEAKER */
+            if (availableDeviceTypes & AUDIO_DEVICE_IN_USB_DEVICE) {
+                ALOGI("USB in audio,ingore AUDIO_POLICY_FORCE_SPEAKER\n");
+                device = AUDIO_DEVICE_IN_USB_DEVICE;
+            } else if (availableDeviceTypes & AUDIO_DEVICE_IN_BACK_MIC) {
                 device = AUDIO_DEVICE_IN_BACK_MIC;
             } else if (availableDeviceTypes & AUDIO_DEVICE_IN_BUILTIN_MIC) {
                 device = AUDIO_DEVICE_IN_BUILTIN_MIC;
