@@ -43,7 +43,7 @@ static const struct {
     { "OMX.google.amrnb.encoder", "amrnbenc", "audio_encoder.amrnb" },
     { "OMX.google.amrwb.decoder", "amrdec", "audio_decoder.amrwb" },
     { "OMX.google.amrwb.encoder", "amrwbenc", "audio_encoder.amrwb" },
-    { "OMX.google.h264.decoder", "h264dec", "video_decoder.avc" },
+    { "OMX.google.h264.decoder", "avcdec", "video_decoder.avc" },
 #ifdef WITH_AMLOGIC_MEDIA_EX_SUPPORT
     { "OMX.google.vp6.decoder", "amsoftdec", "video_decoder.amvp6" },
     { "OMX.google.vp6a.decoder", "amsoftdec", "video_decoder.amvp6a" },
@@ -57,7 +57,7 @@ static const struct {
     { "OMX.google.wmv2.decoder", "amsoftdec", "video_decoder.wmv2" },
     { "OMX.google.wmv1.decoder", "amsoftdec", "video_decoder.wmv1" },
 #endif
-    { "OMX.google.h264.encoder", "h264enc", "video_encoder.avc" },
+    { "OMX.google.h264.encoder", "avcenc", "video_encoder.avc" },
     { "OMX.google.hevc.decoder", "hevcdec", "video_decoder.hevc" },
     { "OMX.google.g711.alaw.decoder", "g711dec", "audio_decoder.g711alaw" },
     { "OMX.google.g711.mlaw.decoder", "g711dec", "audio_decoder.g711mlaw" },
