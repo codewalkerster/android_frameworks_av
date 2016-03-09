@@ -68,7 +68,7 @@ status_t MediaPlayerFactory::registerFactory_l(IFactory* factory,
 player_type MediaPlayerFactory::getDefaultPlayerType()
 {
     char value[PROPERTY_VALUE_MAX];
-    if (property_get("media.stagefright.use-awesome", value, NULL)
+    if (property_get("media.stagefright.use-awesome", value, "true")
         && (!strcmp("1", value) || !strcasecmp("true", value))) {
         return STAGEFRIGHT_PLAYER;
     }
