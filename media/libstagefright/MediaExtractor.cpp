@@ -77,14 +77,14 @@ sp<MediaExtractor> MediaExtractor::Create(
             float ffconfidence = 0;
             String8 tmpffmpeg("");
             sp<AMessage> ffmeta(NULL);
-            if (!sniffFFmpegFormat(source, &tmpffmpeg, &ffconfidence, &ffmeta))
+            if (!sniffFFmpegFormat(source, &tmpffmpeg, &ffconfidence, &ffmeta) && confidence <= 0.0)
             {
                 ALOGE("FAILED to autodetect media content.");
                 return NULL;
             } else {
                 if (confidence == 0 ||
                    ffconfidence > confidence ||
-                   strcmp(tmpffmpeg.string(), tmp.string())) {
+                   (ffconfidence > 0 && strcmp(tmpffmpeg.string(), tmp.string()))) {
                     is_sniff_from_ffmpeg = 1;
                     confidence = ffconfidence;
                     tmp = tmpffmpeg;

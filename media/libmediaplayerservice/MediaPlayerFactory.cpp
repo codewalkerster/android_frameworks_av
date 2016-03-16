@@ -207,7 +207,7 @@ public:
         }
 
         if (MediaPlayerFactory::getDefaultPlayerType() == STAGEFRIGHT_PLAYER) {
-            char buf[20];
+            char buf[32];
             lseek(fd, offset, SEEK_SET);
             read(fd, buf, sizeof(buf));
             lseek(fd, offset, SEEK_SET);
@@ -215,11 +215,16 @@ public:
             uint32_t ident = *((uint32_t*)buf);
 
             // Ogg vorbis?
-            if (ident == 0x5367674f) { // 'OggS'
+            // ogm header syntax:
+            //  number_page_segments:1 byte -----> buf[28]
+            //  egment_table : buf[29] ......
+            // We  just use partial  of header info to check if it is a music file
+            if (ident == 0x5367674f && (buf[28] == 1) &&
+                (!(((buf[29] == 'v') && (buf[30] == 'i') && (buf[31] == 'd' )) || buf[29] == 't')))/*is video*/
+                {/*only for music.*/
                 return 1.0;
             }
         }
-
         return 0.0;
     }
 
