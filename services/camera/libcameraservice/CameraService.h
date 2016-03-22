@@ -24,6 +24,7 @@
 #include <binder/BinderService.h>
 #include <binder/IAppOpsCallback.h>
 #include <camera/ICameraService.h>
+#include <camera/ICameraServiceProxy.h>
 #include <hardware/camera.h>
 
 #include <camera/ICamera.h>
@@ -74,6 +75,8 @@ public:
 
     // Process state (mirrors frameworks/base/core/java/android/app/ActivityManager.java)
     static const int PROCESS_STATE_NONEXISTENT = -1;
+    static const int PROCESS_STATE_TOP = 2;
+    static const int PROCESS_STATE_TOP_SLEEPING = 5;
 
     // 3 second busy timeout when other clients are connecting
     static const nsecs_t DEFAULT_CONNECT_TIMEOUT_NS = 3000000000;
@@ -83,6 +86,9 @@ public:
 
     // Default number of messages to store in eviction log
     static const size_t DEFAULT_EVENT_LOG_LENGTH = 100;
+
+    // Event log ID
+    static const int SN_EVENT_LOG_ID = 0x534e4554;
 
     // Implementation of BinderService<T>
     static char const* getServiceName() { return "media.camera"; }
@@ -158,13 +164,22 @@ public:
 
     enum sound_kind {
         SOUND_SHUTTER = 0,
-        SOUND_RECORDING = 1,
+        SOUND_RECORDING_START = 1,
+        SOUND_RECORDING_STOP = 2,
         NUM_SOUNDS
     };
 
     void                loadSound();
     void                playSound(sound_kind kind);
     void                releaseSound();
+
+    /**
+     * Update the state of a given camera device (open/close/active/idle) with
+     * the camera proxy service in the system service
+     */
+    static void         updateProxyDeviceState(
+            ICameraServiceProxy::CameraState newState,
+            const String8& cameraId);
 
     /////////////////////////////////////////////////////////////////////
     // CameraDeviceFactory functionality
@@ -191,7 +206,10 @@ public:
             return mRemoteBinder;
         }
 
-        virtual status_t    dump(int fd, const Vector<String16>& args) = 0;
+        // Disallows dumping over binder interface
+        virtual status_t      dump(int fd, const Vector<String16>& args);
+        // Internal dump method to be called by CameraService
+        virtual status_t      dumpClient(int fd, const Vector<String16>& args) = 0;
 
         // Return the package name for this client
         virtual String16 getPackageName() const;
@@ -732,6 +750,7 @@ private:
 
     static String8 toString(std::set<userid_t> intSet);
 
+    static sp<ICameraServiceProxy> getCameraServiceProxy();
     static void pingCameraServiceProxy();
 
 };
@@ -861,11 +880,6 @@ status_t CameraService::connectHelper(const sp<CALLBACK>& cameraCb, const String
         if ((ret = client->initialize(mModule)) != OK) {
             ALOGE("%s: Could not initialize client from HAL module.", __FUNCTION__);
             return ret;
-        }
-
-        sp<IBinder> remoteCallback = client->getRemote();
-        if (remoteCallback != nullptr) {
-            remoteCallback->linkToDeath(this);
         }
 
         // Update shim paremeters for legacy clients
