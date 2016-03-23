@@ -238,9 +238,9 @@ status_t AudioPolicyManager::setDeviceConnectionStateInt(audio_devices_t device,
    /*
    for mbx ,not reponse for android hdmi hotplug message as need digital output all the time.also treat the spdif out as hdmi out.
    */
-//   if ((device&AUDIO_DEVICE_OUT_AUX_DIGITAL) && getprop_bool("ro.platform.has.mbxuimode")) {
-//       return NO_ERROR;
-//   }
+   if (device&AUDIO_DEVICE_OUT_AUX_DIGITAL) {
+       return NO_ERROR;
+   }
    if (device&AUDIO_DEVICE_OUT_SPDIF) {
        device = AUDIO_DEVICE_OUT_AUX_DIGITAL;
    }
@@ -1091,11 +1091,11 @@ audio_io_handle_t AudioPolicyManager::getOutputForDevice(
                                            format,
                                            channelMask,
                                            (audio_output_flags_t)flags);
-	 if (device&AUDIO_DEVICE_OUT_AUX_DIGITAL) {
-    // for direct output,only use HDMI
-             device = AUDIO_DEVICE_OUT_AUX_DIGITAL;
-         }
-          profile = getProfileForDirectOutput(device,
+        if (device&AUDIO_DEVICE_OUT_AUX_DIGITAL) {
+            // for direct output,only use HDMI
+            device = AUDIO_DEVICE_OUT_AUX_DIGITAL;
+        }
+        profile = getProfileForDirectOutput(device,
                                            samplingRate,
                                            format,
                                            channelMask,
@@ -3287,7 +3287,9 @@ AudioPolicyManager::AudioPolicyManager(AudioPolicyClientInterface *clientInterfa
     }
 
     ALOGE_IF((mPrimaryOutput == 0), "Failed to open primary output");
+
     updateDevicesAndOutputs();
+
 #ifdef AUDIO_POLICY_TEST
     if (mPrimaryOutput != 0) {
         AudioParameter outputCmd = AudioParameter();
@@ -4149,8 +4151,8 @@ void AudioPolicyManager::checkOutputForStrategy(routing_strategy strategy)
     }
 
     if (!vectorsEqual(srcOutputs,dstOutputs)) {
-     //   ALOGV("checkOutputForStrategy() strategy %d, moving from output %d to output %d",
-       //       strategy, srcOutputs[0], dstOutputs[0]);
+        ALOGV("checkOutputForStrategy() strategy %d, moving from output %d to output %d",
+              strategy, srcOutputs[0], dstOutputs[0]);
         // mute strategy while moving tracks from one output to another
         for (size_t i = 0; i < srcOutputs.size(); i++) {
             sp<AudioOutputDescriptor> desc = mOutputs.valueFor(srcOutputs[i]);
@@ -4788,7 +4790,7 @@ audio_devices_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strate
         if (device2 == AUDIO_DEVICE_NONE) {
             device2 = availableOutputDeviceTypes & AUDIO_DEVICE_OUT_DGTL_DOCK_HEADSET;
         }
-        if ((device2 == AUDIO_DEVICE_NONE) && (strategy != STRATEGY_SONIFICATION) ) {
+        if ((device2 == AUDIO_DEVICE_NONE) && (strategy != STRATEGY_SONIFICATION)) {
             // no sonification on aux digital (e.g. HDMI)
             device2 = availableOutputDeviceTypes & AUDIO_DEVICE_OUT_AUX_DIGITAL;
         }
@@ -4805,9 +4807,8 @@ audio_devices_t AudioPolicyManager::getDeviceForStrategy(routing_strategy strate
             device3 = availableOutputDeviceTypes & AUDIO_DEVICE_OUT_HDMI_ARC;
             device3 |= (availableOutputDeviceTypes & AUDIO_DEVICE_OUT_SPDIF);
             device3 |= (availableOutputDeviceTypes & AUDIO_DEVICE_OUT_AUX_LINE);
-//	    if (getprop_bool("ro.platform.has.mbxuimode"))
-//                device3 |= (availableOutputDeviceTypes & AUDIO_DEVICE_OUT_AUX_DIGITAL);
         }
+
         device2 |= device3;
         // device is DEVICE_OUT_SPEAKER if we come from case STRATEGY_SONIFICATION or
         // STRATEGY_ENFORCED_AUDIBLE, AUDIO_DEVICE_NONE otherwise
