@@ -71,7 +71,7 @@ sp<MediaExtractor> MediaExtractor::Create(
             confidence = 0;
         }
 #ifdef WITH_AMLOGIC_MEDIA_EX_SUPPORT
-        if (confidence <= 0.01 ||
+        if (confidence < 0.8 ||
         (!strcmp(tmp.string(), MEDIA_MIMETYPE_AUDIO_WMA)))
         {
             float ffconfidence = 0;
