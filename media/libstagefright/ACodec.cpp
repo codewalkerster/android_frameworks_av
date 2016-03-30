@@ -2735,7 +2735,9 @@ status_t ACodec::setupRawAudioFormat(
         return err;
     }
 
-    def.format.audio.eEncoding = OMX_AUDIO_CodingPCM;
+    if (def.format.audio.eEncoding != OMX_AUDIO_CodingG711)
+        def.format.audio.eEncoding = OMX_AUDIO_CodingPCM;
+
 
     err = mOMX->setParameter(
             mNode, OMX_IndexParamPortDefinition, &def, sizeof(def));
