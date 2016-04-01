@@ -829,12 +829,14 @@ status_t AudioTrack::setPlaybackRate(const AudioPlaybackRate &playbackRate)
     if (!isAudioPlaybackRateValid(playbackRateTemp)) {
         return BAD_VALUE;
     }
+/* by xujian,commit here for CTS X2 playback issue */
+#if 0
     // Check if the buffer size is compatible.
     if (!isSampleRateSpeedAllowed_l(effectiveRate, effectiveSpeed)) {
         ALOGV("setPlaybackRate(%f, %f) failed", playbackRate.mSpeed, playbackRate.mPitch);
         return BAD_VALUE;
     }
-
+#endif
     // Check resampler ratios are within bounds
     if (effectiveRate > mSampleRate * AUDIO_RESAMPLER_DOWN_RATIO_MAX) {
         ALOGV("setPlaybackRate(%f, %f) failed. Resample rate exceeds max accepted value",
