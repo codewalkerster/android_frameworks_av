@@ -1528,6 +1528,9 @@ status_t AudioPolicyManager::getInputForAttr(const audio_attributes_t *attr,
         policyMix = &mPolicyMixes[index]->mMix;
         *inputType = API_INPUT_MIX_EXT_POLICY_REROUTE;
     } else {
+        if (inputSource == AUDIO_SOURCE_VOICE_RECOGNITION) {
+            inputSource = AUDIO_SOURCE_HOTWORD;
+        }
         device = getDeviceAndMixForInputSource(inputSource, &policyMix);
         if (device == AUDIO_DEVICE_NONE) {
             ALOGW("getInputForAttr() could not find device for source %d", inputSource);
