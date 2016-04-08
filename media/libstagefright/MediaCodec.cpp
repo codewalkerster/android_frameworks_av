@@ -2479,12 +2479,27 @@ status_t MediaCodec::onQueueInputBuffer(const sp<AMessage> &msg) {
 size_t MediaCodec::CreateFramesRenderedMessage(
         std::list<FrameRenderTracker::Info> done, sp<AMessage> &msg) {
     size_t index = 0;
+    size_t drop = 0;
+
+    if ((done.size() * 2 + msg->countEntries()) >= 64) {
+        drop = done.size() - (64 - msg->countEntries()) / 2;
+        ALOGI("FramesRenderedMessage overflow, total frames %d. dropping %d",
+              done.size(), drop);
+    }
 
     for (std::list<FrameRenderTracker::Info>::const_iterator it = done.cbegin();
             it != done.cend(); ++it) {
         if (it->getRenderTimeNs() < 0) {
             continue; // dropped frame from tracking
         }
+
+        if (drop > 0) {
+            ALOGI("CreateFramesRenderedMessage dropped %lld, %lld",
+                  it->getMediaTimeUs(), it->getRenderTimeNs());
+            --drop;
+            continue; // drop earlier frames for overflow
+        }
+
         msg->setInt64(AStringPrintf("%zu-media-time-us", index).c_str(), it->getMediaTimeUs());
         msg->setInt64(AStringPrintf("%zu-system-nano", index).c_str(), it->getRenderTimeNs());
         ++index;
