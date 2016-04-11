@@ -30,6 +30,8 @@
 #include <utils/threads.h>
 #include <drm/DrmManagerClient.h>
 
+#include "include/mediainfo.h"
+
 namespace android {
 
 class AudioPlayer;
@@ -367,6 +369,9 @@ private:
     // when select is true, the given track is selected.
     // otherwise, the given track is unselected.
     status_t selectTrack(size_t trackIndex, bool select);
+    status_t getMediaInfo(Parcel* reply);
+    status_t updateMediaInfo(void);
+    aformat_t audioTypeConvert(enum CodecID id);
 
     size_t countTracks() const;
 
@@ -374,6 +379,7 @@ private:
     AwesomePlayer &operator=(const AwesomePlayer &);
 
 public:
+     media_info_t        mStreamInfo;
     ssize_t mActiveVideoTrackIndex;
 };
 

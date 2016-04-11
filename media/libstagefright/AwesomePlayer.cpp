@@ -2650,6 +2650,11 @@ status_t AwesomePlayer::getParameter(int key, Parcel *reply) {
             reply->writeInt32(channelCount);
         }
         return OK;
+    case KEY_PARAMETER_AML_PLAYER_GET_MEDIA_INFO:
+        {
+            getMediaInfo(reply);
+            return OK;
+        }
     default:
         {
             ALOGE("[%s:%d]ERROR_UNSUPPORTED, key %d\n", __FUNCTION__, __LINE__, key);
@@ -2657,6 +2662,242 @@ status_t AwesomePlayer::getParameter(int key, Parcel *reply) {
         }
     }
 }
+
+
+aformat_t AwesomePlayer::audioTypeConvert(enum CodecID id)
+{
+    aformat_t format = (aformat_t)-1;
+    switch (id) {
+    case CODEC_ID_PCM_MULAW:
+        //format = AFORMAT_MULAW;
+        format = AFORMAT_ADPCM;
+        break;
+
+    case CODEC_ID_PCM_ALAW:
+        //format = AFORMAT_ALAW;
+        format = AFORMAT_ADPCM;
+        break;
+
+
+    case CODEC_ID_MP1:
+    case CODEC_ID_MP2:
+    case CODEC_ID_MP3:
+        format = AFORMAT_MPEG;
+        break;
+
+    case CODEC_ID_AAC_LATM:
+        format = AFORMAT_AAC_LATM;
+        break;
+
+
+    case CODEC_ID_AAC:
+        format = AFORMAT_AAC;
+        break;
+
+    case CODEC_ID_AC3:
+        format = AFORMAT_AC3;
+        break;
+    case CODEC_ID_EAC3:
+        format = AFORMAT_EAC3;
+        break;
+    case CODEC_ID_DTS:
+        format = AFORMAT_DTS;
+        break;
+
+    case CODEC_ID_PCM_S16BE:
+        format = AFORMAT_PCM_S16BE;
+        break;
+
+    case CODEC_ID_PCM_S16LE:
+        format = AFORMAT_PCM_S16LE;
+        break;
+
+    case CODEC_ID_PCM_U8:
+        format = AFORMAT_PCM_U8;
+        break;
+
+    case CODEC_ID_COOK:
+        format = AFORMAT_COOK;
+        break;
+
+    case CODEC_ID_ADPCM_IMA_WAV:
+    case CODEC_ID_ADPCM_MS:
+        format = AFORMAT_ADPCM;
+        break;
+    case CODEC_ID_AMR_NB:
+    case CODEC_ID_AMR_WB:
+        format =  AFORMAT_AMR;
+        break;
+    case CODEC_ID_WMAV1:
+    case CODEC_ID_WMAV2:
+        format =  AFORMAT_WMA;
+        break;
+    case CODEC_ID_FLAC:
+        format = AFORMAT_FLAC;
+        break;
+
+    case CODEC_ID_WMAPRO:
+        format = AFORMAT_WMAPRO;
+        break;
+
+    case CODEC_ID_PCM_BLURAY:
+        format = AFORMAT_PCM_BLURAY;
+        break;
+    case CODEC_ID_ALAC:
+        format = AFORMAT_ALAC;
+        break;
+    case CODEC_ID_VORBIS:
+        format =    AFORMAT_VORBIS;
+        break;
+    case CODEC_ID_APE:
+        format =    AFORMAT_APE;
+        break;
+    case CODEC_ID_PCM_WIFIDISPLAY:
+	    format = AFORMAT_PCM_WIFIDISPLAY;
+        break;
+    default:
+        format = AFORMAT_UNSUPPORT;
+        ALOGV("audio codec_id=0x%x\n", id);
+    }
+    ALOGV("[audioTypeConvert]audio codec_id=0x%x format=%d\n", id, format);
+
+    return format;
+}
+
+
+
+
+status_t AwesomePlayer::updateMediaInfo(void) {
+    //Mutex::Autolock autoLock(mLock);
+    maudio_info_t *ainfo;
+    mvideo_info_t *vinfo;
+
+    for (size_t i = 0; i < mExtractor->countTracks(); ++i) {
+        sp<MetaData> meta = mExtractor->getTrackMetaData(i);
+
+        const char *_mime;
+        CHECK(meta->findCString(kKeyMIMEType, &_mime));
+
+        String8 mime = String8(_mime);
+        if (!strncasecmp(mime.string(), "video/", 6)) {
+            vinfo = (mvideo_info_t *)malloc(sizeof(mvideo_info_t));
+            memset(vinfo, 0, sizeof(mvideo_info_t));
+
+            int32_t codecid,width,height,bitrate;
+            int64_t duration;
+            vinfo->index       = i;
+            if (meta->findInt32(kKeyCodecID, &codecid))
+                vinfo->id = codecid;
+            if (meta->findInt32(kKeyWidth, &width))
+                vinfo->width = width;
+            if (meta->findInt32(kKeyHeight, &height))
+                vinfo->height = height;
+            if (meta->findInt64(kKeyDuration, &duration))
+                vinfo->duartion = duration;
+            if (meta->findInt32(kKeyBitRate, &bitrate))
+                vinfo->bit_rate = bitrate;
+            vinfo->format      = (vformat_t)0;
+            vinfo->aspect_ratio_num = 0;
+            vinfo->aspect_ratio_den = 0;
+            vinfo->frame_rate_num   = 0;
+            vinfo->frame_rate_den   = 0;
+            vinfo->video_rotation_degree = 0;
+            mStreamInfo.video_info[mStreamInfo.stream_info.total_video_num] = vinfo;
+            mStreamInfo.stream_info.total_video_num++;
+        } else if (!strncasecmp(mime.string(), "audio/", 6)) {
+            ainfo = (maudio_info_t *)malloc(sizeof(maudio_info_t));
+            memset(ainfo, 0, sizeof(maudio_info_t));
+            int32_t codecid, bitrate, samplerate, channelcount;
+            int64_t duration;
+            ainfo->index     = i;
+            if (meta->findInt32(kKeyCodecID, &codecid))
+                ainfo->id = codecid;
+            if (meta->findInt32(kKeyBitRate, &bitrate))
+                ainfo->bit_rate = bitrate;
+            if (meta->findInt32(kKeySampleRate, &samplerate))
+                ainfo->sample_rate = samplerate;
+            if (meta->findInt32(kKeyChannelCount, &channelcount))
+                ainfo->channel = channelcount;
+            if (meta->findInt64(kKeyDuration, &duration))
+                ainfo->duration = duration;
+            ainfo->aformat      = audioTypeConvert((enum CodecID)ainfo->id);
+            mStreamInfo.audio_info[mStreamInfo.stream_info.total_audio_num] = ainfo;
+            mStreamInfo.stream_info.total_audio_num++;
+        } else {}
+    }
+
+    mStreamInfo.stream_info.cur_video_index = mActiveVideoTrackIndex;
+    mStreamInfo.stream_info.cur_audio_index = mActiveAudioTrackIndex;
+    mStreamInfo.stream_info.cur_sub_index   = -1;
+
+    return OK;
+}
+
+
+
+
+status_t AwesomePlayer::getMediaInfo(Parcel* reply){
+    //Mutex::Autolock autoLock(mLock);
+    ALOGI("AwesomePlayer::getMediaInfo");
+    int datapos=reply->dataPosition();
+    updateMediaInfo();
+    //filename
+    reply->writeString16(String16("-1"));
+    //duration
+    if (mDurationUs > 0)
+        reply->writeInt32(mDurationUs/1000000);
+    else
+        reply->writeInt32(-1);
+
+    reply->writeString16(String16("null"));
+
+    //bitrate
+    if (mBitrate >= 0)
+        reply->writeInt32(mBitrate);
+    else
+        reply->writeInt32(-1);
+    //filetype
+    reply->writeInt32(mStreamInfo.stream_info.type);
+
+    /*select info*/
+    reply->writeInt32(mActiveVideoTrackIndex);
+    reply->writeInt32(mActiveAudioTrackIndex);
+    reply->writeInt32(-1);
+    ALOGV("--cur video:%d cur audio:%d cur sub:%d \n",mStreamInfo.stream_info.cur_video_index,mStreamInfo.stream_info.cur_audio_index,mStreamInfo.stream_info.cur_sub_index);
+    /*build video info*/
+    reply->writeInt32(mStreamInfo.stream_info.total_video_num);
+    for (int i = 0;i < mStreamInfo.stream_info.total_video_num; i ++) {
+        sp<MetaData> meta = mExtractor->getTrackMetaData(mStreamInfo.video_info[i]->index);
+        const char *_mime;
+        CHECK(meta->findCString(kKeyMIMEType, &_mime));
+        reply->writeInt32(mStreamInfo.video_info[i]->index);
+        reply->writeInt32(mStreamInfo.video_info[i]->id);
+        reply->writeString16(String16(_mime));
+        reply->writeInt32(mStreamInfo.video_info[i]->width);
+        reply->writeInt32(mStreamInfo.video_info[i]->height);
+        ALOGV("--video index:%d id:%d totlanum:%d width:%d height:%d \n",mStreamInfo.video_info[i]->index,mStreamInfo.video_info[i]->id,mStreamInfo.stream_info.total_video_num,mStreamInfo.video_info[i]->width,mStreamInfo.video_info[i]->height);
+    }
+
+    /*build audio info*/
+    reply->writeInt32(mStreamInfo.stream_info.total_audio_num);
+    for (int i = 0; i < mStreamInfo.stream_info.total_audio_num; i ++) {
+        reply->writeInt32(mStreamInfo.audio_info[i]->index);
+        reply->writeInt32(mStreamInfo.audio_info[i]->id);
+        //reply->writeString16(String16(player_value2str("aformat", mStreamInfo.audio_info[i]->aformat)));
+        reply->writeInt32(mStreamInfo.audio_info[i]->aformat);
+        reply->writeInt32(mStreamInfo.audio_info[i]->channel);
+        reply->writeInt32(mStreamInfo.audio_info[i]->sample_rate);
+        ALOGI("--audio index:%d id:%d totlanum:%d channel:%d samplerate:%d \n",mStreamInfo.audio_info[i]->index,mStreamInfo.audio_info[i]->id,mStreamInfo.stream_info.total_audio_num,mStreamInfo.audio_info[i]->channel,mStreamInfo.audio_info[i]->sample_rate);
+    }
+
+    /*build subtitle info*/
+    reply->writeInt32(0);
+    reply->writeInt32(0);
+    reply->setDataPosition(datapos);
+    return OK;
+}
+
+
 
 status_t AwesomePlayer::setPlaybackSettings(const AudioPlaybackRate &rate) {
     Mutex::Autolock autoLock(mLock);
