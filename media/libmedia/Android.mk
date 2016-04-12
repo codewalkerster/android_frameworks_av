@@ -68,7 +68,7 @@ LOCAL_SRC_FILES:= \
     MemoryLeakTrackUtil.cpp \
     StringArray.cpp \
     AudioPolicy.cpp \
-    AmAudioTrack_reset_system_paras.cpp
+#    AmAudioTrack_reset_system_paras.cpp
 
 LOCAL_SHARED_LIBRARIES := \
 	libui liblog libcutils libutils libbinder libsonivox libicuuc libicui18n libexpat \

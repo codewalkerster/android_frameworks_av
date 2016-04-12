@@ -554,9 +554,12 @@ audio_devices_t Engine::getDeviceForStrategy(routing_strategy strategy) const
         if (device2 == AUDIO_DEVICE_NONE) {
             device2 = availableOutputDevicesType & AUDIO_DEVICE_OUT_DGTL_DOCK_HEADSET;
         }
-        if ((device2 == AUDIO_DEVICE_NONE) && (strategy != STRATEGY_SONIFICATION) && (!getprop_bool("ro.platform.has.mbxuimode"))) {
+        if ((device2 == AUDIO_DEVICE_NONE) && (strategy != STRATEGY_SONIFICATION)) {
             // no sonification on aux digital (e.g. HDMI)
-            device2 = availableOutputDevicesType & AUDIO_DEVICE_OUT_AUX_DIGITAL;
+            //commit by amlogic.as we always output PCM by primary audio HAL.
+            //So we do not need attached the AUDIO_DEVICE_OUT_AUX_DIGITAL
+            //which will skip the AUDIO_DEVICE_OUT_SPEAKER selected.
+            //device2 = availableOutputDevicesType & AUDIO_DEVICE_OUT_AUX_DIGITAL;
         }
         if ((device2 == AUDIO_DEVICE_NONE) &&
                 (mForceUse[AUDIO_POLICY_FORCE_FOR_DOCK] == AUDIO_POLICY_FORCE_ANALOG_DOCK)) {
@@ -568,11 +571,10 @@ audio_devices_t Engine::getDeviceForStrategy(routing_strategy strategy) const
         int device3 = AUDIO_DEVICE_NONE;
         if (strategy == STRATEGY_MEDIA) {
             // ARC, SPDIF and AUX_LINE can co-exist with others.
-            device3 = availableOutputDevicesType & AUDIO_DEVICE_OUT_HDMI_ARC;
+            device3 = availableOutputDevicesType & AUDIO_DEVICE_OUT_AUX_DIGITAL;
+            device3 |= availableOutputDevicesType & AUDIO_DEVICE_OUT_HDMI_ARC;
             device3 |= (availableOutputDevicesType & AUDIO_DEVICE_OUT_SPDIF);
             device3 |= (availableOutputDevicesType & AUDIO_DEVICE_OUT_AUX_LINE);
-        if (getprop_bool("ro.platform.has.mbxuimode"))
-                device3 |= (availableOutputDevicesType & AUDIO_DEVICE_OUT_AUX_DIGITAL);
         }
 
         device2 |= device3;

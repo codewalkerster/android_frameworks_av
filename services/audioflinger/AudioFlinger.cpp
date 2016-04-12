@@ -131,6 +131,9 @@ const char *formatToString(audio_format_t format) {
     case AUDIO_FORMAT_OPUS: return "opus";
     case AUDIO_FORMAT_AC3: return "ac-3";
     case AUDIO_FORMAT_E_AC3: return "e-ac-3";
+    case AUDIO_FORMAT_DTS:return "dts";
+    case AUDIO_FORMAT_DTS_HD:return "dts-hd";
+    case AUDIO_FORMAT_TRUEHD:return "truehd";
     default:
         break;
     }
@@ -1036,7 +1039,7 @@ status_t AudioFlinger::setParameters(audio_io_handle_t ioHandle, const String8& 
             ioHandle, keyValuePairs.string(), IPCThreadState::self()->getCallingPid());
 
     // check calling permissions
-    if (!settingsAllowed()) {
+    if (!settingsAllowed() && !strstr(keyValuePairs.string(),"hw_av_sync") ) {
         return PERMISSION_DENIED;
     }
 
