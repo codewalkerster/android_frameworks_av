@@ -2772,6 +2772,9 @@ status_t AwesomePlayer::updateMediaInfo(void) {
     maudio_info_t *ainfo;
     mvideo_info_t *vinfo;
 
+    mStreamInfo.stream_info.total_video_num = 0;
+    mStreamInfo.stream_info.total_audio_num = 0;
+
     for (size_t i = 0; i < mExtractor->countTracks(); ++i) {
         sp<MetaData> meta = mExtractor->getTrackMetaData(i);
 
