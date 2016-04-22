@@ -337,6 +337,9 @@ status_t MediaCodec::init(const AString &name, bool nameIsType, bool encoder) {
             return NO_INIT; // if called from Java should raise IOException
         }
         ssize_t codecIdx = mcl->findCodecByName(tmp.c_str());
+        if (codecIdx < 0 && nameIsType) {
+            codecIdx = mcl->findCodecByType(tmp.c_str(), encoder, 0);
+        }
         if (codecIdx >= 0) {
             const sp<MediaCodecInfo> info = mcl->getCodecInfo(codecIdx);
             Vector<AString> mimes;

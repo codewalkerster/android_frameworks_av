@@ -1634,6 +1634,8 @@ status_t ACodec::setComponentRole(
             "audio_decoder.ac3", "audio_encoder.ac3" },
         { MEDIA_MIMETYPE_AUDIO_EAC3,
             "audio_decoder.ec3", "audio_encoder.ec3" },
+        {MEDIA_MIMETYPE_AUDIO_DTSHD,
+            "audio_decoder.dtshd",  "audio_encoder.dtshd" },
 #ifdef WITH_AMLOGIC_MEDIA_EX_SUPPORT
         { MEDIA_MIMETYPE_VIDEO_MJPEG,
             "video_decoder.mjpeg", "video_encoder.mjpeg" },
@@ -1752,7 +1754,6 @@ status_t ACodec::configureCodec(
         if (err != OK) {
             ALOGE("[%s] storeMetaDataInBuffers (input) failed w/ err %d",
                     mComponentName.c_str(), err);
-
             return err;
         }
         // For this specific case we could be using camera source even if storeMetaDataInBuffers
@@ -2220,9 +2221,20 @@ status_t ACodec::configureCodec(
         int32_t sampleRate;
         if (!msg->findInt32("channel-count", &numChannels)
                 || !msg->findInt32("sample-rate", &sampleRate)) {
+            ALOGE("Dolby has invalid parameters!");
             err = INVALID_OPERATION;
         } else {
             err = setupEAC3Codec(encoder, numChannels, sampleRate);
+        }
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_DTSHD)) {
+        int32_t numChannels;
+        int32_t sampleRate;
+        if (!msg->findInt32("channel-count", &numChannels)
+                || !msg->findInt32("sample-rate", &sampleRate)) {
+            ALOGE("DTS has invalid parameters!");
+            err = INVALID_OPERATION;
+        } else {
+            err = setupDTSCodec(encoder, numChannels, sampleRate);
         }
     }
 
@@ -2608,6 +2620,44 @@ status_t ACodec::setupEAC3Codec(
     return mOMX->setParameter(
             mNode,
             (OMX_INDEXTYPE)OMX_IndexParamAudioAndroidEac3,
+            &def,
+            sizeof(def));
+}
+
+status_t ACodec::setupDTSCodec(
+        bool encoder, int32_t numChannels, int32_t sampleRate) {
+    status_t err = setupRawAudioFormat(
+            encoder ? kPortIndexInput : kPortIndexOutput, sampleRate, numChannels);
+
+    if (err != OK) {
+        return err;
+    }
+
+    if (encoder) {
+        ALOGW("DTS encoding is not supported.");
+        return INVALID_OPERATION;
+    }
+
+    OMX_AUDIO_PARAM_DTSHDTYPE def;
+    InitOMXParams(&def);
+    def.nPortIndex = kPortIndexInput;
+
+    err = mOMX->getParameter(
+            mNode,
+            (OMX_INDEXTYPE)OMX_IndexParamAudioDtshd,
+            &def,
+            sizeof(def));
+
+    if (err != OK) {
+        return err;
+    }
+
+    def.nChannels = numChannels;
+    def.nSamplesPerSec = sampleRate;
+
+    return mOMX->setParameter(
+            mNode,
+            (OMX_INDEXTYPE)OMX_IndexParamAudioDtshd,
             &def,
             sizeof(def));
 }
@@ -4445,6 +4495,29 @@ status_t ACodec::getPortFormat(OMX_U32 portIndex, sp<AMessage> &notify) {
                     }
 
                     notify->setString("mime", MEDIA_MIMETYPE_AUDIO_EAC3);
+                    notify->setInt32("channel-count", params.nChannels);
+                    notify->setInt32("sample-rate", params.nSampleRate);
+                    break;
+                }
+
+                case 0x7f000001:/*DTS PRIVATE ?*/
+                {
+                    OMX_AUDIO_PARAM_ANDROID_EAC3TYPE params;
+                    InitOMXParams(&params);
+                    params.nPortIndex = portIndex;
+
+                    err = mOMX->getParameter(
+                            mNode, (OMX_INDEXTYPE)OMX_IndexParamAudioDtshd,
+                            &params, sizeof(params));
+                    if (err != OK) {
+                        ALOGE("_________GET 0X7F000001 OMX_IndexParamAudioDtshd %d\n",
+                                    err);
+                        return err;
+                    }
+
+                    ALOGE("_________GET 0X7F000001 channel-count %d, sample-rate %d\n",
+                                params.nChannels, params.nSampleRate);
+                    notify->setString("mime", MEDIA_MIMETYPE_AUDIO_DTSHD);
                     notify->setInt32("channel-count", params.nChannels);
                     notify->setInt32("sample-rate", params.nSampleRate);
                     break;
