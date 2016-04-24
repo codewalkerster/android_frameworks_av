@@ -1722,9 +1722,9 @@ sp<AudioFlinger::PlaybackThread::Track> AudioFlinger::PlaybackThread::createTrac
     case DIRECT:
         if (audio_is_linear_pcm(format)) {
             if (sampleRate != mSampleRate || format != mFormat || channelMask != mChannelMask) {
-                ALOGE("createTrack_l() Bad parameter: sampleRate %u format %#x, channelMask 0x%08x "
-                        "for output %p with format %#x",
-                        sampleRate, format, channelMask, mOutput, mFormat);
+                ALOGE("[%p]createTrack_l() Bad parameter: sampleRate %u format %#x, channelMask 0x%08x "
+                        "for output %p with sampleRate %#x format %#x ChannelMask %#x", this,
+                        sampleRate, format, channelMask, mOutput, mSampleRate, mFormat, mChannelMask);
                 lStatus = BAD_VALUE;
                 goto Exit;
             }
@@ -2112,11 +2112,6 @@ void AudioFlinger::PlaybackThread::readOutputParameters_l()
         LOG_FATAL("HAL format %#x not supported for mixed output",
                 mFormat);
     }
-    //TODO  2ch PCM direct output may used, get the correct format from audio hal
-    else if(mType == DIRECT && mChannelCount == 2){
-        mFormat  = AUDIO_FORMAT_DTS;
-    }
-    //mFrameSize = audio_stream_out_frame_size(mOutput->stream);
     mFrameSize = mOutput->getFrameSize();
     mBufferSize = mOutput->stream->common.get_buffer_size(&mOutput->stream->common);
     mFrameCount = mBufferSize / mFrameSize;
@@ -3089,6 +3084,7 @@ status_t AudioFlinger::PlaybackThread::getTimestamp_l(AudioTimestamp& timestamp)
         uint64_t position64;
         int ret = mOutput->getPresentationPosition(&position64, &timestamp.mTime);
         if (ret == 0) {
+            ALOGVV("position64 %lld\n",position64);
             timestamp.mPosition = (uint32_t)position64;
             return NO_ERROR;
         }
@@ -4599,17 +4595,20 @@ AudioFlinger::PlaybackThread::mixer_state AudioFlinger::DirectOutputThread::prep
         // app does not call stop() and relies on underrun to stop:
         // hence the test on (track->mRetryCount > 1).
         // If retryCount<=1 then track is about to underrun and be removed.
+        // Do not use a high threshold for compressed audio.
+        // by xujian,our hal need 64 bytes align,I dont want  cache data
+        // in the audio hal so,make it frame count align
         uint32_t minFrames = mNormalFrameCount;
         if ((track->sharedBuffer() == 0) && !track->isStopping_1() && !track->isPausing()
             && (track->mRetryCount > 1) && audio_is_linear_pcm(mFormat)) {
             minFrames = mNormalFrameCount;
         } else {
-         //   minFrames = 1;
+            //minFrames = 1;
         }
-            ALOGVV("12 track %d s=%08x [OK],min %d", track->name(), cblk->mServer,minFrames);
-
+            ALOGVV("12 track %d s=%08x [OK],min %d,ready %d", track->name(), cblk->mServer,minFrames,track->framesReady() );
+            ALOGVV("34 stop %d,paused %d, terminated %d,stop2 %d,track->isReady() %d \n",track->isStopped(),track->isPaused(),track->isTerminated(),track->isStopping_2(),track->isReady());
         if ((track->framesReady() >= minFrames) && track->isReady() && !track->isPaused() &&
-                !track->isStopping_2() && !track->isStopped())
+                !track->isStopping_2() && !track->isStopped() && !track->isTerminated())
         {
             ALOGVV("track %d ,%p s=%08x [OK] mid %d,frames ready %d,minFrames %d", track->name(),track,cblk->mServer,mId,track->framesReady(),minFrames);
 

@@ -15,9 +15,9 @@
  */
 
 #define LOG_TAG "APM::AudioPolicyManager"
-//#define LOG_NDEBUG 0
+#define LOG_NDEBUG 0
 
-//#define VERY_VERBOSE_LOGGING
+#define VERY_VERBOSE_LOGGING
 #ifdef VERY_VERBOSE_LOGGING
 #define ALOGVV ALOGV
 #else
@@ -74,15 +74,7 @@ status_t AudioPolicyManager::setDeviceConnectionStateInt(audio_devices_t device,
 {
     ALOGV("setDeviceConnectionStateInt() device: 0x%X, state %d, address %s name %s",
 -            device, state, device_address, device_name);
-   /*
-   for mbx ,not reponse for android hdmi hotplug message as need digital output all the time.also treat the spdif out as hdmi out.
-   */
-   if ((device&AUDIO_DEVICE_OUT_AUX_DIGITAL) && getprop_bool("ro.platform.has.mbxuimode")) {
-       return NO_ERROR;
-   }
-   if (device&AUDIO_DEVICE_OUT_SPDIF) {
-       device = AUDIO_DEVICE_OUT_AUX_DIGITAL;
-   }
+
     // connect/disconnect only 1 device at a time
     if (!audio_is_output_device(device) && !audio_is_input_device(device)) return BAD_VALUE;
 
@@ -866,17 +858,32 @@ audio_io_handle_t AudioPolicyManager::getOutputForDevice(
                                            format,
                                            channelMask,
                                            (audio_output_flags_t)flags);
-        if ((device&AUDIO_DEVICE_OUT_AUX_DIGITAL) && getprop_bool("ro.platform.has.mbxuimode")) {
-    // for direct output,only use HDMI
-             device = AUDIO_DEVICE_OUT_AUX_DIGITAL;
-         }
+//added by amlogic,if device both have digital/speaker for PCM,mask one of it
+//to avoid duplicated output.
+//now multi-channel pcm and compressed raw data goes to digital device
+//we moutain a device prority list,if no HDMI devices found,
+//we our attached spdif device
+        if ( audio_is_raw_data(format) ||(audio_is_linear_pcm(format)  && audio_channel_count_from_out_mask(channelMask) > 2)) {
+            audio_devices_t device_save = device;
+            device = device & AUDIO_DEVICE_OUT_AUX_DIGITAL;
+	    if (device == AUDIO_DEVICE_NONE)
+                device = device_save&AUDIO_DEVICE_OUT_HDMI_ARC;
+            if (device == AUDIO_DEVICE_NONE)
+                device = device_save&AUDIO_DEVICE_OUT_SPDIF;
+            if (device == AUDIO_DEVICE_NONE)
+                device = device_save&AUDIO_DEVICE_OUT_AUX_LINE;
+        }
+        // 2 ch direct PCM goes to primary device
+        //TODO,maybe other devices suport that profile
+        else if (audio_is_linear_pcm(format) && (flags & AUDIO_OUTPUT_FLAG_DIRECT)) {
+            device = device&AUDIO_DEVICE_OUT_SPEAKER;
+        }
         profile = getProfileForDirectOutput(device,
                                            samplingRate,
                                            format,
                                            channelMask,
                                            (audio_output_flags_t)flags);
     }
-
     if (profile != 0) {
         sp<SwAudioOutputDescriptor> outputDesc = NULL;
 
@@ -885,15 +892,9 @@ audio_io_handle_t AudioPolicyManager::getOutputForDevice(
             if (!desc->isDuplicated() && (profile == desc->mProfile)) {
                 outputDesc = desc;
                 // reuse direct output if currently open and configured with same parameters
-                // reuse direct output if currently open and configured with same parameters
-                if ( (!audio_is_linear_pcm(format)) &&   \
-                        (!audio_is_linear_pcm(outputDesc->mFormat))   \
-                        &&(channelMask == outputDesc->mChannelMask)) {
-/*
-if ((samplingRate == outputDesc->mSamplingRate) &&
+                if ((samplingRate == outputDesc->mSamplingRate) &&
                         (format == outputDesc->mFormat) &&
                         (channelMask == outputDesc->mChannelMask)) {
-*/
                     outputDesc->mDirectOpenCount++;
                     ALOGV("getOutput() reusing direct output %d", mOutputs.keyAt(i));
                     return mOutputs.keyAt(i);
@@ -972,7 +973,7 @@ if ((samplingRate == outputDesc->mSamplingRate) &&
             mpClientInterface->moveEffects(AUDIO_SESSION_OUTPUT_MIX, srcOutput, dstOutput);
         }
         mPreviousOutputs = mOutputs;
-        ALOGV("getOutput() returns new direct output %d", output);
+        ALOGI("getOutput() returns new direct output %d", output);
         mpClientInterface->onAudioPortListUpdate();
         return output;
     }
@@ -986,9 +987,14 @@ non_direct_output:
     if (audio_is_linear_pcm(format)) {
         // get which output is suitable for the specified stream. The actual
         // routing change will happen when startOutput() will be called
+        //here added by amlogic.for our design,none-direct PCM always
+        // always DO NOT goto our DIGITAL HAL.so ingore
+        //the digital out device mask
         device = device &(~AUDIO_DEVICE_OUT_AUX_DIGITAL);
+        device = device &(~AUDIO_DEVICE_OUT_SPDIF);
+        device = device &(~AUDIO_DEVICE_OUT_AUX_LINE);
+        device = device &(~AUDIO_DEVICE_OUT_HDMI_ARC);
         SortedVector<audio_io_handle_t> outputs = getOutputsForDevice(device, mOutputs);
-
         // at this stage we should ignore the DIRECT flag as no direct output could be found earlier
         flags = (audio_output_flags_t)(flags & ~AUDIO_OUTPUT_FLAG_DIRECT);
         output = selectOutput(outputs, flags, format);
@@ -996,7 +1002,7 @@ non_direct_output:
     ALOGW_IF((output == 0), "getOutput() could not find output for stream %d, samplingRate %d,"
             "format %d, channels %x, flags %x", stream, samplingRate, format, channelMask, flags);
 
-    ALOGV("  getOutputForDevice() returns output %d", output);
+    ALOGI("  getOutputForDevice() returns output %d", output);
 
     return output;
 }
@@ -1868,14 +1874,13 @@ audio_io_handle_t AudioPolicyManager::getOutputForEffect(const effect_descriptor
 
     routing_strategy strategy = getStrategy(AUDIO_STREAM_MUSIC);
     audio_devices_t device = getDeviceForStrategy(strategy, false /*fromCache*/);
-    /*
-        for mbx profile, AUDIO_DEVICE_OUT_AUX_DIGITAL device routed to duplicated output thread.
-        As, duplicated/direct output can not attach effect.so force route to speaker.
-    */
-    if (getprop_bool("ro.platform.has.mbxuimode")) {
-        if (device & AUDIO_DEVICE_OUT_AUX_DIGITAL)
-            device &= ~AUDIO_DEVICE_OUT_AUX_DIGITAL;
-    }
+    //here added by amlogic.for our design,none-direct PCM always
+    // always DO NOT goto our DIGITAL HAL.so ingore
+    //the digital out device mask when effect check
+    device = device &(~AUDIO_DEVICE_OUT_AUX_DIGITAL);
+    device = device &(~AUDIO_DEVICE_OUT_SPDIF);
+    device = device &(~AUDIO_DEVICE_OUT_AUX_LINE);
+    device = device &(~AUDIO_DEVICE_OUT_HDMI_ARC);
     SortedVector<audio_io_handle_t> dstOutputs = getOutputsForDevice(device, mOutputs);
 
     audio_io_handle_t output = selectOutputForEffects(dstOutputs);
@@ -2991,9 +2996,15 @@ AudioPolicyManager::AudioPolicyManager(AudioPolicyClientInterface *clientInterfa
     ALOGE_IF((mPrimaryOutput == 0), "Failed to open primary output");
 
     updateDevicesAndOutputs();
-    if (getprop_bool("ro.platform.has.mbxuimode")) {
-        setDeviceConnectionState(AUDIO_DEVICE_OUT_SPDIF,AUDIO_POLICY_DEVICE_STATE_AVAILABLE,"mbx-hdmi","aml-hdmi");
-    }
+
+//here added by amlogic,take AUDIO_DEVICE_OUT_SPDIF|AUDIO_DEVICE_OUT_AUX_LINE
+//as default attached digital output device for forced compressed audio
+//pass through.add a prop to disable forced raw output.
+// by default,enable the forced output feature
+if (!getprop_bool("ro.platform.disable.audiorawout")) {
+    setDeviceConnectionState(AUDIO_DEVICE_OUT_SPDIF,AUDIO_POLICY_DEVICE_STATE_AVAILABLE,"aml-spdif","audio");
+    setDeviceConnectionState(AUDIO_DEVICE_OUT_AUX_LINE,AUDIO_POLICY_DEVICE_STATE_AVAILABLE,"aml-auxline","audio");
+}
 #ifdef AUDIO_POLICY_TEST
     if (mPrimaryOutput != 0) {
         AudioParameter outputCmd = AudioParameter();

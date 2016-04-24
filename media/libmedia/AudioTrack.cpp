@@ -26,15 +26,30 @@
 #include <binder/IPCThreadState.h>
 #include <media/AudioTrack.h>
 #include <utils/Log.h>
+#include <cutils/properties.h>
 #include <private/media/AudioTrackShared.h>
 #include <media/IAudioFlinger.h>
 #include <media/AudioPolicyHelper.h>
 #include <media/AudioResamplerPublic.h>
-#include "AmAudioTrack_reset_system_paras.h"
-
+#include <media/AudioParameter.h>
 #define WAIT_PERIOD_MS                  10
 #define WAIT_STREAM_END_TIMEOUT_SEC     120
 static const int kMaxLoopCountNotifications = 32;
+
+static int
+getprop_bool (const char *path)
+{
+  char buf[PROPERTY_VALUE_MAX];
+  int ret = -1;
+
+  ret = property_get (path, buf, NULL);
+  if (ret > 0)
+        {
+          if (strcasecmp (buf, "true") == 0 || strcmp (buf, "1") == 0)
+        return 1;
+        }
+  return 0;
+}
 
 namespace android {
 // ---------------------------------------------------------------------------
@@ -243,6 +258,35 @@ AudioTrack::~AudioTrack()
         // it is looping on buffer full condition in obtainBuffer().
         // Otherwise the callback thread will never exit.
         stop();
+    //here try to clean stream hwsync mode flag when audiotrack stop
+        if (mFlags&AUDIO_OUTPUT_FLAG_HW_AV_SYNC) {
+            audio_io_handle_t output;
+            audio_stream_type_t streamType = mStreamType;
+            audio_attributes_t *attr = (mStreamType == AUDIO_STREAM_DEFAULT) ? &mAttributes : NULL;
+            status_t status;
+            status = AudioSystem::getOutputForAttr(attr, &output,
+                                           (audio_session_t)mSessionId, &streamType, mClientUid,
+                                           mSampleRate, mFormat, mChannelMask,
+                                           mFlags, mSelectedDeviceId, mOffloadInfo);
+            if (status != NO_ERROR || output == AUDIO_IO_HANDLE_NONE) {
+                ALOGE("AudioTrack::stop,Could not get audio output for session %d, stream type %d, usage %d, sample rate %u, format %#x,"
+                " channel mask %#x, flags %#x",
+                mSessionId, streamType, mAttributes.usage, mSampleRate, mFormat, mChannelMask, mFlags);
+            }
+            AudioParameter param = AudioParameter();
+            //TODO,we should define a magic word which indify disable hw sync
+            String8 value = String8("87654321");
+            String8 key = String8("hw_av_sync");
+            param.add(key, value);
+            String8 keyValuePairs = param.toString();
+            ALOGI("keyValuePairs %s,io %d\n",keyValuePairs.string(),output);
+            status = AudioSystem::setParameters(output,keyValuePairs);
+            if (status != NO_ERROR)
+            {
+                ALOGE("AudioTrack::stop setParameters hw_av_sync failed\n");
+            }
+            param.remove(key);
+        }
         if (mAudioTrackThread != 0) {
             mProxy->interrupt();
             mAudioTrackThread->requestExit();   // see comment in AudioTrack.h
@@ -260,7 +304,7 @@ AudioTrack::~AudioTrack()
         IPCThreadState::self()->flushCommands();
         ALOGI("~AudioTrack, releasing session id from %d on behalf of %d mState/%d",
                 IPCThreadState::self()->getCallingPid(), mClientPid,mState);
-        AudioTrack_restore_system_samplerate(mFormat,mFlags,mSampleRate);
+        //AudioTrack_restore_system_samplerate(mFormat,mFlags,mSampleRate);
         AudioSystem::releaseAudioSessionId(mSessionId, mClientPid);
     }
 }
@@ -285,11 +329,10 @@ status_t AudioTrack::set(
         const audio_attributes_t* pAttributes,
         bool doNotReconnect)
 {
-    ALOGV("set(): streamType %d, sampleRate %u, format %#x, channelMask %#x, frameCount %zu, "
+    ALOGI("set(): streamType %d, sampleRate %u, format %#x, channelMask %#x, frameCount %zu, "
           "flags #%x, notificationFrames %u, sessionId %d, transferType %d, uid %d, pid %d",
           streamType, sampleRate, format, channelMask, frameCount, flags, notificationFrames,
           sessionId, transferType, uid, pid);
-
     switch (transferType) {
     case TRANSFER_DEFAULT:
         if (sharedBuffer != 0) {
@@ -400,9 +443,8 @@ status_t AudioTrack::set(
     if (flags & AUDIO_OUTPUT_FLAG_DIRECT) {
         if (audio_is_linear_pcm(format)) {
             mFrameSize = channelCount * audio_bytes_per_sample(format);
-        } else if(audio_is_raw_data(format)) {
-            mFrameSize = channelCount * sizeof(int16_t);
-        }else{
+        }
+        else {
             mFrameSize = sizeof(uint8_t);
         }
     } else {
@@ -462,7 +504,6 @@ status_t AudioTrack::set(
         mAudioTrackThread->run("AudioTrack", ANDROID_PRIORITY_AUDIO, 0 /*stack*/);
         // thread begins in paused state, and will not reference us until start()
     }
-    mFormat = AudioTrack_reset_system_samplerate(sampleRate,mFormat,flags,&mSampleRate);
     // create the IAudioTrack
     status_t status = createTrack_l();
 
@@ -472,7 +513,6 @@ status_t AudioTrack::set(
             mAudioTrackThread->requestExitAndWait();
             mAudioTrackThread.clear();
         }
-        AudioTrack_restore_system_samplerate(mFormat,mFlags,mSampleRate);
         return status;
     }
 
@@ -595,8 +635,6 @@ void AudioTrack::stop()
     if (mState != STATE_ACTIVE && mState != STATE_PAUSED) {
         return;
     }
-    //??:is needed??
-    AudioTrack_restore_system_samplerate(mFormat,mFlags,mSampleRate);
     if (isOffloaded_l()) {
         mState = STATE_STOPPING;
     } else {
@@ -1165,12 +1203,13 @@ status_t AudioTrack::createTrack_l()
         ALOGE("getFrameCount(output=%d) status %d", output, status);
         goto release;
     }
-
+    ALOGI("createTrack_l() output %d mAfFrameCount %u", output, mAfFrameCount);
     status = AudioSystem::getSamplingRate(output, &mAfSampleRate);
     if (status != NO_ERROR) {
         ALOGE("getSamplingRate(output=%d) status %d", output, status);
         goto release;
     }
+    ALOGI("createTrack_l() output %d mAfSampleRate %u", output, mAfSampleRate);
     if (mSampleRate == 0) {
         mSampleRate = mAfSampleRate;
         mOriginalSampleRate = mAfSampleRate;
@@ -1203,7 +1242,8 @@ status_t AudioTrack::createTrack_l()
     mNotificationFramesAct = mNotificationFramesReq;
 
     size_t frameCount = mReqFrameCount;
-    if (!audio_is_linear_pcm(mFormat)&&!audio_is_raw_data(mFormat)) {
+    //if (!audio_is_linear_pcm(mFormat)&&!audio_is_raw_data(mFormat)) {
+    if (!audio_is_linear_pcm(mFormat)) {
 
         if (mSharedBuffer != 0) {
             // Same comment as below about ignoring frameCount parameter for set()
@@ -1593,9 +1633,24 @@ void AudioTrack::releaseBuffer(const Buffer* audioBuffer)
 }
 
 // -------------------------------------------------------------------------
-
 ssize_t AudioTrack::write(const void* buffer, size_t userSize, bool blocking)
 {
+#if 1
+    if (getprop_bool("media.audiotrack.outdump")) {
+        if (1/*audio_is_linear_pcm(mFormat)*/) {
+        uint8_t *p = (uint8_t *)buffer;
+        ALOGI("AudioTrack::write %d [%x %x %x %x]", userSize,
+              p[0], p[1], p[2], p[3]);
+
+        FILE *fp1=fopen("/data/tmp/audiotrack.pcm","a+");
+        if (fp1) {
+            fwrite((char *)buffer,1,userSize,fp1);
+            fclose(fp1);
+        }
+        }
+    }
+#endif
+    ALOGV("write size %d,blocking %d\n",userSize,blocking);
     if (mTransfer != TRANSFER_SYNC || mIsTimed) {
         return INVALID_OPERATION;
     }
@@ -2014,7 +2069,7 @@ nsecs_t AudioTrack::processAudioBuffer()
         size_t reqSize = audioBuffer.size;
         mCbf(EVENT_MORE_DATA, mUserData, &audioBuffer);
         size_t writtenSize = audioBuffer.size;
-
+        ALOGV("reqSize %d,writtenSize %d\n",reqSize,writtenSize);
         // Sanity check on returned size
         if (ssize_t(writtenSize) < 0 || writtenSize > reqSize) {
             ALOGE("EVENT_MORE_DATA requested %zu bytes but callback returned %zd bytes",
@@ -2374,7 +2429,11 @@ status_t AudioTrack::getTimestamp(AudioTimestamp& timestamp)
         mPreviousTimestamp = timestamp;
         mPreviousTimestampValid = true;
     }
-
+    if (status == NO_ERROR) {
+#define TIME_TO_MS(time) ((uint64_t)time.tv_sec * 1000 + time.tv_nsec/1000000ULL)
+        ALOGV("timestamp.mPosition %d, ms %lld\n",timestamp.mPosition,TIME_TO_MS(timestamp.mTime));
+#undef TIME_TO_MS
+    }
     return status;
 }
 
