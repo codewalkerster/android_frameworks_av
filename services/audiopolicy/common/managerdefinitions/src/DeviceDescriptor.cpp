@@ -212,9 +212,10 @@ DeviceVector DeviceVector::getDevicesFromType(audio_devices_t type) const
         audio_devices_t curType = itemAt(i)->mDeviceType & ~AUDIO_DEVICE_BIT_IN;
         if ((isOutput == curIsOutput) && ((type & curType) != 0)) {
             devices.add(itemAt(i));
-            type &= ~curType;
-            ALOGV("DeviceVector::getDevicesFromType() for type %x found %p",
-                  itemAt(i)->type(), itemAt(i).get());
+            //Amlogic
+            //type &= ~curType;
+            ALOGV("DeviceVector::getDevicesFromType() for type %x found %p addr %s",
+                  itemAt(i)->type(), itemAt(i).get(), itemAt(i)->mAddress.string());
         }
     }
     return devices;

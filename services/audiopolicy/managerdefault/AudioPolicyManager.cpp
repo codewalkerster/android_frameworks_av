@@ -73,7 +73,7 @@ status_t AudioPolicyManager::setDeviceConnectionStateInt(audio_devices_t device,
                                                          const char *device_name)
 {
     ALOGV("setDeviceConnectionStateInt() device: 0x%X, state %d, address %s name %s",
--            device, state, device_address, device_name);
+            device, state, device_address, device_name);
 
     // connect/disconnect only 1 device at a time
     if (!audio_is_output_device(device) && !audio_is_input_device(device)) return BAD_VALUE;
@@ -665,7 +665,7 @@ audio_io_handle_t AudioPolicyManager::getOutput(audio_stream_type_t stream,
 {
     routing_strategy strategy = getStrategy(stream);
     audio_devices_t device = getDeviceForStrategy(strategy, false /*fromCache*/);
-    ALOGV("getOutput() device %d, stream %d, samplingRate %d, format %x, channelMask %x, flags %x",
+    ALOGV("getOutput() device %x, stream %d, samplingRate %d, format %x, channelMask %x, flags %x",
           device, stream, samplingRate, format, channelMask, flags);
 
     return getOutputForDevice(device, AUDIO_SESSION_ALLOCATE,
@@ -1004,6 +1004,66 @@ non_direct_output:
 
     ALOGI("  getOutputForDevice() returns output %d", output);
 
+    //Amlogic change for multi-usb output support
+    if (device & AUDIO_DEVICE_OUT_USB_DEVICE) {
+        char addressSetting[PROPERTY_VALUE_MAX];
+        property_get("audio.usb.output.setting", addressSetting, "null");
+        ALOGV("audio.usb.output.setting : %s\n", addressSetting);
+        // check if the property address setting suitable for existing usb cards
+        DeviceVector deviceList;
+        deviceList = mAvailableOutputDevices.getDevicesFromType(AUDIO_DEVICE_OUT_USB_DEVICE);
+        ALOG_ASSERT(!deviceList.isEmpty(), "getOutputForDevice no usb device found");
+
+        size_t i = 0;
+        for (i = 0; i < deviceList.size(); i++) {
+            ALOGV("deviceList i = %d, addr = %s ", i, deviceList.itemAt(i)->mAddress.string());
+            if (strncmp(deviceList.itemAt(i)->mAddress.string(), addressSetting, strlen(addressSetting)) == 0) {
+                ALOGI("audio.usb.output.setting: %s, checked OK", addressSetting);
+                break;
+            }
+        }
+        // setting check failed, return former output
+        if (i >= deviceList.size())
+            return output;
+
+        // check the AudioHAL cards setting
+        String8 address;
+        address = mpClientInterface->getParameters(output, String8("card"));
+        ALOGV("getOutputForDevice() get card from audio HAL: %s", address.string());
+
+        if (strncmp(address, addressSetting, strlen(addressSetting)) == 0) {
+            ALOGV("user setting (%s) is identical to audio HAL, return", addressSetting);
+            return output;
+        }
+        // close former output and open a new one according to user setting
+        ALOGI("switching usb audio to: %s", addressSetting);
+        sp<SwAudioOutputDescriptor> desc = mOutputs.valueFor(output);
+        mpClientInterface->closeOutput(output);
+        removeOutput(output);
+        audio_config_t config = AUDIO_CONFIG_INITIALIZER;
+        config.sample_rate = desc->mSamplingRate;
+        config.channel_mask = desc->mChannelMask;
+        config.format = desc->mFormat;
+        status_t status = mpClientInterface->openOutput(desc->mProfile->getModuleHandle(),
+                                                        &output,
+                                                        &config,
+                                                        &desc->mDevice,
+                                                        String8(addressSetting),
+                                                        &desc->mLatency,
+                                                        desc->mFlags);
+        if (status != NO_ERROR) {
+            ALOGW("Cannot open output stream for device %08x on hw module %s",
+                  desc->mDevice,
+                  mHwModules[i]->mName);
+            output = AUDIO_IO_HANDLE_NONE;
+        }
+        // audio config maybe changed by audio HAL, so update it to AudioOutputDescriptor
+        desc->mSamplingRate = config.sample_rate;
+        desc->mChannelMask = config.channel_mask;
+        desc->mFormat = config.format;
+        addOutput(output, desc);
+    }
+    //endof Amlogic
     return output;
 }
 
@@ -1477,6 +1537,27 @@ status_t AudioPolicyManager::getInputForAttr(const audio_attributes_t *attr,
     config.sample_rate = profileSamplingRate;
     config.channel_mask = profileChannelMask;
     config.format = profileFormat;
+
+    //Amlogic
+    if (device & AUDIO_DEVICE_IN_USB_DEVICE) {
+        DeviceVector deviceList;
+        deviceList = mAvailableInputDevices.getDevicesFromType(device);
+        ALOG_ASSERT(!deviceList.isEmpty(), "getInputForAttr no device");
+        char addr[PROPERTY_VALUE_MAX];
+        property_get("audio.usb.input.setting", addr, "null");
+        size_t i = 0;
+        for (i = 0; i < deviceList.size(); i++) {
+            ALOGV("deviceList i = %d, addr = %s ", i, deviceList.itemAt(i)->mAddress.string());
+            if (strncmp(deviceList.itemAt(i)->mAddress.string(), addr, strlen(addr)) == 0) {
+                ALOGI("audio.usb.input.setting: %s, checked OK", addr);
+                break;
+            }
+        }
+        if (i >= deviceList.size())
+            i = 0;
+        address = deviceList.itemAt(i)->mAddress;
+    }
+    //endof Amlogic
 
     status_t status = mpClientInterface->openInput(profile->getModuleHandle(),
                                                    input,
@@ -4485,8 +4566,26 @@ status_t AudioPolicyManager::setInputDevice(audio_io_handle_t input,
                 patch.sinks[0].ext.mix.usecase.source = AUDIO_SOURCE_VOICE_RECOGNITION;
             }
             patch.num_sinks = 1;
+
+            //Amlogic
+            size_t i = 0;
+            if (device & AUDIO_DEVICE_IN_USB_DEVICE) {
+                char address[PROPERTY_VALUE_MAX];
+                property_get("audio.usb.input.setting", address, "null");
+                size_t i = 0;
+                for (i = 0; i < deviceList.size(); i++) {
+                    ALOGV("deviceList i = %d, addr = %s ", i, deviceList.itemAt(i)->mAddress.string());
+                    if (strncmp(deviceList.itemAt(i)->mAddress.string(), address, strlen(address)) == 0) {
+                        ALOGI("audio.usb.input.setting: %s, checked OK", address);
+                        break;
+                    }
+                }
+                if (i >= deviceList.size())
+                    i = 0;
+            }
+            //endof Amlogic
             //only one input device for now
-            deviceList.itemAt(0)->toAudioPortConfig(&patch.sources[0]);
+            deviceList.itemAt(i)->toAudioPortConfig(&patch.sources[0]);
             patch.num_sources = 1;
             ssize_t index;
             if (patchHandle && *patchHandle != AUDIO_PATCH_HANDLE_NONE) {
