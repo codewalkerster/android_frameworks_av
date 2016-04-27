@@ -865,16 +865,16 @@ audio_io_handle_t AudioPolicyManager::getOutputForDevice(
 //we our attached spdif device
         if ( audio_is_raw_data(format) ||(audio_is_linear_pcm(format)  && audio_channel_count_from_out_mask(channelMask) > 2)) {
             audio_devices_t device_save = device;
-            device = device & AUDIO_DEVICE_OUT_AUX_DIGITAL;
-	    if (device == AUDIO_DEVICE_NONE)
-                device = device_save&AUDIO_DEVICE_OUT_HDMI_ARC;
-            if (device == AUDIO_DEVICE_NONE)
-                device = device_save&AUDIO_DEVICE_OUT_SPDIF;
+            device = device_save&AUDIO_DEVICE_OUT_SPDIF;
             if (device == AUDIO_DEVICE_NONE)
                 device = device_save&AUDIO_DEVICE_OUT_AUX_LINE;
+            if (device == AUDIO_DEVICE_NONE)
+                device = device_save&AUDIO_DEVICE_OUT_AUX_DIGITAL;
+            if (device == AUDIO_DEVICE_NONE)
+                device = device_save&AUDIO_DEVICE_OUT_HDMI_ARC;
         }
         // 2 ch direct PCM goes to primary device
-        //TODO,maybe other devices suport that profile
+        //TODO,maybe other devices support that profile
         else if (audio_is_linear_pcm(format) && (flags & AUDIO_OUTPUT_FLAG_DIRECT)) {
             device = device&AUDIO_DEVICE_OUT_SPEAKER;
         }
