@@ -1658,6 +1658,8 @@ status_t ACodec::setComponentRole(
             "video_decoder.rm20", "video_encoder.rm20"},
         { MEDIA_MIMETYPE_VIDEO_RM40,
             "video_decoder.rm40", "video_encoder.rm40"},
+        { MEDIA_MIMETYPE_VIDEO_WMV2,
+            "video_decoder.wmv2", "video_encoder.wmv2"},
         { MEDIA_MIMETYPE_VIDEO_WMV1,
             "video_decoder.wmv1", "video_encoder.wmv1"},
 #endif
@@ -3007,6 +3009,7 @@ static const struct VideoCodingMapEntry {
     { MEDIA_MIMETYPE_VIDEO_RM10, OMX_VIDEO_CodingRV10},
     { MEDIA_MIMETYPE_VIDEO_RM20, OMX_VIDEO_CodingRV20},
     { MEDIA_MIMETYPE_VIDEO_RM40, OMX_VIDEO_CodingRV40},
+    { MEDIA_MIMETYPE_VIDEO_WMV2, OMX_VIDEO_CodingWMV},
     { MEDIA_MIMETYPE_VIDEO_WMV1, OMX_VIDEO_CodingWMV},
 #endif
 
