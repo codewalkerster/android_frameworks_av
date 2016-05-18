@@ -1002,7 +1002,7 @@ non_direct_output:
     ALOGW_IF((output == 0), "getOutput() could not find output for stream %d, samplingRate %d,"
             "format %d, channels %x, flags %x", stream, samplingRate, format, channelMask, flags);
 
-    ALOGI("  getOutputForDevice() returns output %d", output);
+    ALOGV("getOutputForDevice() returns output %d", output);
 
     //Amlogic change for multi-usb output support
     if (device & AUDIO_DEVICE_OUT_USB_DEVICE) {
