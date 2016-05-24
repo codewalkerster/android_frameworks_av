@@ -80,12 +80,14 @@ public:
             // retain the device on the A2DP output as the other must not correspond to an active
             // selection if not the speaker.
             //  - HDMI-CEC system audio mode only output: give priority to available item in order.
-            if (device & AUDIO_DEVICE_OUT_SPEAKER) {
+            if (device & AUDIO_DEVICE_OUT_USB_DEVICE) {
+                device = AUDIO_DEVICE_OUT_USB_DEVICE;
+            } else if (device & AUDIO_DEVICE_OUT_HDMI_ARC) {
+                device = AUDIO_DEVICE_OUT_HDMI_ARC;
+            } else if (device & AUDIO_DEVICE_OUT_SPEAKER) {
                 device = AUDIO_DEVICE_OUT_SPEAKER;
             } else if (device & AUDIO_DEVICE_OUT_SPEAKER_SAFE) {
                 device = AUDIO_DEVICE_OUT_SPEAKER_SAFE;
-            } else if (device & AUDIO_DEVICE_OUT_HDMI_ARC) {
-                device = AUDIO_DEVICE_OUT_HDMI_ARC;
             } else if (device & AUDIO_DEVICE_OUT_AUX_LINE) {
                 device = AUDIO_DEVICE_OUT_AUX_LINE;
             } else if (device & AUDIO_DEVICE_OUT_SPDIF) {
