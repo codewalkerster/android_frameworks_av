@@ -860,24 +860,41 @@ audio_io_handle_t AudioPolicyManager::getOutputForDevice(
                                            (audio_output_flags_t)flags);
 //added by amlogic,if device both have digital/speaker for PCM,mask one of it
 //to avoid duplicated output.
-//now multi-channel pcm and compressed raw data goes to digital device
+//now multi-channel/96K pcm and compressed raw data goes to digital device
 //we moutain a device prority list,if no HDMI devices found,
 //we our attached spdif device
-        if ( audio_is_raw_data(format) ||(audio_is_linear_pcm(format)  && audio_channel_count_from_out_mask(channelMask) > 2)) {
+        if ( audio_is_raw_data(format) ||(audio_is_linear_pcm(format)  && (audio_channel_count_from_out_mask(channelMask) > 2 || samplingRate > 48000))) {
             audio_devices_t device_save = device;
-            device = device_save&AUDIO_DEVICE_OUT_SPDIF;
+            audio_devices_t first_device = AUDIO_DEVICE_NONE;
+            audio_devices_t sec_device = AUDIO_DEVICE_NONE;
+            audio_devices_t thrid_device = AUDIO_DEVICE_NONE;
+//added by amlogic.spdif devices support AC3/DTS,stereo sample rate > 48K LPCM
+//so we take it as the first device.
+//HDMI AUX(ARC) support DD+/DTS-HD/TrueHD, so we take this as first device
+//when format is one of them.
+            if (format == 	AUDIO_FORMAT_AC3 || format ==  AUDIO_FORMAT_DTS || \
+                (audio_is_linear_pcm(format) && samplingRate > 48000 && audio_channel_count_from_out_mask(channelMask) <= 2)) {
+                first_device = AUDIO_DEVICE_OUT_SPDIF;
+                sec_device =  AUDIO_DEVICE_OUT_AUX_DIGITAL;
+                thrid_device = AUDIO_DEVICE_OUT_HDMI_ARC;
+             }
+             else {
+                first_device = AUDIO_DEVICE_OUT_AUX_DIGITAL;
+                sec_device = AUDIO_DEVICE_OUT_HDMI_ARC;
+                thrid_device = AUDIO_DEVICE_OUT_SPDIF;
+            }
+            device = device_save&first_device;
             if (device == AUDIO_DEVICE_NONE)
-                device = device_save&AUDIO_DEVICE_OUT_AUX_LINE;
+                device = device_save&sec_device;
             if (device == AUDIO_DEVICE_NONE)
-                device = device_save&AUDIO_DEVICE_OUT_AUX_DIGITAL;
-            if (device == AUDIO_DEVICE_NONE)
-                device = device_save&AUDIO_DEVICE_OUT_HDMI_ARC;
+                device = device_save&thrid_device;
         }
         // 2 ch direct PCM goes to primary device
         //TODO,maybe other devices support that profile
         else if (audio_is_linear_pcm(format) && (flags & AUDIO_OUTPUT_FLAG_DIRECT)) {
             device = device&AUDIO_DEVICE_OUT_SPEAKER;
         }
+        ALOGVV("getProfileForDirectOutput for device %x\n",device);
         profile = getProfileForDirectOutput(device,
                                            samplingRate,
                                            format,
@@ -3084,7 +3101,6 @@ AudioPolicyManager::AudioPolicyManager(AudioPolicyClientInterface *clientInterfa
 // by default,enable the forced output feature
 if (!getprop_bool("ro.platform.disable.audiorawout")) {
     setDeviceConnectionState(AUDIO_DEVICE_OUT_SPDIF,AUDIO_POLICY_DEVICE_STATE_AVAILABLE,"aml-spdif","audio");
-    setDeviceConnectionState(AUDIO_DEVICE_OUT_AUX_LINE,AUDIO_POLICY_DEVICE_STATE_AVAILABLE,"aml-auxline","audio");
 }
 #ifdef AUDIO_POLICY_TEST
     if (mPrimaryOutput != 0) {

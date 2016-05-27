@@ -2661,7 +2661,7 @@ status_t ACodec::setupDTSCodec(
 
     def.nChannels = numChannels;
     def.nSamplesPerSec = sampleRate;
-
+    def.bExtendFormat = (OMX_BOOL)0;
     return mOMX->setParameter(
             mNode,
             (OMX_INDEXTYPE)OMX_IndexParamAudioDtshd,
