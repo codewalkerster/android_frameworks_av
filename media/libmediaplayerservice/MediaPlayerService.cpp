@@ -330,8 +330,8 @@ sp<IMediaPlayer> MediaPlayerService::create(const sp<IMediaPlayerClient>& client
         int audioSessionId)
 {
     if (client == NULL && mClients.size() > 0) {
+        Mutex::Autolock lock(mLock);
         sp<Client> clt = NULL;
-
         ALOGV("[create]mClients.size():%d\n", mClients.size());
         int32_t connid = 0;
         for (size_t i = 0; i < mClients.size(); i++) {
