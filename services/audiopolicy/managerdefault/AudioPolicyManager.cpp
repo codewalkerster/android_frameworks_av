@@ -3948,6 +3948,16 @@ void AudioPolicyManager::checkOutputForStrategy(routing_strategy strategy)
 {
     audio_devices_t oldDevice = getDeviceForStrategy(strategy, true /*fromCache*/);
     audio_devices_t newDevice = getDeviceForStrategy(strategy, false /*fromCache*/);
+    audio_devices_t rawDevices = AUDIO_DEVICE_OUT_AUX_DIGITAL|
+                                 AUDIO_DEVICE_OUT_SPDIF|
+                                 AUDIO_DEVICE_OUT_AUX_LINE|
+                                 AUDIO_DEVICE_OUT_HDMI_ARC;
+
+    //here added by amlogic.for our design, none-direct PCM
+    // always DO NOT goto our DIGITAL HAL.so ingore
+    //the digital out device mask when rerouting
+    oldDevice &= ~rawDevices;
+    newDevice &= ~rawDevices;
     SortedVector<audio_io_handle_t> srcOutputs = getOutputsForDevice(oldDevice, mPreviousOutputs);
     SortedVector<audio_io_handle_t> dstOutputs = getOutputsForDevice(newDevice, mOutputs);
 
