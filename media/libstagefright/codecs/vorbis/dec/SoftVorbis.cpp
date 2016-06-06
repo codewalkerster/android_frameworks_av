@@ -392,9 +392,12 @@ void SoftVorbis::onQueueFilled(OMX_U32 portIndex) {
         pack.packetno = 0;
 
         int numFrames = 0;
-
+        int err       = 0;
         outHeader->nFlags = 0;
-        int err = vorbis_dsp_synthesis(mState, &pack, 1);
+        if (mState != NULL)
+            err = vorbis_dsp_synthesis(mState, &pack, 1);
+        else
+            err = -1;
         if (err != 0) {
             // FIXME temporary workaround for log spam
 #if !defined(__arm__) && !defined(__aarch64__)
@@ -430,6 +433,9 @@ void SoftVorbis::onQueueFilled(OMX_U32 portIndex) {
             }
             mNumFramesLeftOnPage -= numFrames;
         }
+
+        if (mVi == NULL)
+           return ;
         if (mVi->channels>2)
         {
            int i,j,sum,left,right;
