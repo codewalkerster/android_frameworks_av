@@ -4670,7 +4670,9 @@ AudioFlinger::PlaybackThread::mixer_state AudioFlinger::DirectOutputThread::prep
                     audioHALFrames = 0;
                 }
                 bool raw_audio = audio_is_raw_data(mFormat);
-                bool need_remove = raw_audio&&(track->isTerminated()||track->isStopped());
+                //here to check if audiotrack is stopped or isTerminated,if that.
+                //remove from active list
+                bool need_remove = /*raw_audio&&*/(track->isTerminated()||track->isStopped());
                 size_t framesWritten = mBytesWritten / mFrameSize;
                 ALOGVV("raw audio %d,need remove %d \n",raw_audio,need_remove);
                 ALOGVV("mid %d  remove in ,mStandby %d, last %d ,present %d\n",
