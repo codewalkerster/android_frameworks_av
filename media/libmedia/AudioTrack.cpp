@@ -258,6 +258,21 @@ AudioTrack::~AudioTrack()
         // it is looping on buffer full condition in obtainBuffer().
         // Otherwise the callback thread will never exit.
         stop();
+        if (mAudioTrackThread != 0) {
+            mProxy->interrupt();
+            mAudioTrackThread->requestExit();   // see comment in AudioTrack.h
+            mAudioTrackThread->requestExitAndWait();
+            mAudioTrackThread.clear();
+        }
+        // No lock here: worst case we remove a NULL callback which will be a nop
+        if (mDeviceCallback != 0 && mOutput != AUDIO_IO_HANDLE_NONE) {
+            AudioSystem::removeAudioDeviceCallback(mDeviceCallback, mOutput);
+        }
+        IInterface::asBinder(mAudioTrack)->unlinkToDeath(mDeathNotifier, this);
+        mAudioTrack.clear();
+        mCblkMemory.clear();
+        mSharedBuffer.clear();
+        IPCThreadState::self()->flushCommands();
     //here try to clean stream hwsync mode flag when audiotrack stop
         if (mFlags&AUDIO_OUTPUT_FLAG_HW_AV_SYNC) {
             audio_io_handle_t output;
@@ -287,21 +302,6 @@ AudioTrack::~AudioTrack()
             }
             param.remove(key);
         }
-        if (mAudioTrackThread != 0) {
-            mProxy->interrupt();
-            mAudioTrackThread->requestExit();   // see comment in AudioTrack.h
-            mAudioTrackThread->requestExitAndWait();
-            mAudioTrackThread.clear();
-        }
-        // No lock here: worst case we remove a NULL callback which will be a nop
-        if (mDeviceCallback != 0 && mOutput != AUDIO_IO_HANDLE_NONE) {
-            AudioSystem::removeAudioDeviceCallback(mDeviceCallback, mOutput);
-        }
-        IInterface::asBinder(mAudioTrack)->unlinkToDeath(mDeathNotifier, this);
-        mAudioTrack.clear();
-        mCblkMemory.clear();
-        mSharedBuffer.clear();
-        IPCThreadState::self()->flushCommands();
         ALOGI("~AudioTrack, releasing session id from %d on behalf of %d mState/%d",
                 IPCThreadState::self()->getCallingPid(), mClientPid,mState);
         //AudioTrack_restore_system_samplerate(mFormat,mFlags,mSampleRate);
