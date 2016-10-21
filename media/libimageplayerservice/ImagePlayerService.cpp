@@ -62,7 +62,7 @@
 
 namespace android {
 
-class SkHttpStream : public SkStream {
+class SkHttpStream : public SkStreamRewindable {
 public:
     SkHttpStream(const char url[] = NULL)
         : fURL(strdup(url)), dataSource(NULL), isConnect(false), haveRead(0) {
@@ -152,7 +152,7 @@ private:
 namespace {
 using android::SkHttpStream;
 
-static bool verifyBySkImageDecoder(SkStream *stream, SkBitmap **bitmap) {
+static bool verifyBySkImageDecoder(SkStreamRewindable *stream, SkBitmap **bitmap) {
     SkImageDecoder::Format format = SkImageDecoder::kUnknown_Format;
     SkImageDecoder* codec = SkImageDecoder::Factory(stream);
 
@@ -265,10 +265,10 @@ static bool isSupportedBySkImageDecoder(const char *uri, SkBitmap **bitmap) {
         return verifyBySkImageDecoder(&stream, bitmap);
     }
 
-    if (!strncasecmp("http://", uri, 7)) {
-        SkHttpStream httpStream(uri);
-        return verifyBySkImageDecoder(&httpStream, bitmap);
-    }
+   // if (!strncasecmp("http://", uri, 7)) {
+   //     SkHttpStream httpStream(uri);
+   //     return verifyBySkImageDecoder(&httpStream, bitmap);
+   // }
 
     return false;
 }
@@ -279,12 +279,12 @@ static SkBitmap* cropBitmapRect(SkBitmap *srcBitmap, int x, int y, int width, in
     SkIRect r;
 
     r.set(x, y, x + width, y + height);
-    srcBitmap->setIsOpaque(true);
+    srcBitmap->setAlphaType(kOpaque_SkAlphaType);
     srcBitmap->setIsVolatile(true);
 
     bool ret = srcBitmap->extractSubset(dstBitmap, r);
 
-    srcBitmap->setIsOpaque(false);
+    srcBitmap->setAlphaType(kIgnore_SkAlphaType);
     srcBitmap->setIsVolatile(false);
 
     if (!ret) {
@@ -472,7 +472,7 @@ void ImagePlayerService::instantiate() {
 
 ImagePlayerService::ImagePlayerService()
     : mWidth(0), mHeight(0), mBitmap(NULL), mSampleSize(1),
-    mImageUrl(NULL), mDstBitmap(NULL), 
+    mImageUrl(NULL), mDstBitmap(NULL),
     mFileDescription(-1), isAutoCrop(false),
     surfaceWidth(SURFACE_4K_WIDTH), surfaceHeight(SURFACE_4K_HEIGHT),
     mDisplayFd(-1){
@@ -494,7 +494,7 @@ int ImagePlayerService::init() {
     if (mDisplayFd >= 0){
         close(mDisplayFd);
     }
-    
+
     mDisplayFd = open(PICDEC_SYSFS, O_RDWR);
     if(mDisplayFd < 0){
         ALOGE("init: mDisplayFd(%d) failure error: '%s' (%d)", mDisplayFd, strerror(errno), errno);
@@ -512,10 +512,10 @@ int ImagePlayerService::init() {
     info.format = VIDEO_LAYER_FORMAT_RGB;
     info.rotate = 0;
 
-    ioctl(mDisplayFd, PICDEC_IOC_FRAME_RENDER, &info);	
-    ioctl(mDisplayFd, PICDEC_IOC_FRAME_POST, NULL);		
+    ioctl(mDisplayFd, PICDEC_IOC_FRAME_RENDER, &info);
+    ioctl(mDisplayFd, PICDEC_IOC_FRAME_POST, NULL);
 
-    free(bitmap_addr);	
+    free(bitmap_addr);
 #endif
     
     ALOGI("init success display fd:%d", mDisplayFd);
@@ -527,7 +527,7 @@ int ImagePlayerService::setDataSource(const char *uri) {
     Mutex::Autolock autoLock(mLock);
 
     //ALOGI("setDataSource uri:%s", uri);
-    
+
     if (mBitmap != NULL) {
         delete mBitmap;
         mBitmap = NULL;
@@ -550,7 +550,7 @@ int ImagePlayerService::setDataSource(const char *uri) {
     }
 
     ALOGI("setDataSource mImageUrl:%s", mImageUrl);
-    
+
     if (!isSupportedBySkImageDecoder(uri, &mBitmap)) {
         return RET_ERR_INVALID_OPERATION;
     }
@@ -569,7 +569,7 @@ int ImagePlayerService::setDataSource(int fd, int64_t offset, int64_t length) {
     Mutex::Autolock autoLock(mLock);
 
     ALOGI("setDataSource fd:%d, offset:%d, length:%d", fd, (int)offset, (int)length);
-    
+
     if (mBitmap != NULL) {
         delete mBitmap;
         mBitmap = NULL;
@@ -603,8 +603,8 @@ int ImagePlayerService::setSampleSurfaceSize(int sampleSize, int surfaceW, int s
     if(surfaceH > SURFACE_4K_HEIGHT){
         surfaceHeight = SURFACE_4K_HEIGHT;
     }
-    
-    ALOGD("setSampleSurfaceSize sampleSize:%d, surfaceW:%d, surfaceH:%d", 
+
+    ALOGD("setSampleSurfaceSize sampleSize:%d, surfaceW:%d, surfaceH:%d",
         sampleSize, surfaceW, surfaceH);
 
     return RET_OK;
@@ -612,17 +612,17 @@ int ImagePlayerService::setSampleSurfaceSize(int sampleSize, int surfaceW, int s
 
 int ImagePlayerService::setRotate(float degrees, int autoCrop) {
     Mutex::Autolock autoLock(mLock);
-    
+
     isAutoCrop = autoCrop != 0;
     ALOGD("setRotate degrees:%f, isAutoCrop:%d", degrees, isAutoCrop);
 
-  
+
     SkBitmap *dstBitmap = NULL;
     dstBitmap = rotate(mBitmap, degrees);
     if (dstBitmap != NULL) {
         //delete mBitmap;
         //mBitmap = dstBitmap;
-            
+
         ALOGD("After rotate, Width: %d, Height: %d", dstBitmap->width(), dstBitmap->height());
         show(dstBitmap);
         delete dstBitmap;
@@ -637,7 +637,7 @@ int ImagePlayerService::setScale(float sx, float sy, int autoCrop) {
 
     isAutoCrop = autoCrop != 0;
     ALOGD("setScale sx:%f, sy:%f, isAutoCrop:%d", sx, sy, isAutoCrop);
-    
+
     SkBitmap *dstBitmap = NULL;
     dstBitmap = scale(mBitmap, sx, sy);
     if (dstBitmap != NULL) {
@@ -703,7 +703,7 @@ int ImagePlayerService::setCropRect(int cropX, int cropY, int cropWidth, int cro
 
 int ImagePlayerService::start() {
     ALOGI("start");
-    
+
     prepare();
     show();
     return RET_OK;
@@ -712,7 +712,7 @@ int ImagePlayerService::start() {
 int ImagePlayerService::release() {
 
     ALOGI("release");
-    
+
     if (mBitmap != NULL) {
         if (mBitmap == mDstBitmap) {
             mDstBitmap = NULL;
@@ -743,11 +743,11 @@ int ImagePlayerService::release() {
         close(mDisplayFd);
         mDisplayFd = -1;
     }
-    
+
     return RET_OK;
 }
 
-SkBitmap* ImagePlayerService::decode(SkStream *stream, InitParameter *mParameter) {
+SkBitmap* ImagePlayerService::decode(SkStreamRewindable *stream, InitParameter *mParameter) {
     SkImageDecoder::Format format = SkImageDecoder::kUnknown_Format;
     SkImageDecoder* codec = NULL;
     bool ret = false;
@@ -920,10 +920,10 @@ int ImagePlayerService::prepare() {
     Mutex::Autolock autoLock(mLock);
 
     FrameInfo_t info;
-    
+
     ALOGI("prepare image path:%s", mImageUrl);
-    
-    SkStream *stream;
+
+    SkStreamRewindable *stream;
     if (mFileDescription >= 0) {
 #ifdef AM_KITKAT
         SkAutoTUnref<SkData> data(SkData::NewFromFD(mFileDescription));
@@ -934,8 +934,8 @@ int ImagePlayerService::prepare() {
 #else
         stream = new SkFDStream(mFileDescription, false);
 #endif
-    }else if (!strncasecmp("http://", mImageUrl, 7)) {
-        stream = new SkHttpStream(mImageUrl);
+    //}else if (!strncasecmp("http://", mImageUrl, 7)) {
+    //    stream = new SkHttpStream(mImageUrl);
     } else {
         stream = new SkFILEStream(mImageUrl);
     }
@@ -951,7 +951,7 @@ int ImagePlayerService::prepare() {
         ALOGE("prepare: open (%s) failure error: '%s' (%d)", mImageUrl, strerror(errno), errno);
         return BAD_VALUE;
     }*/
-    
+
     mBitmap = decode(stream, NULL);
 
     delete stream;
@@ -963,13 +963,13 @@ int ImagePlayerService::prepare() {
     if (mBitmap == NULL){
         ALOGI("prepare decode result bitmap is NULL");
         return RET_ERR_BAD_VALUE;
-    } 
+    }
 
     if (mWidth <= 0 || mHeight <= 0){
         ALOGI("prepare decode result bitmap size error");
         return RET_ERR_BAD_VALUE;
     }
-    
+
     if(mDisplayFd < 0){
         ALOGE("render, but displayFd can not ready");
         return RET_ERR_BAD_VALUE;
@@ -987,7 +987,7 @@ int ImagePlayerService::prepare() {
 
     if(scaleX < scaleY) scaleY = scaleX;
     else if(scaleX > scaleY) scaleX = scaleY;
-    
+
     if ((scaleX != 1.0f) || (scaleY != 1.0f)) {
         SkBitmap *dstBitmap = scale(mBitmap, scaleX, scaleY);
         if (dstBitmap != NULL) {
@@ -997,7 +997,7 @@ int ImagePlayerService::prepare() {
 
         ALOGD("prepare scale sx:%f, sy:%f", scaleX, scaleY);
     }
-    
+
     render(VIDEO_LAYER_FORMAT_RGBA, mBitmap);
     ALOGI("prepare render is OK");
     return RET_OK;
@@ -1005,7 +1005,7 @@ int ImagePlayerService::prepare() {
 
 int ImagePlayerService::render(int format, SkBitmap *bitmap){
     FrameInfo_t info;
-    
+
     if(mDisplayFd < 0){
         ALOGE("render, but displayFd can not ready");
         return RET_ERR_BAD_VALUE;
@@ -1015,7 +1015,7 @@ int ImagePlayerService::render(int format, SkBitmap *bitmap){
         ALOGE("render, bitmap is NULL");
         return RET_ERR_BAD_VALUE;
     }
-    
+
     ALOGI("render format:%d, bitmap w:%d, h;%d", format, bitmap->width(), bitmap->height());
 
     switch(format){
@@ -1038,7 +1038,7 @@ int ImagePlayerService::render(int format, SkBitmap *bitmap){
             info.frame_width = bitmap->width();
             info.frame_height = bitmap->height();
 
-            ioctl(mDisplayFd, PICDEC_IOC_FRAME_RENDER, &info); 
+            ioctl(mDisplayFd, PICDEC_IOC_FRAME_RENDER, &info);
 
             if(NULL != bitmapAddr)
                 free(bitmapAddr);
@@ -1071,9 +1071,9 @@ int ImagePlayerService::show() {
         ALOGE("post, but displayFd can not ready");
         return RET_ERR_BAD_VALUE;
     }
-    
+
     ALOGI("show picture display fd:%d", mDisplayFd);
-    ioctl(mDisplayFd, PICDEC_IOC_FRAME_POST, NULL);  
+    ioctl(mDisplayFd, PICDEC_IOC_FRAME_POST, NULL);
 
     return RET_OK;
 }
@@ -1101,7 +1101,7 @@ bool ImagePlayerService::showBitmapRect(SkBitmap *bitmap, int cropX, int cropY, 
 
     for (int y = 0; y < cropHeight; y++) {
         uint32_t srcOffset = bitmap->rowBytes()*(cropY + y) + 4*cropX;
-        
+
         for (int x = 0; x < cropWidth; x++) {
             pDst[3*x+0] = pSrc[4*x+srcOffset+0];//B
             pDst[3*x+1] = pSrc[4*x+srcOffset+1];//G
@@ -1116,11 +1116,11 @@ bool ImagePlayerService::showBitmapRect(SkBitmap *bitmap, int cropX, int cropY, 
     info.frame_width = cropWidth;
     info.frame_height = cropHeight;
 
-    ioctl(mDisplayFd, PICDEC_IOC_FRAME_RENDER, &info); 
+    ioctl(mDisplayFd, PICDEC_IOC_FRAME_RENDER, &info);
 
     if(NULL != bitmapAddr)
         free(bitmapAddr);
-            
+
     show();
     return true;
 }
@@ -1142,7 +1142,7 @@ int ImagePlayerService::convertRGBA8888toRGB(void *dst, const SkBitmap *src) {
         pSrc += u32SrcStride;
         pDst += u32DstStride;
     }
-    
+
     return RET_OK;
 }
 
@@ -1204,7 +1204,7 @@ status_t ImagePlayerService::dump(int fd, const Vector<String16>& args){
         result.append(buffer);
     } else {
         Mutex::Autolock lock(mLock);
-    
+
         result.appendFormat("ImagePlayerService: mImageUrl:%s, mWidth:%d, mHeight:%d\n",
                 mImageUrl, mWidth, mHeight);
         result.appendFormat("ImagePlayerService: mSampleSize:%d, surfaceWidth:%d, surfaceHeight:%d\n",
@@ -1256,7 +1256,7 @@ status_t ImagePlayerService::dump(int fd, const Vector<String16>& args){
 #endif
     //ARGB2bmp((char *)mBitmap->getPixels(), mBitmap->width(), mBitmap->height());
 
-    
+
     convertRGBA8888toRGB(bitmap_addr, mBitmap);
     //info.pBuff = (char*)mBitmap->getPixels();
     mBitmap->unlockPixels();
@@ -1278,7 +1278,7 @@ status_t ImagePlayerService::dump(int fd, const Vector<String16>& args){
     write(rgbFd, info.pBuff, len);
     close(rgbFd);
 #endif
-    
+
     if(NULL != bitmap_addr)
         free(bitmap_addr);
 

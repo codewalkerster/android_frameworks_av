@@ -71,7 +71,7 @@ class ImagePlayerService :  public BnImagePlayerService {
     static void instantiate();
 
     virtual status_t dump(int fd, const Vector<String16>& args);
-    
+
   private:
     int convertRGBA8888toRGB(void *dst, const SkBitmap *src);
     int convertARGB8888toYUYV(void *dst, const SkBitmap *src);
@@ -79,7 +79,7 @@ class ImagePlayerService :  public BnImagePlayerService {
     int convertIndex8toYUYV(void *dst, const SkBitmap *src);
 
     int render(int format, SkBitmap *bitmap);
-    SkBitmap* decode(SkStream *stream, InitParameter *parameter);
+    SkBitmap* decode(SkStreamRewindable *stream, InitParameter *parameter);
     SkBitmap* scale(SkBitmap *srcBitmap, float sx, float sy);
     SkBitmap* rotate(SkBitmap *srcBitmap, float degrees);
     SkBitmap* rotateAndScale(SkBitmap *srcBitmap, float degrees, float sx, float sy);
@@ -93,7 +93,7 @@ class ImagePlayerService :  public BnImagePlayerService {
     // size is set to 3, then the returned bitmap will be 1/3 as wide and high,
     // and will contain 1/9 as many pixels as the original.
     int mSampleSize;
-    
+
     char *mImageUrl;
     SkBitmap *mDstBitmap;
     int mFileDescription;
