@@ -370,6 +370,7 @@ ACodec::ACodec()
       mIsEncoder(false),
       mUseMetadataOnEncoderOutput(false),
       mShutdownInProgress(false),
+      mIsConfiguredForAdaptivePlayback(false),
       mEncoderDelay(0),
       mEncoderPadding(0),
       mChannelMaskPresent(false),
@@ -377,7 +378,8 @@ ACodec::ACodec()
       mDequeueCounter(0),
       mStoreMetaDataInOutputBuffers(false),
       mMetaDataBuffersToSubmit(0),
-      mRepeatFrameDelayUs(-1ll) {
+      mRepeatFrameDelayUs(-1ll),
+      mMaxPtsGapUs(-1l) {
     mUninitializedState = new UninitializedState(this);
     mLoadedState = new LoadedState(this);
     mLoadedToIdleState = new LoadedToIdleState(this);
@@ -1167,6 +1169,10 @@ status_t ACodec::configureCodec(
                     &mRepeatFrameDelayUs)) {
             mRepeatFrameDelayUs = -1ll;
         }
+
+        if (!msg->findInt64("max-pts-gap-to-encoder", &mMaxPtsGapUs)) {
+            mMaxPtsGapUs = -1l;
+        }
     }
 
     // Always try to enable dynamic output buffers on native surface
@@ -1174,6 +1180,7 @@ status_t ACodec::configureCodec(
     int32_t haveNativeWindow = msg->findObject("native-window", &obj) &&
             obj != NULL;
     mStoreMetaDataInOutputBuffers = false;
+    mIsConfiguredForAdaptivePlayback = false;
     if (!encoder && video && haveNativeWindow) {
         err = mOMX->storeMetaDataInBuffers(mNode, kPortIndexOutput, OMX_TRUE);
         if (err != OK) {
@@ -1218,12 +1225,14 @@ status_t ACodec::configureCodec(
                 ALOGW_IF(err != OK,
                         "[%s] prepareForAdaptivePlayback failed w/ err %d",
                         mComponentName.c_str(), err);
+                mIsConfiguredForAdaptivePlayback = (err == OK);
             }
             // allow failure
             err = OK;
         } else {
             ALOGV("[%s] storeMetaDataInBuffers succeeded", mComponentName.c_str());
             mStoreMetaDataInOutputBuffers = true;
+            mIsConfiguredForAdaptivePlayback = true;
         }
 
         int32_t push;
@@ -3348,11 +3357,11 @@ void ACodec::BaseState::onInputBufferFilled(const sp<AMessage> &msg) {
                 mCodec->mInputEOSResult = err;
             }
             break;
-
-            default:
-                CHECK_EQ((int)mode, (int)FREE_BUFFERS);
-                break;
         }
+
+        default:
+            CHECK_EQ((int)mode, (int)FREE_BUFFERS);
+            break;
     }
 }
 
@@ -3817,6 +3826,7 @@ void ACodec::LoadedState::stateEntered() {
     mCodec->mDequeueCounter = 0;
     mCodec->mMetaDataBuffersToSubmit = 0;
     mCodec->mRepeatFrameDelayUs = -1ll;
+    mCodec->mIsConfiguredForAdaptivePlayback = false;
 
     if (mCodec->mShutdownInProgress) {
         bool keepComponentAllocated = mCodec->mKeepComponentAllocated;
@@ -3967,6 +3977,21 @@ void ACodec::LoadedState::onCreateInputSurface(
         if (err != OK) {
             ALOGE("[%s] Unable to configure option to repeat previous "
                   "frames (err %d)",
+                  mCodec->mComponentName.c_str(),
+                  err);
+        }
+    }
+
+    if (err == OK && mCodec->mMaxPtsGapUs > 0l) {
+        err = mCodec->mOMX->setInternalOption(
+                mCodec->mNode,
+                kPortIndexInput,
+                IOMX::INTERNAL_OPTION_MAX_TIMESTAMP_GAP,
+                &mCodec->mMaxPtsGapUs,
+                sizeof(mCodec->mMaxPtsGapUs));
+
+        if (err != OK) {
+            ALOGE("[%s] Unable to configure max timestamp gap (err %d)",
                   mCodec->mComponentName.c_str(),
                   err);
         }
