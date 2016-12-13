@@ -1622,7 +1622,8 @@ status_t ACodec::setComponentRole(
             "video_decoder.vc1", "video_encoder.vc1" },
         { MEDIA_MIMETYPE_VIDEO_WVC1,
             "video_decoder.vc1", "video_encoder.vc1" },
-
+        { MEDIA_MIMETYPE_VIDEO_MJPEG,
+            "video_decoder.mjpeg", "video_encoder.mjpeg" },
         { MEDIA_MIMETYPE_VIDEO_VP8,
             "video_decoder.vp8", "video_encoder.vp8" },
         { MEDIA_MIMETYPE_VIDEO_VP9,
@@ -3002,6 +3003,7 @@ static const struct VideoCodingMapEntry {
     { MEDIA_MIMETYPE_VIDEO_MPEG2, OMX_VIDEO_CodingMPEG2 },
     { MEDIA_MIMETYPE_VIDEO_VC1, static_cast<OMX_VIDEO_CODINGTYPE>(OMX_VIDEO_CodingVC1) },
     { MEDIA_MIMETYPE_VIDEO_WVC1, static_cast<OMX_VIDEO_CODINGTYPE>(OMX_VIDEO_CodingVC1) },
+    { MEDIA_MIMETYPE_VIDEO_MJPEG, static_cast<OMX_VIDEO_CODINGTYPE>(OMX_VIDEO_CodingMJPEG) },
     { MEDIA_MIMETYPE_VIDEO_WMV3, static_cast<OMX_VIDEO_CODINGTYPE>(OMX_VIDEO_CodingWMV3) },
     { MEDIA_MIMETYPE_VIDEO_VP8, OMX_VIDEO_CodingVP8 },
     { MEDIA_MIMETYPE_VIDEO_VP9, OMX_VIDEO_CodingVP9 },
