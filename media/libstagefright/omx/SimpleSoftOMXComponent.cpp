@@ -132,6 +132,10 @@ OMX_ERRORTYPE SimpleSoftOMXComponent::internalGetParameter(
             OMX_PARAM_PORTDEFINITIONTYPE *defParams =
                 (OMX_PARAM_PORTDEFINITIONTYPE *)params;
 
+            if (!isValidOMXParam(defParams)) {
+                return OMX_ErrorBadParameter;
+            }
+
             if (defParams->nPortIndex >= mPorts.size()
                     || defParams->nSize
                             != sizeof(OMX_PARAM_PORTDEFINITIONTYPE)) {
@@ -158,6 +162,10 @@ OMX_ERRORTYPE SimpleSoftOMXComponent::internalSetParameter(
         {
             OMX_PARAM_PORTDEFINITIONTYPE *defParams =
                 (OMX_PARAM_PORTDEFINITIONTYPE *)params;
+
+            if (!isValidOMXParam(defParams)) {
+                return OMX_ErrorBadParameter;
+            }
 
             if (defParams->nPortIndex >= mPorts.size()) {
                 return OMX_ErrorBadPortIndex;
