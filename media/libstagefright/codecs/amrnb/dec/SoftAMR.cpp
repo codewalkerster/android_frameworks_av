@@ -148,10 +148,6 @@ OMX_ERRORTYPE SoftAMR::internalGetParameter(
             OMX_AUDIO_PARAM_AMRTYPE *amrParams =
                 (OMX_AUDIO_PARAM_AMRTYPE *)params;
 
-            if (!isValidOMXParam(amrParams)) {
-                return OMX_ErrorBadParameter;
-            }
-
             if (amrParams->nPortIndex != 0) {
                 return OMX_ErrorUndefined;
             }
@@ -177,10 +173,6 @@ OMX_ERRORTYPE SoftAMR::internalGetParameter(
         {
             OMX_AUDIO_PARAM_PCMMODETYPE *pcmParams =
                 (OMX_AUDIO_PARAM_PCMMODETYPE *)params;
-
-            if (!isValidOMXParam(pcmParams)) {
-                return OMX_ErrorBadParameter;
-            }
 
             if (pcmParams->nPortIndex != 1) {
                 return OMX_ErrorUndefined;
@@ -215,10 +207,6 @@ OMX_ERRORTYPE SoftAMR::internalSetParameter(
             const OMX_PARAM_COMPONENTROLETYPE *roleParams =
                 (const OMX_PARAM_COMPONENTROLETYPE *)params;
 
-            if (!isValidOMXParam(roleParams)) {
-                return OMX_ErrorBadParameter;
-            }
-
             if (mMode == MODE_NARROW) {
                 if (strncmp((const char *)roleParams->cRole,
                             "audio_decoder.amrnb",
@@ -241,10 +229,6 @@ OMX_ERRORTYPE SoftAMR::internalSetParameter(
             const OMX_AUDIO_PARAM_AMRTYPE *aacParams =
                 (const OMX_AUDIO_PARAM_AMRTYPE *)params;
 
-            if (!isValidOMXParam(aacParams)) {
-                return OMX_ErrorBadParameter;
-            }
-
             if (aacParams->nPortIndex != 0) {
                 return OMX_ErrorUndefined;
             }
@@ -256,10 +240,6 @@ OMX_ERRORTYPE SoftAMR::internalSetParameter(
         {
             const OMX_AUDIO_PARAM_PCMMODETYPE *pcmParams =
                 (OMX_AUDIO_PARAM_PCMMODETYPE *)params;
-
-            if (!isValidOMXParam(pcmParams)) {
-                return OMX_ErrorBadParameter;
-            }
 
             if (pcmParams->nPortIndex != 1) {
                 return OMX_ErrorUndefined;

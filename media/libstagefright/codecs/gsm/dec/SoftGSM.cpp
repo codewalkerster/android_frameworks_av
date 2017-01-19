@@ -110,10 +110,6 @@ OMX_ERRORTYPE SoftGSM::internalGetParameter(
             OMX_AUDIO_PARAM_PCMMODETYPE *pcmParams =
                 (OMX_AUDIO_PARAM_PCMMODETYPE *)params;
 
-            if (!isValidOMXParam(pcmParams)) {
-                return OMX_ErrorBadParameter;
-            }
-
             if (pcmParams->nPortIndex > 1) {
                 return OMX_ErrorUndefined;
             }
@@ -145,10 +141,6 @@ OMX_ERRORTYPE SoftGSM::internalSetParameter(
             OMX_AUDIO_PARAM_PCMMODETYPE *pcmParams =
                 (OMX_AUDIO_PARAM_PCMMODETYPE *)params;
 
-            if (!isValidOMXParam(pcmParams)) {
-                return OMX_ErrorBadParameter;
-            }
-
             if (pcmParams->nPortIndex != 0 && pcmParams->nPortIndex != 1) {
                 return OMX_ErrorUndefined;
             }
@@ -168,10 +160,6 @@ OMX_ERRORTYPE SoftGSM::internalSetParameter(
         {
             const OMX_PARAM_COMPONENTROLETYPE *roleParams =
                 (const OMX_PARAM_COMPONENTROLETYPE *)params;
-
-            if (!isValidOMXParam(roleParams)) {
-                return OMX_ErrorBadParameter;
-            }
 
             if (strncmp((const char *)roleParams->cRole,
                         "audio_decoder.gsm",
