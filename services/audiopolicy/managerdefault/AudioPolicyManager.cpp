@@ -44,18 +44,6 @@
 namespace android {
 
 // ----------------------------------------------------------------------------
-static int getprop_bool(const char * path)
-{
-    char buf[PROPERTY_VALUE_MAX];
-    int ret = -1;
-
-    ret = property_get(path, buf, NULL);
-    if (ret > 0) {
-        if (strcasecmp(buf,"true") == 0 || strcmp(buf,"1") == 0)
-            return 1;
-    }
-    return 0;
-}
 // AudioPolicyInterface implementation
 // ----------------------------------------------------------------------------
 
@@ -74,15 +62,7 @@ status_t AudioPolicyManager::setDeviceConnectionStateInt(audio_devices_t device,
 {
     ALOGV("setDeviceConnectionStateInt() device: 0x%X, state %d, address %s name %s",
 -            device, state, device_address, device_name);
-   /*
-   for mbx ,not reponse for android hdmi hotplug message as need digital output all the time.also treat the spdif out as hdmi out.
-   */
-   if ((device&AUDIO_DEVICE_OUT_AUX_DIGITAL) && getprop_bool("ro.platform.has.mbxuimode")) {
-       return NO_ERROR;
-   }
-   if (device&AUDIO_DEVICE_OUT_SPDIF) {
-       device = AUDIO_DEVICE_OUT_AUX_DIGITAL;
-   }
+
     // connect/disconnect only 1 device at a time
     if (!audio_is_output_device(device) && !audio_is_input_device(device)) return BAD_VALUE;
 
@@ -861,15 +841,6 @@ audio_io_handle_t AudioPolicyManager::getOutputForDevice(
 
     if (((flags & AUDIO_OUTPUT_FLAG_COMPRESS_OFFLOAD) == 0) ||
             !mEffects.isNonOffloadableEffectEnabled()) {
-         ALOGVV("getProfileForDirectOutput() device %x,sr %d,format %x,chmask %x,flag %d\n",   device,
-                                           samplingRate,
-                                           format,
-                                           channelMask,
-                                           (audio_output_flags_t)flags);
-        if ((device&AUDIO_DEVICE_OUT_AUX_DIGITAL) && getprop_bool("ro.platform.has.mbxuimode")) {
-    // for direct output,only use HDMI
-             device = AUDIO_DEVICE_OUT_AUX_DIGITAL;
-         }
         profile = getProfileForDirectOutput(device,
                                            samplingRate,
                                            format,
@@ -885,15 +856,9 @@ audio_io_handle_t AudioPolicyManager::getOutputForDevice(
             if (!desc->isDuplicated() && (profile == desc->mProfile)) {
                 outputDesc = desc;
                 // reuse direct output if currently open and configured with same parameters
-                // reuse direct output if currently open and configured with same parameters
-                if ( (!audio_is_linear_pcm(format)) &&   \
-                        (!audio_is_linear_pcm(outputDesc->mFormat))   \
-                        &&(channelMask == outputDesc->mChannelMask)) {
-/*
-if ((samplingRate == outputDesc->mSamplingRate) &&
+                if ((samplingRate == outputDesc->mSamplingRate) &&
                         (format == outputDesc->mFormat) &&
                         (channelMask == outputDesc->mChannelMask)) {
-*/
                     outputDesc->mDirectOpenCount++;
                     ALOGV("getOutput() reusing direct output %d", mOutputs.keyAt(i));
                     return mOutputs.keyAt(i);
@@ -986,7 +951,6 @@ non_direct_output:
     if (audio_is_linear_pcm(format)) {
         // get which output is suitable for the specified stream. The actual
         // routing change will happen when startOutput() will be called
-        device = device &(~AUDIO_DEVICE_OUT_AUX_DIGITAL);
         SortedVector<audio_io_handle_t> outputs = getOutputsForDevice(device, mOutputs);
 
         // at this stage we should ignore the DIRECT flag as no direct output could be found earlier
@@ -2991,9 +2955,7 @@ AudioPolicyManager::AudioPolicyManager(AudioPolicyClientInterface *clientInterfa
     ALOGE_IF((mPrimaryOutput == 0), "Failed to open primary output");
 
     updateDevicesAndOutputs();
-    if (getprop_bool("ro.platform.has.mbxuimode")) {
-        setDeviceConnectionState(AUDIO_DEVICE_OUT_SPDIF,AUDIO_POLICY_DEVICE_STATE_AVAILABLE,"mbx-hdmi","aml-hdmi");
-    }
+
 #ifdef AUDIO_POLICY_TEST
     if (mPrimaryOutput != 0) {
         AudioParameter outputCmd = AudioParameter();
@@ -3878,8 +3840,8 @@ void AudioPolicyManager::checkOutputForStrategy(routing_strategy strategy)
     }
 
     if (!vectorsEqual(srcOutputs,dstOutputs)) {
-     //   ALOGV("checkOutputForStrategy() strategy %d, moving from output %d to output %d",
-       //       strategy, srcOutputs[0], dstOutputs[0]);
+        ALOGV("checkOutputForStrategy() strategy %d, moving from output %d to output %d",
+              strategy, srcOutputs[0], dstOutputs[0]);
         // mute strategy while moving tracks from one output to another
         for (size_t i = 0; i < srcOutputs.size(); i++) {
             sp<SwAudioOutputDescriptor> desc = mOutputs.valueFor(srcOutputs[i]);

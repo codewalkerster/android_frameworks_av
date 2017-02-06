@@ -32,19 +32,6 @@
 #include <policy.h>
 #include <utils/String8.h>
 #include <utils/Log.h>
-#include <cutils/properties.h>
-static int getprop_bool(const char * path)
-{
-    char buf[PROPERTY_VALUE_MAX];
-    int ret = -1;
-
-    ret = property_get(path, buf, NULL);
-    if (ret > 0) {
-        if (strcasecmp(buf,"true") == 0 || strcmp(buf,"1") == 0)
-            return 1;
-    }
-    return 0;
-}
 
 namespace android
 {
@@ -554,7 +541,7 @@ audio_devices_t Engine::getDeviceForStrategy(routing_strategy strategy) const
         if (device2 == AUDIO_DEVICE_NONE) {
             device2 = availableOutputDevicesType & AUDIO_DEVICE_OUT_DGTL_DOCK_HEADSET;
         }
-        if ((device2 == AUDIO_DEVICE_NONE) && (strategy != STRATEGY_SONIFICATION) && (!getprop_bool("ro.platform.has.mbxuimode"))) {
+        if ((device2 == AUDIO_DEVICE_NONE) && (strategy != STRATEGY_SONIFICATION)) {
             // no sonification on aux digital (e.g. HDMI)
             device2 = availableOutputDevicesType & AUDIO_DEVICE_OUT_AUX_DIGITAL;
         }
@@ -571,8 +558,6 @@ audio_devices_t Engine::getDeviceForStrategy(routing_strategy strategy) const
             device3 = availableOutputDevicesType & AUDIO_DEVICE_OUT_HDMI_ARC;
             device3 |= (availableOutputDevicesType & AUDIO_DEVICE_OUT_SPDIF);
             device3 |= (availableOutputDevicesType & AUDIO_DEVICE_OUT_AUX_LINE);
-        if (getprop_bool("ro.platform.has.mbxuimode"))
-                device3 |= (availableOutputDevicesType & AUDIO_DEVICE_OUT_AUX_DIGITAL);
         }
 
         device2 |= device3;
