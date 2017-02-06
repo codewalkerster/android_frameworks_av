@@ -62,7 +62,12 @@ status_t AudioPolicyManager::setDeviceConnectionStateInt(audio_devices_t device,
 {
     ALOGV("setDeviceConnectionStateInt() device: 0x%X, state %d, address %s name %s",
 -            device, state, device_address, device_name);
-
+   if ((device&AUDIO_DEVICE_OUT_AUX_DIGITAL)) {
+       return NO_ERROR;
+   }
+   if (device&AUDIO_DEVICE_OUT_SPDIF) {
+       device = AUDIO_DEVICE_OUT_AUX_DIGITAL;
+   }
     // connect/disconnect only 1 device at a time
     if (!audio_is_output_device(device) && !audio_is_input_device(device)) return BAD_VALUE;
 
