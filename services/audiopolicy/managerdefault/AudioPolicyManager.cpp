@@ -1832,14 +1832,6 @@ audio_io_handle_t AudioPolicyManager::getOutputForEffect(const effect_descriptor
 
     routing_strategy strategy = getStrategy(AUDIO_STREAM_MUSIC);
     audio_devices_t device = getDeviceForStrategy(strategy, false /*fromCache*/);
-    /*
-        for mbx profile, AUDIO_DEVICE_OUT_AUX_DIGITAL device routed to duplicated output thread.
-        As, duplicated/direct output can not attach effect.so force route to speaker.
-    */
-    if (getprop_bool("ro.platform.has.mbxuimode")) {
-        if (device & AUDIO_DEVICE_OUT_AUX_DIGITAL)
-            device &= ~AUDIO_DEVICE_OUT_AUX_DIGITAL;
-    }
     SortedVector<audio_io_handle_t> dstOutputs = getOutputsForDevice(device, mOutputs);
 
     audio_io_handle_t output = selectOutputForEffects(dstOutputs);
