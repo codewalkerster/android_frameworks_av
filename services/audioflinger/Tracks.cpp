@@ -113,9 +113,24 @@ AudioFlinger::ThreadBase::TrackBase::TrackBase(
     mUid = clientUid;
 
     // ALOGD("Creating track with %d buffers @ %d bytes", bufferCount, bufferSize);
+
+    size_t bufferSize = buffer == NULL ? roundup(frameCount) : frameCount;
+    // check overflow when computing bufferSize due to multiplication by mFrameSize.
+    if (bufferSize < frameCount  // roundup rounds down for values above UINT_MAX / 2
+            || mFrameSize == 0   // format needs to be correct
+            || bufferSize > SIZE_MAX / mFrameSize) {
+        android_errorWriteLog(0x534e4554, "34749571");
+        return;
+    }
+    bufferSize *= mFrameSize;
+
     size_t size = sizeof(audio_track_cblk_t);
-    size_t bufferSize = (buffer == NULL ? roundup(frameCount) : frameCount) * mFrameSize;
     if (buffer == NULL && alloc == ALLOC_CBLK) {
+        // check overflow when computing allocation size for streaming tracks.
+        if (size > SIZE_MAX - bufferSize) {
+            android_errorWriteLog(0x534e4554, "34749571");
+            return;
+        }
         size += bufferSize;
     }
 
@@ -129,9 +144,11 @@ AudioFlinger::ThreadBase::TrackBase::TrackBase(
             return;
         }
     } else {
-        // this syntax avoids calling the audio_track_cblk_t constructor twice
-        mCblk = (audio_track_cblk_t *) new uint8_t[size];
-        // assume mCblk != NULL
+        mCblk = (audio_track_cblk_t *) malloc(size);
+        if (mCblk == NULL) {
+            ALOGE("not enough memory for AudioTrack size=%zu", size);
+            return;
+        }
     }
 
     // construct the shared structure in-place.
@@ -223,10 +240,9 @@ AudioFlinger::ThreadBase::TrackBase::~TrackBase()
     // delete the proxy before deleting the shared memory it refers to, to avoid dangling reference
     delete mServerProxy;
     if (mCblk != NULL) {
+        mCblk->~audio_track_cblk_t();   // destroy our shared-structure.
         if (mClient == 0) {
-            delete mCblk;
-        } else {
-            mCblk->~audio_track_cblk_t();   // destroy our shared-structure.
+            free(mCblk);
         }
     }
     mCblkMemory.clear();    // free the shared memory before releasing the heap it belongs to
@@ -420,6 +436,21 @@ AudioFlinger::PlaybackThread::Track::Track(
         mAudioTrackServerProxy = new AudioTrackServerProxy(mCblk, mBuffer, frameCount,
                 mFrameSize, !isExternalTrack(), sampleRate);
     } else {
+        // Is the shared buffer of sufficient size?
+        // (frameCount * mFrameSize) is <= SIZE_MAX, checked in TrackBase.
+        if (sharedBuffer->size() < frameCount * mFrameSize) {
+            // Workaround: clear out mCblk to indicate track hasn't been properly created.
+            mCblk->~audio_track_cblk_t();   // destroy our shared-structure.
+            if (mClient == 0) {
+                free(mCblk);
+            }
+            mCblk = NULL;
+
+            mSharedBuffer.clear(); // release shared buffer early
+            android_errorWriteLog(0x534e4554, "38340117");
+            return;
+        }
+
         mAudioTrackServerProxy = new StaticAudioTrackServerProxy(mCblk, mBuffer, frameCount,
                 mFrameSize);
     }

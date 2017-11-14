@@ -227,6 +227,7 @@ public:
     virtual status_t            dump(int fd, const Vector<String16>& args);
 
             void                removeClient(wp<Client> client);
+            bool                hasClient(wp<Client> client);
 
     status_t decode(
         const sp<IMediaHTTPService> &httpService,

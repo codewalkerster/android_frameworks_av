@@ -368,20 +368,24 @@ OMX_ERRORTYPE SoftVPXEncoder::internalGetParameter(OMX_INDEXTYPE index,
             OMX_VIDEO_PARAM_BITRATETYPE *bitrate =
                 (OMX_VIDEO_PARAM_BITRATETYPE *)param;
 
-                if (bitrate->nPortIndex != kOutputPortIndex) {
-                    return OMX_ErrorUnsupportedIndex;
-                }
+            if (!isValidOMXParam(bitrate)) {
+                return OMX_ErrorBadParameter;
+            }
 
-                bitrate->nTargetBitrate = mBitrate;
+            if (bitrate->nPortIndex != kOutputPortIndex) {
+                return OMX_ErrorUnsupportedIndex;
+            }
 
-                if (mBitrateControlMode == VPX_VBR) {
-                    bitrate->eControlRate = OMX_Video_ControlRateVariable;
-                } else if (mBitrateControlMode == VPX_CBR) {
-                    bitrate->eControlRate = OMX_Video_ControlRateConstant;
-                } else {
-                    return OMX_ErrorUnsupportedSetting;
-                }
-                return OMX_ErrorNone;
+            bitrate->nTargetBitrate = mBitrate;
+
+            if (mBitrateControlMode == VPX_VBR) {
+                bitrate->eControlRate = OMX_Video_ControlRateVariable;
+            } else if (mBitrateControlMode == VPX_CBR) {
+                bitrate->eControlRate = OMX_Video_ControlRateConstant;
+            } else {
+                return OMX_ErrorUnsupportedSetting;
+            }
+            return OMX_ErrorNone;
         }
 
         // VP8 specific parameters that use extension headers
@@ -389,33 +393,41 @@ OMX_ERRORTYPE SoftVPXEncoder::internalGetParameter(OMX_INDEXTYPE index,
             OMX_VIDEO_PARAM_VP8TYPE *vp8Params =
                 (OMX_VIDEO_PARAM_VP8TYPE *)param;
 
-                if (vp8Params->nPortIndex != kOutputPortIndex) {
-                    return OMX_ErrorUnsupportedIndex;
-                }
+            if (!isValidOMXParam(vp8Params)) {
+                return OMX_ErrorBadParameter;
+            }
 
-                vp8Params->eProfile = OMX_VIDEO_VP8ProfileMain;
-                vp8Params->eLevel = mLevel;
-                vp8Params->nDCTPartitions = mDCTPartitions;
-                vp8Params->bErrorResilientMode = mErrorResilience;
-                return OMX_ErrorNone;
+            if (vp8Params->nPortIndex != kOutputPortIndex) {
+                return OMX_ErrorUnsupportedIndex;
+            }
+
+            vp8Params->eProfile = OMX_VIDEO_VP8ProfileMain;
+            vp8Params->eLevel = mLevel;
+            vp8Params->nDCTPartitions = mDCTPartitions;
+            vp8Params->bErrorResilientMode = mErrorResilience;
+            return OMX_ErrorNone;
         }
 
         case OMX_IndexParamVideoAndroidVp8Encoder: {
             OMX_VIDEO_PARAM_ANDROID_VP8ENCODERTYPE *vp8AndroidParams =
                 (OMX_VIDEO_PARAM_ANDROID_VP8ENCODERTYPE *)param;
 
-                if (vp8AndroidParams->nPortIndex != kOutputPortIndex) {
-                    return OMX_ErrorUnsupportedIndex;
-                }
+            if (!isValidOMXParam(vp8AndroidParams)) {
+                return OMX_ErrorBadParameter;
+            }
 
-                vp8AndroidParams->nKeyFrameInterval = mKeyFrameInterval;
-                vp8AndroidParams->eTemporalPattern = mTemporalPatternType;
-                vp8AndroidParams->nTemporalLayerCount = mTemporalLayers;
-                vp8AndroidParams->nMinQuantizer = mMinQuantizer;
-                vp8AndroidParams->nMaxQuantizer = mMaxQuantizer;
-                memcpy(vp8AndroidParams->nTemporalLayerBitrateRatio,
-                       mTemporalLayerBitrateRatio, sizeof(mTemporalLayerBitrateRatio));
-                return OMX_ErrorNone;
+            if (vp8AndroidParams->nPortIndex != kOutputPortIndex) {
+                return OMX_ErrorUnsupportedIndex;
+            }
+
+            vp8AndroidParams->nKeyFrameInterval = mKeyFrameInterval;
+            vp8AndroidParams->eTemporalPattern = mTemporalPatternType;
+            vp8AndroidParams->nTemporalLayerCount = mTemporalLayers;
+            vp8AndroidParams->nMinQuantizer = mMinQuantizer;
+            vp8AndroidParams->nMaxQuantizer = mMaxQuantizer;
+            memcpy(vp8AndroidParams->nTemporalLayerBitrateRatio,
+                   mTemporalLayerBitrateRatio, sizeof(mTemporalLayerBitrateRatio));
+            return OMX_ErrorNone;
         }
 
         default:
@@ -430,17 +442,38 @@ OMX_ERRORTYPE SoftVPXEncoder::internalSetParameter(OMX_INDEXTYPE index,
     const int32_t indexFull = index;
 
     switch (indexFull) {
-        case OMX_IndexParamVideoBitrate:
-            return internalSetBitrateParams(
-                (const OMX_VIDEO_PARAM_BITRATETYPE *)param);
+        case OMX_IndexParamVideoBitrate: {
+            const OMX_VIDEO_PARAM_BITRATETYPE *bitRate =
+                (const OMX_VIDEO_PARAM_BITRATETYPE*) param;
 
-        case OMX_IndexParamVideoVp8:
-            return internalSetVp8Params(
-                (const OMX_VIDEO_PARAM_VP8TYPE *)param);
+            if (!isValidOMXParam(bitRate)) {
+                return OMX_ErrorBadParameter;
+            }
 
-        case OMX_IndexParamVideoAndroidVp8Encoder:
-            return internalSetAndroidVp8Params(
-                (const OMX_VIDEO_PARAM_ANDROID_VP8ENCODERTYPE *)param);
+            return internalSetBitrateParams(bitRate);
+        }
+
+        case OMX_IndexParamVideoVp8: {
+            const OMX_VIDEO_PARAM_VP8TYPE *vp8Params =
+                (const OMX_VIDEO_PARAM_VP8TYPE*) param;
+
+            if (!isValidOMXParam(vp8Params)) {
+                return OMX_ErrorBadParameter;
+            }
+
+            return internalSetVp8Params(vp8Params);
+        }
+
+        case OMX_IndexParamVideoAndroidVp8Encoder: {
+            const OMX_VIDEO_PARAM_ANDROID_VP8ENCODERTYPE *vp8AndroidParams =
+                (const OMX_VIDEO_PARAM_ANDROID_VP8ENCODERTYPE*) param;
+
+            if (!isValidOMXParam(vp8AndroidParams)) {
+                return OMX_ErrorBadParameter;
+            }
+
+            return internalSetAndroidVp8Params(vp8AndroidParams);
+        }
 
         default:
             return SoftVideoEncoderOMXComponent::internalSetParameter(index, param);
@@ -455,6 +488,10 @@ OMX_ERRORTYPE SoftVPXEncoder::setConfig(
             OMX_CONFIG_INTRAREFRESHVOPTYPE *params =
                 (OMX_CONFIG_INTRAREFRESHVOPTYPE *)_params;
 
+            if (!isValidOMXParam(params)) {
+                return OMX_ErrorBadParameter;
+            }
+
             if (params->nPortIndex != kOutputPortIndex) {
                 return OMX_ErrorBadPortIndex;
             }
@@ -467,6 +504,10 @@ OMX_ERRORTYPE SoftVPXEncoder::setConfig(
         {
             OMX_VIDEO_CONFIG_BITRATETYPE *params =
                 (OMX_VIDEO_CONFIG_BITRATETYPE *)_params;
+
+            if (!isValidOMXParam(params)) {
+                return OMX_ErrorBadParameter;
+            }
 
             if (params->nPortIndex != kOutputPortIndex) {
                 return OMX_ErrorBadPortIndex;
@@ -747,7 +788,9 @@ void SoftVPXEncoder::onQueueFilled(OMX_U32 /* portIndex */) {
         if (inputBufferHeader->nTimeStamp > mLastTimestamp) {
             frameDuration = (uint32_t)(inputBufferHeader->nTimeStamp - mLastTimestamp);
         } else {
-            frameDuration = (uint32_t)(((uint64_t)1000000 << 16) / mFramerate);
+            // Use default of 30 fps in case of 0 frame rate.
+            uint32_t framerate = mFramerate ?: (30 << 16);
+            frameDuration = (uint32_t)(((uint64_t)1000000 << 16) / framerate);
         }
         mLastTimestamp = inputBufferHeader->nTimeStamp;
         codec_return = vpx_codec_encode(
@@ -799,6 +842,11 @@ void SoftVPXEncoder::onQueueFilled(OMX_U32 /* portIndex */) {
         inputBufferInfoQueue.erase(inputBufferInfoQueue.begin());
         notifyEmptyBufferDone(inputBufferHeader);
     }
+}
+
+void SoftVPXEncoder::onReset() {
+    releaseEncoder();
+    mLastTimestamp = 0x7FFFFFFFFFFFFFFFLL;
 }
 
 }  // namespace android

@@ -210,8 +210,17 @@ void SoftMPEG4::onQueueFilled(OMX_U32 /* portIndex */) {
             PortInfo *port = editPortInfo(1);
             OMX_BUFFERHEADERTYPE *outHeader = port->mBuffers.editItemAt(1).mHeader;
 
+            OMX_U32 yFrameSize = sizeof(uint8) * mHandle->size;
+            if ((outHeader->nAllocLen < yFrameSize) ||
+                    (outHeader->nAllocLen - yFrameSize < yFrameSize / 2)) {
+                ALOGE("Too small output buffer for reference frame: %lu bytes",
+                        (unsigned long)outHeader->nAllocLen);
+                android_errorWriteLog(0x534e4554, "30033990");
+                notify(OMX_EventError, OMX_ErrorUndefined, 0, NULL);
+                mSignalledError = true;
+                return;
+            }
             PVSetReferenceYUV(mHandle, outHeader->pBuffer);
-
             mFramesConfigured = true;
         }
 
@@ -229,7 +238,16 @@ void SoftMPEG4::onQueueFilled(OMX_U32 /* portIndex */) {
         int32_t bufferSize = inHeader->nFilledLen;
         int32_t tmp = bufferSize;
 
-        OMX_U32 frameSize = (mWidth * mHeight * 3) / 2;
+        OMX_U32 frameSize;
+        OMX_U64 yFrameSize = (OMX_U64)mWidth * (OMX_U64)mHeight;
+        if (yFrameSize > ((OMX_U64)UINT32_MAX / 3) * 2) {
+            ALOGE("Frame size too large");
+            notify(OMX_EventError, OMX_ErrorUndefined, 0, NULL);
+            mSignalledError = true;
+            return;
+        }
+        frameSize = (OMX_U32)(yFrameSize + (yFrameSize / 2));
+
         if (outHeader->nAllocLen < frameSize) {
             android_errorWriteLog(0x534e4554, "27833616");
             ALOGE("Insufficient output buffer size");
@@ -237,13 +255,28 @@ void SoftMPEG4::onQueueFilled(OMX_U32 /* portIndex */) {
             mSignalledError = true;
             return;
         }
+
+        // Need to check if header contains new info, e.g., width/height, etc.
+        VopHeaderInfo header_info;
+        uint8_t *bitstreamTmp = bitstream;
+        if (PVDecodeVopHeader(
+                    mHandle, &bitstreamTmp, &timestamp, &tmp,
+                    &header_info, &useExtTimestamp,
+                    outHeader->pBuffer) != PV_TRUE) {
+            ALOGE("failed to decode vop header.");
+
+            notify(OMX_EventError, OMX_ErrorUndefined, 0, NULL);
+            mSignalledError = true;
+            return;
+        }
+        if (handlePortSettingsChange()) {
+            return;
+        }
+
         // The PV decoder is lying to us, sometimes it'll claim to only have
         // consumed a subset of the buffer when it clearly consumed all of it.
         // ignore whatever it says...
-        if (PVDecodeVideoFrame(
-                    mHandle, &bitstream, &timestamp, &tmp,
-                    &useExtTimestamp,
-                    outHeader->pBuffer) != PV_TRUE) {
+        if (PVDecodeVopBody(mHandle, &tmp) != PV_TRUE) {
             ALOGE("failed to decode video frame.");
 
             notify(OMX_EventError, OMX_ErrorUndefined, 0, NULL);

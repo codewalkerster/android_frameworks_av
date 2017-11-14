@@ -132,6 +132,10 @@ OMX_ERRORTYPE SimpleSoftOMXComponent::internalGetParameter(
             OMX_PARAM_PORTDEFINITIONTYPE *defParams =
                 (OMX_PARAM_PORTDEFINITIONTYPE *)params;
 
+            if (!isValidOMXParam(defParams)) {
+                return OMX_ErrorBadParameter;
+            }
+
             if (defParams->nPortIndex >= mPorts.size()
                     || defParams->nSize
                             != sizeof(OMX_PARAM_PORTDEFINITIONTYPE)) {
@@ -158,6 +162,10 @@ OMX_ERRORTYPE SimpleSoftOMXComponent::internalSetParameter(
         {
             OMX_PARAM_PORTDEFINITIONTYPE *defParams =
                 (OMX_PARAM_PORTDEFINITIONTYPE *)params;
+
+            if (!isValidOMXParam(defParams)) {
+                return OMX_ErrorBadParameter;
+            }
 
             if (defParams->nPortIndex >= mPorts.size()) {
                 return OMX_ErrorBadPortIndex;
@@ -230,6 +238,14 @@ OMX_ERRORTYPE SimpleSoftOMXComponent::useBuffer_l(
         OMX_U32 size,
         OMX_U8 *ptr) {
     CHECK_LT(portIndex, mPorts.size());
+
+    PortInfo *port = &mPorts.editItemAt(portIndex);
+    if (size < port->mDef.nBufferSize) {
+        ALOGE("b/63522430, Buffer size is too small.");
+        android_errorWriteLog(0x534e4554, "63522430");
+        return OMX_ErrorBadParameter;
+    }
+
     *header = new OMX_BUFFERHEADERTYPE;
     (*header)->nSize = sizeof(OMX_BUFFERHEADERTYPE);
     (*header)->nVersion.s.nVersionMajor = 1;
@@ -251,8 +267,6 @@ OMX_ERRORTYPE SimpleSoftOMXComponent::useBuffer_l(
     (*header)->nFlags = 0;
     (*header)->nOutputPortIndex = portIndex;
     (*header)->nInputPortIndex = portIndex;
-
-    PortInfo *port = &mPorts.editItemAt(portIndex);
 
     CHECK(mState == OMX_StateLoaded || port->mDef.bEnabled == OMX_FALSE);
 

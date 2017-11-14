@@ -387,7 +387,6 @@ status_t SampleTable::setTimeToSampleParams(
         // 2) mTimeToSampleCount is the number of entries of the time-to-sample
         //    table.
         // 3) We hope that the table size does not exceed UINT32_MAX.
-
         ALOGE("Time-to-sample table size too large.");
         return ERROR_OUT_OF_RANGE;
     }
@@ -504,8 +503,6 @@ status_t SampleTable::setSyncSampleParams(off64_t data_offset, size_t data_size)
         return ERROR_MALFORMED;
     }
 
-    mSyncSampleOffset = data_offset;
-
     uint8_t header[8];
     if (mDataSource->readAt(
                 data_offset, header, sizeof(header)) < (ssize_t)sizeof(header)) {
@@ -517,13 +514,13 @@ status_t SampleTable::setSyncSampleParams(off64_t data_offset, size_t data_size)
         return ERROR_MALFORMED;
     }
 
-    mNumSyncSamples = U32_AT(&header[4]);
+    uint32_t numSyncSamples = U32_AT(&header[4]);
 
-    if (mNumSyncSamples < 2) {
+    if (numSyncSamples < 2) {
         ALOGV("Table of sync samples is empty or has only a single entry!");
     }
 
-    uint64_t allocSize = (uint64_t)mNumSyncSamples * sizeof(uint32_t);
+    uint64_t allocSize = (uint64_t)numSyncSamples * sizeof(uint32_t);
     if (allocSize > kMaxTotalSize) {
         ALOGE("Sync sample table size too large.");
         return ERROR_OUT_OF_RANGE;
@@ -541,21 +538,30 @@ status_t SampleTable::setSyncSampleParams(off64_t data_offset, size_t data_size)
         return ERROR_OUT_OF_RANGE;
     }
 
-    mSyncSamples = new (std::nothrow) uint32_t[mNumSyncSamples];
+    mSyncSamples = new (std::nothrow) uint32_t[numSyncSamples];
     if (!mSyncSamples) {
         ALOGE("Cannot allocate sync sample table with %llu entries.",
-                (unsigned long long)mNumSyncSamples);
+                (unsigned long long)numSyncSamples);
         return ERROR_OUT_OF_RANGE;
     }
 
-    if (mDataSource->readAt(mSyncSampleOffset + 8, mSyncSamples,
+    if (mDataSource->readAt(data_offset + 8, mSyncSamples,
             (size_t)allocSize) != (ssize_t)allocSize) {
+        delete mSyncSamples;
+        mSyncSamples = NULL;
         return ERROR_IO;
     }
 
-    for (size_t i = 0; i < mNumSyncSamples; ++i) {
+    for (size_t i = 0; i < numSyncSamples; ++i) {
+        if (mSyncSamples[i] == 0) {
+            ALOGE("b/32423862, unexpected zero value in stss");
+            continue;
+        }
         mSyncSamples[i] = ntohl(mSyncSamples[i]) - 1;
     }
+
+    mSyncSampleOffset = data_offset;
+    mNumSyncSamples = numSyncSamples;
 
     return OK;
 }

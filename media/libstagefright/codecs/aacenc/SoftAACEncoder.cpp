@@ -62,8 +62,7 @@ SoftAACEncoder::SoftAACEncoder(
 }
 
 SoftAACEncoder::~SoftAACEncoder() {
-    delete[] mInputFrame;
-    mInputFrame = NULL;
+    onReset();
 
     if (mEncoderHandle) {
         CHECK_EQ(VO_ERR_NONE, mApiHandle->Uninit(mEncoderHandle));
@@ -154,6 +153,10 @@ OMX_ERRORTYPE SoftAACEncoder::internalGetParameter(
             OMX_AUDIO_PARAM_PORTFORMATTYPE *formatParams =
                 (OMX_AUDIO_PARAM_PORTFORMATTYPE *)params;
 
+            if (!isValidOMXParam(formatParams)) {
+                return OMX_ErrorBadParameter;
+            }
+
             if (formatParams->nPortIndex > 1) {
                 return OMX_ErrorUndefined;
             }
@@ -173,6 +176,10 @@ OMX_ERRORTYPE SoftAACEncoder::internalGetParameter(
         {
             OMX_AUDIO_PARAM_AACPROFILETYPE *aacParams =
                 (OMX_AUDIO_PARAM_AACPROFILETYPE *)params;
+
+            if (!isValidOMXParam(aacParams)) {
+                return OMX_ErrorBadParameter;
+            }
 
             if (aacParams->nPortIndex != 1) {
                 return OMX_ErrorUndefined;
@@ -197,6 +204,10 @@ OMX_ERRORTYPE SoftAACEncoder::internalGetParameter(
         {
             OMX_AUDIO_PARAM_PCMMODETYPE *pcmParams =
                 (OMX_AUDIO_PARAM_PCMMODETYPE *)params;
+
+            if (!isValidOMXParam(pcmParams)) {
+                return OMX_ErrorBadParameter;
+            }
 
             if (pcmParams->nPortIndex != 0) {
                 return OMX_ErrorUndefined;
@@ -229,6 +240,10 @@ OMX_ERRORTYPE SoftAACEncoder::internalSetParameter(
             const OMX_PARAM_COMPONENTROLETYPE *roleParams =
                 (const OMX_PARAM_COMPONENTROLETYPE *)params;
 
+            if (!isValidOMXParam(roleParams)) {
+                return OMX_ErrorBadParameter;
+            }
+
             if (strncmp((const char *)roleParams->cRole,
                         "audio_encoder.aac",
                         OMX_MAX_STRINGNAME_SIZE - 1)) {
@@ -242,6 +257,10 @@ OMX_ERRORTYPE SoftAACEncoder::internalSetParameter(
         {
             const OMX_AUDIO_PARAM_PORTFORMATTYPE *formatParams =
                 (const OMX_AUDIO_PARAM_PORTFORMATTYPE *)params;
+
+            if (!isValidOMXParam(formatParams)) {
+                return OMX_ErrorBadParameter;
+            }
 
             if (formatParams->nPortIndex > 1) {
                 return OMX_ErrorUndefined;
@@ -266,6 +285,10 @@ OMX_ERRORTYPE SoftAACEncoder::internalSetParameter(
             OMX_AUDIO_PARAM_AACPROFILETYPE *aacParams =
                 (OMX_AUDIO_PARAM_AACPROFILETYPE *)params;
 
+            if (!isValidOMXParam(aacParams)) {
+                return OMX_ErrorBadParameter;
+            }
+
             if (aacParams->nPortIndex != 1) {
                 return OMX_ErrorUndefined;
             }
@@ -285,6 +308,10 @@ OMX_ERRORTYPE SoftAACEncoder::internalSetParameter(
         {
             OMX_AUDIO_PARAM_PCMMODETYPE *pcmParams =
                 (OMX_AUDIO_PARAM_PCMMODETYPE *)params;
+
+            if (!isValidOMXParam(pcmParams)) {
+                return OMX_ErrorBadParameter;
+            }
 
             if (pcmParams->nPortIndex != 0) {
                 return OMX_ErrorUndefined;
@@ -549,6 +576,17 @@ void SoftAACEncoder::onQueueFilled(OMX_U32 portIndex) {
 
         mInputSize = 0;
     }
+}
+
+void SoftAACEncoder::onReset() {
+    delete[] mInputFrame;
+    mInputFrame = NULL;
+    mInputSize = 0;
+
+    mSentCodecSpecificData = false;
+    mInputTimeUs = -1ll;
+    mSawInputEOS = false;
+    mSignalledError = false;
 }
 
 }  // namespace android

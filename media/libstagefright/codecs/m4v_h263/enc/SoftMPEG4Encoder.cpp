@@ -99,6 +99,7 @@ SoftMPEG4Encoder::SoftMPEG4Encoder(
 
 SoftMPEG4Encoder::~SoftMPEG4Encoder() {
     ALOGV("Destruct SoftMPEG4Encoder");
+    onReset();
     releaseEncoder();
     List<BufferInfo *> &outQueue = getPortQueue(1);
     List<BufferInfo *> &inQueue = getPortQueue(0);
@@ -114,6 +115,10 @@ OMX_ERRORTYPE SoftMPEG4Encoder::initEncParams() {
     memset(mEncParams, 0, sizeof(tagvideoEncOptions));
     if (!PVGetDefaultEncOption(mEncParams, 0)) {
         ALOGE("Failed to get default encoding parameters");
+        return OMX_ErrorUndefined;
+    }
+    if (mFramerate == 0) {
+        ALOGE("Framerate should not be 0");
         return OMX_ErrorUndefined;
     }
     mEncParams->encMode = mEncodeMode;
@@ -204,22 +209,15 @@ OMX_ERRORTYPE SoftMPEG4Encoder::initEncoder() {
 }
 
 OMX_ERRORTYPE SoftMPEG4Encoder::releaseEncoder() {
-    if (!mStarted) {
-        return OMX_ErrorNone;
+    if (mEncParams) {
+        delete mEncParams;
+        mEncParams = NULL;
     }
 
-    PVCleanUpVideoEncoder(mHandle);
-
-    free(mInputFrameData);
-    mInputFrameData = NULL;
-
-    delete mEncParams;
-    mEncParams = NULL;
-
-    delete mHandle;
-    mHandle = NULL;
-
-    mStarted = false;
+    if (mHandle) {
+        delete mHandle;
+        mHandle = NULL;
+    }
 
     return OMX_ErrorNone;
 }
@@ -231,6 +229,10 @@ OMX_ERRORTYPE SoftMPEG4Encoder::internalGetParameter(
         {
             OMX_VIDEO_PARAM_BITRATETYPE *bitRate =
                 (OMX_VIDEO_PARAM_BITRATETYPE *) params;
+
+            if (!isValidOMXParam(bitRate)) {
+                return OMX_ErrorBadParameter;
+            }
 
             if (bitRate->nPortIndex != 1) {
                 return OMX_ErrorUndefined;
@@ -245,6 +247,10 @@ OMX_ERRORTYPE SoftMPEG4Encoder::internalGetParameter(
         {
             OMX_VIDEO_PARAM_H263TYPE *h263type =
                 (OMX_VIDEO_PARAM_H263TYPE *)params;
+
+            if (!isValidOMXParam(h263type)) {
+                return OMX_ErrorBadParameter;
+            }
 
             if (h263type->nPortIndex != 1) {
                 return OMX_ErrorUndefined;
@@ -266,6 +272,10 @@ OMX_ERRORTYPE SoftMPEG4Encoder::internalGetParameter(
         {
             OMX_VIDEO_PARAM_MPEG4TYPE *mpeg4type =
                 (OMX_VIDEO_PARAM_MPEG4TYPE *)params;
+
+            if (!isValidOMXParam(mpeg4type)) {
+                return OMX_ErrorBadParameter;
+            }
 
             if (mpeg4type->nPortIndex != 1) {
                 return OMX_ErrorUndefined;
@@ -301,6 +311,10 @@ OMX_ERRORTYPE SoftMPEG4Encoder::internalSetParameter(
             OMX_VIDEO_PARAM_BITRATETYPE *bitRate =
                 (OMX_VIDEO_PARAM_BITRATETYPE *) params;
 
+            if (!isValidOMXParam(bitRate)) {
+                return OMX_ErrorBadParameter;
+            }
+
             if (bitRate->nPortIndex != 1 ||
                 bitRate->eControlRate != OMX_Video_ControlRateVariable) {
                 return OMX_ErrorUndefined;
@@ -314,6 +328,10 @@ OMX_ERRORTYPE SoftMPEG4Encoder::internalSetParameter(
         {
             OMX_VIDEO_PARAM_H263TYPE *h263type =
                 (OMX_VIDEO_PARAM_H263TYPE *)params;
+
+            if (!isValidOMXParam(h263type)) {
+                return OMX_ErrorBadParameter;
+            }
 
             if (h263type->nPortIndex != 1) {
                 return OMX_ErrorUndefined;
@@ -336,6 +354,10 @@ OMX_ERRORTYPE SoftMPEG4Encoder::internalSetParameter(
         {
             OMX_VIDEO_PARAM_MPEG4TYPE *mpeg4type =
                 (OMX_VIDEO_PARAM_MPEG4TYPE *)params;
+
+            if (!isValidOMXParam(mpeg4type)) {
+                return OMX_ErrorBadParameter;
+            }
 
             if (mpeg4type->nPortIndex != 1) {
                 return OMX_ErrorUndefined;
@@ -489,6 +511,19 @@ void SoftMPEG4Encoder::onQueueFilled(OMX_U32 /* portIndex */) {
         outInfo->mOwnedByUs = false;
         notifyFillBufferDone(outHeader);
     }
+}
+
+void SoftMPEG4Encoder::onReset() {
+    if (!mStarted) {
+        return;
+    }
+
+    PVCleanUpVideoEncoder(mHandle);
+
+    free(mInputFrameData);
+    mInputFrameData = NULL;
+
+    mStarted = false;
 }
 
 }  // namespace android
