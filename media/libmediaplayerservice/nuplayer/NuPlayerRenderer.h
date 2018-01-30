@@ -169,9 +169,12 @@ private:
     int64_t audio_start_timeUs;
     int64_t last_adujst_time;
     int64_t last_timeUs;
+    int64_t last_cont_timeUs;
+    int64_t mStarted_realtime;
 
     int64_t mAudioFirstAnchorTimeMediaUs;
     int64_t mAnchorTimeMediaUs;
+    int64_t mAnchorTimePreMediaUs;
     int64_t mAnchorNumFramesWritten;
     int64_t mVideoLateByUs;
     bool mHasAudio;

@@ -109,8 +109,11 @@ NuPlayer::Renderer::Renderer(
       audio_start_timeUs(-1),
       last_adujst_time(-1),
       last_timeUs(-1),
+      last_cont_timeUs(-1),
       mAudioFirstAnchorTimeMediaUs(-1),
       mAnchorTimeMediaUs(-1),
+      mAnchorTimePreMediaUs(-1),
+      mStarted_realtime(-1),
       mAnchorNumFramesWritten(-1),
       mVideoLateByUs(0ll),
       mHasAudio(false),
@@ -512,7 +515,7 @@ void NuPlayer::Renderer::onMessageReceived(const sp<AMessage> &msg) {
                         (long long)delayUs, (long long)maxDrainDelayUs);
                 Mutex::Autolock autoLock(mLock);
                 if (mFlags & FLAG_WFD_STREAMING) {
-                    ALOGD("postdrainaudio %lld", delayUs/4);
+                    ALOGV("postdrainaudio %lld, delayUs");
                     postDrainAudioQueue_l(delayUs/4);
                 } else {
                     postDrainAudioQueue_l(delayUs);
@@ -988,6 +991,13 @@ bool NuPlayer::Renderer::onDrainAudioQueue() {
                 }
                 if(last_adujst_time == 0)
                         last_adujst_time = sys_time;
+
+                if (last_cont_timeUs > mediaTimeUs) {
+                       ALOGD("###mediatimeus has been reset, %lld %lld", last_cont_timeUs, mediaTimeUs);
+                       last_timeUs = 0;
+                }
+                last_cont_timeUs = mediaTimeUs;
+
                 int64_t pending_time =  numFramesPendingPlayout * mAudioSink->msecsPerFrame() * 1000ll;
  
                 if(sys_start_time + (mediaTimeUs - audio_start_timeUs)  - pending_time < sys_time - 100000ll )
@@ -1278,6 +1288,7 @@ void NuPlayer::Renderer::postDrainVideoQueue() {
     int64_t delayUs;
     int64_t nowUs = ALooper::GetNowUs();
     int64_t realTimeUs;
+    int64_t nowMediaUs;
     if (mFlags & FLAG_REAL_TIME) {
         int64_t mediaTimeUs;
         CHECK(entry.mBuffer->meta()->findInt64("timeUs", &mediaTimeUs));
@@ -1317,6 +1328,31 @@ void NuPlayer::Renderer::postDrainVideoQueue() {
         delayUs = realTimeUs - nowUs;
 
         if (mFlags & FLAG_WFD_STREAMING) {
+            if (!mVideoSampleReceived) {
+              mStarted_realtime = nowUs - mediaTimeUs;
+              ALOGD("start realtime %lld %lld",nowUs, mediaTimeUs);
+            }
+            nowMediaUs = nowUs - mStarted_realtime;
+            if (mHasAudio) {
+                delayUs = nowMediaUs - mAnchorTimeMediaUs;
+                if (abs(delayUs) > 100000 && mAnchorTimeMediaUs != mAnchorTimePreMediaUs) {
+                    ALOGD("diff %lld %lld %lld", nowMediaUs, mAnchorTimeMediaUs, delayUs);
+                    mStarted_realtime = nowUs - mAnchorTimeMediaUs;
+                    nowMediaUs = mAnchorTimeMediaUs;
+                }
+                mAnchorTimePreMediaUs = mAnchorTimeMediaUs;
+            }
+            delayUs = nowMediaUs - mediaTimeUs;
+
+            if (delayUs < -8000) {
+              msg->setWhat(kWhatPostDrainVideoQueue);
+              if (delayUs < -50000)
+                 msg->post(25000);
+              else
+                 msg->post(-delayUs - 1000);
+              mDrainVideoQueuePending = true;
+              return;
+            }
             onDrainVideoQueue();
             msg->setWhat(kWhatPostDrainVideoQueue);
             msg->post(1000);
@@ -1434,7 +1470,11 @@ void NuPlayer::Renderer::onDrainVideoQueue() {
     }
 
     entry->mNotifyConsumed->setInt64("timestampNs", realTimeUs * 1000ll);
-    entry->mNotifyConsumed->setInt32("render", !tooLate);
+    if (mFlags & FLAG_WFD_STREAMING) {
+      entry->mNotifyConsumed->setInt32("render", 1);
+    }else {
+      entry->mNotifyConsumed->setInt32("render", !tooLate);
+    }
     entry->mNotifyConsumed->post();
     mVideoQueue.erase(mVideoQueue.begin());
     entry = NULL;

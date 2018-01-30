@@ -1008,14 +1008,14 @@ void WifiDisplaySink::onGetParameterRequest(
              
 	    AString body =  AStringPrintf(
 		"wfd_video_formats: %s\r\n"
-               "wfd_audio_codecs: LPCM 00000002 00\r\n", wfdVideoFormatsString.c_str());
+               "wfd_audio_codecs: LPCM 00000003 00, AAC 00000007 00\r\n", wfdVideoFormatsString.c_str());
             /* answers capabilities that the WFD source are only interested in */
             if (strstr(request_param, "wfd_3d_video_formats"))
                 body.append("wfd_3d_video_formats: none\r\n");
 
         if (strstr(request_param, "wfd_uibc_capability"))
         	body.append("wfd_uibc_capability: none\r\n"); 
-             
+#if 0             
 		/* using HDCP only if HDCP2.x Key inside, otherwise not support*/
 		char prop_value[PROPERTY_VALUE_MAX];
 		if (strstr(request_param, "wfd_content_protection"))
@@ -1036,9 +1036,20 @@ void WifiDisplaySink::onGetParameterRequest(
 		{
 			mUsingHDCP = false;
 		}
+#else
+        if (strstr(request_param, "wfd_content_protection")) {
+#ifdef WFD_HDCP_SUPPORT
+             mUsingHDCP = true;
+#endif
+             if (mUsingHDCP)
+                body.append(AStringPrintf("wfd_content_protection: HDCP2.1 port=%d\r\n",kHDCPDefaultPort));
+             else
+                body.append("wfd_content_protection: none\r\n");
+        }
+#endif
 
         if (strstr(request_param, "wfd_display_edid"))
-        	body.append("wfd_display_edid: none\r\n");
+             body.append("wfd_display_edid: none\r\n");
 
         if (strstr(request_param, "wfd_coupled_sink"))
         	body.append("wfd_coupled_sink: none\r\n");

@@ -828,7 +828,7 @@ sp<ABuffer> TunnelRenderer::dequeueBuffer() {
 
         return buffer;
     }
-
+#if 0
     if (mFirstFailedAttemptUs < 0ll) {
 		#if 0
         mFirstFailedAttemptUs = ALooper::GetNowUs();
@@ -904,9 +904,10 @@ sp<ABuffer> TunnelRenderer::dequeueBuffer() {
 	        return buffer;
 		}
     }
+#endif
 
-    ALOGI("dropping packet. extSeqNo %d didn't arrive in time",
-            mLastDequeuedExtSeqNo + 1);
+    ALOGI("dropping packet. extSeqNo %d didn't arrive in time but newSeqNo %d",
+            mLastDequeuedExtSeqNo + 1, extSeqNo);
 
     // Permanent failure, we never received the packet.
     mLastDequeuedExtSeqNo = extSeqNo;
@@ -925,9 +926,14 @@ void TunnelRenderer::onMessageReceived(const sp<AMessage> &msg) {
         case kWhatQueueBuffer:
         {
             sp<ABuffer> buffer;
-        //  CHECK(msg->findBuffer("buffer", &buffer));
+            int32_t temp;
+            CHECK(msg->findBuffer("buffer", &buffer));
+            if (msg->findInt32("resync_rtpseq", &temp)) {
+                ALOGD("resync rtpseq %d", temp);
+                mLastDequeuedExtSeqNo = -1;
+            }
 
-          //  queueBuffer(buffer);
+            queueBuffer(buffer);
 
             if (mStreamSource == NULL) {
                 if (mTotalBytesQueued > 0ll) {

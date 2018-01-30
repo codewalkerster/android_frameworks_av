@@ -148,8 +148,15 @@ bool RTPSink::Source::updateSeq(uint16_t seq, const sp<ABuffer> &buffer) {
             // Two sequential packets -- assume that the other side
             // restarted without telling us so just re-sync
             // (i.e. pretend this was the first packet)
-
+            ALOGD("resync RTP seq %d %d %d", seq, mMaxSeq, udelta);
             initSeq(seq);
+            ++mReceived;
+            buffer->setInt32Data(mCycles | seq);
+            sp<AMessage> msg = mQueueBufferMsg->dup();
+            msg->setBuffer("buffer", buffer);
+            msg->setInt32("resync_rtpseq", 1);
+            msg->post();
+            return true;
         } else {
             mBadSeq = (seq + 1) & (kRTPSeqMod - 1);
 
@@ -234,17 +241,17 @@ void RTPSink::Source::queuePacket(const sp<ABuffer> &buffer) {
 	mPrev_packet_time = cur_time;	
 	
 	#else
-	if(owner->getRender() == NULL)
-	{
+	//if(owner->getRender() == NULL)
+	//{
 		sp<AMessage> msg = mQueueBufferMsg->dup();
 		msg->setBuffer("buffer", buffer);
     	msg->post();
-	}
-	else
-	{
-		owner->getRender()->queueBuffer(buffer);
-		owner->getRender()->doSomeWork();
-	}
+	//}
+	//else
+	//{
+	//	owner->getRender()->queueBuffer(buffer);
+	//	owner->getRender()->doSomeWork();
+	//}
 	
 	
 	

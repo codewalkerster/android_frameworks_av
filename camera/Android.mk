@@ -18,6 +18,10 @@ include $(CLEAR_VARS)
 
 LOCAL_PATH := $(CAMERA_CLIENT_LOCAL_PATH)
 
+ifneq ($(filter rk312%, $(strip $(TARGET_BOARD_PLATFORM))), )
+LOCAL_CFLAGS += -DTARGET_RK312X=1
+endif
+
 LOCAL_AIDL_INCLUDES := \
     frameworks/av/camera/aidl \
     frameworks/base/core/java \

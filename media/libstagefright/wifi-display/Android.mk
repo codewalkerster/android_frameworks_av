@@ -2,6 +2,10 @@ LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
 
+ifeq ($(strip $(BOARD_HAS_WFD_HDCP)), true)
+LOCAL_CPPFLAGS += -DWFD_HDCP_SUPPORT
+endif
+
 LOCAL_SRC_FILES:= \
         MediaSender.cpp                 \
         Parameters.cpp                  \

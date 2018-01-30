@@ -4323,6 +4323,17 @@ AudioFlinger::PlaybackThread::mixer_state AudioFlinger::MixerThread::prepareTrac
                 // read original volumes with volume control
                 float typeVolume = mStreamTypes[track->streamType()].volume;
                 float v = masterVolume * typeVolume;
+               //add for boot video:sync audio for boot
+                char value[PROPERTY_VALUE_MAX] = "";
+                property_get("persist.sys.bootvideo.enable", value, "false");
+                if(!strcmp(value,"true")){
+                   property_get("sys.bootvideo.closed", value, "1");
+                   if (atoi(value) == 0){
+                    ALOGV("bootvideo running now,audioflinger no need to control volume");
+                        v = 1.0;
+                   }
+                }
+
                 AudioTrackServerProxy *proxy = track->mAudioTrackServerProxy;
                 gain_minifloat_packed_t vlr = proxy->getVolumeLR();
                 vlf = float_from_gain(gain_minifloat_unpack_left(vlr));

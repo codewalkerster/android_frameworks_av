@@ -548,25 +548,6 @@ ACodec::ACodec()
     memset(&mLastNativeWindowCrop, 0, sizeof(mLastNativeWindowCrop));
 
     changeState(mUninitializedState);
-
-    char processName[255];
-    int fd;
-    snprintf(processName, sizeof(processName), "/proc/self/cmdline");
-    fd = open(processName, O_RDONLY);
-    if (fd < 0) {
-        strcpy(processName, "???");
-    } else {
-        int length = read(fd, processName, sizeof(processName) - 1);
-        processName[length] = 0;
-        ALOGI("callingProcessName:%s",processName);
-        close(fd);
-    }
-    if (!strcmp(processName, "com.google.android.exoplayer.gts")) {
-        mXtsExoPlayer = true;
-	    ALOGI("set mXtsExoPlayer as true for gts H264DashTest");
-    } else {
-        mXtsExoPlayer = false;
-    }
 }
 
 ACodec::~ACodec() {
@@ -1003,6 +984,44 @@ status_t ACodec::setupNativeWindowSizeFormatAndUsage(
     }
 
     usage |= kVideoGrallocUsage;
+    OMX_EXTENSION_VIDEO_PARAM_HDR hdrParams;
+    InitOMXParams(&hdrParams);
+    err = mOMX->getParameter(
+            mNode, (OMX_INDEXTYPE)OMX_IndexParamVideoHDRRockchipExtensions, &hdrParams, sizeof(hdrParams));
+    ALOGE("%s %d colorSpace = %x,eDyncRange = %x",__FUNCTION__,__LINE__,hdrParams.eColorSpace,hdrParams.eDyncRange);
+    switch(hdrParams.eDyncRange) {
+        case OMX_RK_EXT_DyncrangeHDR10: {
+            ALOGD("optimize vop hdr!");
+            usage |= ((2 << 24) & 0x0f000000); //HDR10
+            usage |= GRALLOC_USAGE_PRIVATE_2;
+            break;
+        }
+        case OMX_RK_EXT_DyncrangeHDRHLG: {
+            usage |= ((3 << 24) & 0x0f000000); //HDR HLG
+            break;
+        }
+        case OMX_RK_EXT_DyncrangeHDRDOLBY: {
+            usage |= ((4 << 24) & 0x0f000000); //HDR DOBLY VERSION
+            break;
+        }
+        default:
+            break;
+    }
+
+    switch(hdrParams.eColorSpace) {
+        case OMX_RK_EXT_ColorspaceBT709: {
+            usage |= GRALLOC_USAGE_PRIVATE_0; //BT709
+            break;
+        }
+        case OMX_RK_EXT_ColorspaceBT2020: {
+            if (hdrParams.eDyncRange != OMX_RK_EXT_DyncrangeHDR10 && hdrParams.eDyncRange != OMX_RK_EXT_DyncrangeHDRHLG)
+                usage |= ((1 << 24) & 0x0f000000); //BT2020
+            break;
+        }
+        default:
+            break;
+    }
+    
     *finalUsage = usage;
 
     memset(&mLastNativeWindowCrop, 0, sizeof(mLastNativeWindowCrop));
@@ -1092,9 +1111,8 @@ status_t ACodec::configureOutputBuffersFromNativeWindow(
     for (OMX_U32 extraBuffers = 2 + 1; /* condition inside loop */; extraBuffers--) {
         OMX_U32 newBufferCount =
             def.nBufferCountMin + *minUndequeuedBuffers + extraBuffers;
-        if(def.nBufferCountActual < newBufferCount || (mXtsExoPlayer && newBufferCount >= 20)){
-            ALOGI("nBufferCountActual:%d  newBufferCount:%d",def.nBufferCountActual,newBufferCount);
-            def.nBufferCountActual = mXtsExoPlayer ? MIN(20, newBufferCount) : newBufferCount;
+        if(def.nBufferCountActual < newBufferCount || (mGtsExoPlayer && newBufferCount >= 20)){
+            def.nBufferCountActual = mGtsExoPlayer ? MIN(20, newBufferCount) : newBufferCount;
             err = mOMX->setParameter(
                     mNode, OMX_IndexParamPortDefinition, &def, sizeof(def));
 
@@ -1103,7 +1121,7 @@ status_t ACodec::configureOutputBuffersFromNativeWindow(
                 break;
             }
 
-            ALOGI("[%s] setting nBufferCountActual to %u failed: %d",
+            ALOGV("[%s] setting nBufferCountActual to %u failed: %d",
                     mComponentName.c_str(), newBufferCount, err);
             /* exit condition */
             if (extraBuffers == 0) {
@@ -6474,10 +6492,8 @@ void ACodec::BaseState::onOutputBufferDrained(const sp<AMessage> &msg) {
         }
 
         status_t err;
-#if 0  //temporary don't pass timestampNs to nativewindow buffer
         err = native_window_set_buffers_timestamp(mCodec->mNativeWindow.get(), timestampNs);
         ALOGW_IF(err != NO_ERROR, "failed to set buffer timestamp: %d", err);
-#endif
 
         info->checkReadFence("onOutputBufferDrained before queueBuffer");
         err = mCodec->mNativeWindow->queueBuffer(
@@ -6684,6 +6700,11 @@ bool ACodec::UninitializedState::onAllocateComponent(const sp<AMessage> &msg) {
         msg->setString("componentName", "OMX.rk.video_decoder.avc");
         ALOGE("h264softdec to h264haldec when cts_gts.media.gts is true");
     }
+    ALOGI("%s:%d mSoftCodecPref:%d componentName:%s",__FUNCTION__,__LINE__,mCodec->mSoftCodecPref,componentName.c_str());
+    if(mCodec->mSoftCodecPref && !strcmp(componentName.c_str(),"OMX.rk.video_decoder.hevc")) {
+        msg->setString("componentName", "OMX.google.hevc.decoder");
+    }
+
     if (msg->findString("componentName", &componentName)) {
         sp<IMediaCodecList> list = MediaCodecList::getInstance();
         if (list != NULL && list->findCodecByName(componentName.c_str()) >= 0) {
@@ -6710,6 +6731,8 @@ bool ACodec::UninitializedState::onAllocateComponent(const sp<AMessage> &msg) {
     for (size_t matchIndex = 0; matchIndex < matchingCodecs.size();
             ++matchIndex) {
         componentName = matchingCodecs[matchIndex];
+        ALOGI("%s:%d mSoftCodecPref:%d componentName:%s",__FUNCTION__,__LINE__,mCodec->mSoftCodecPref,componentName.c_str());
+        if(mCodec->mSoftCodecPref && !strcmp(componentName.c_str(),"OMX.rk.video_decoder.hevc"))continue;
         quirks = MediaCodecList::getQuirksFor(componentName.c_str());
 
         pid_t tid = gettid();

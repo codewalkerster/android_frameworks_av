@@ -741,11 +741,19 @@ MediaProfiles::createDefaultM4vVideoEncoderCap()
         VIDEO_ENCODER_MPEG_4_SP, 192000, 420000, 176, 352, 144, 288, 1, 20);
 }
 
+/*static*/ MediaProfiles::VideoEncoderCap*
+MediaProfiles::createDefaultH264VideoEncoderCap()
+{
+    return new MediaProfiles::VideoEncoderCap(
+        VIDEO_ENCODER_H264, 192000, 420000, 176, 352, 144, 288, 1, 20);
+}
+
 
 /*static*/ void
 MediaProfiles::createDefaultVideoEncoders(MediaProfiles *profiles)
 {
     profiles->mVideoEncoders.add(createDefaultH263VideoEncoderCap());
+    profiles->mVideoEncoders.add(createDefaultH264VideoEncoderCap());
     profiles->mVideoEncoders.add(createDefaultM4vVideoEncoderCap());
 }
 

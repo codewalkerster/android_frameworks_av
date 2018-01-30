@@ -393,6 +393,7 @@ private:
     static void createDefaultImageDecodingMaxMemory(MediaProfiles *profiles);
 
     static VideoEncoderCap* createDefaultH263VideoEncoderCap();
+    static VideoEncoderCap* createDefaultH264VideoEncoderCap();
     static VideoEncoderCap* createDefaultM4vVideoEncoderCap();
     static AudioEncoderCap* createDefaultAmrNBEncoderCap();
 

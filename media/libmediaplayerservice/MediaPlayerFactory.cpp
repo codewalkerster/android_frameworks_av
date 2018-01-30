@@ -32,6 +32,7 @@
 
 #include "TestPlayerStub.h"
 #include "nuplayer/NuPlayerDriver.h"
+#include "MidiFile.h"
 
 #ifdef USE_FFPLAYER
 #include "FFPlayer.h"
@@ -41,6 +42,7 @@ namespace android {
 Mutex MediaPlayerFactory::sLock;
 MediaPlayerFactory::tFactoryMap MediaPlayerFactory::sFactoryMap;
 bool MediaPlayerFactory::sInitComplete = false;
+std::string MediaPlayerFactory::sCallingProcessName;
 static status_t getFileName(int fd,String8 *FilePath)
 {
     static ssize_t link_dest_size;
@@ -83,11 +85,10 @@ status_t MediaPlayerFactory::registerFactory_l(IFactory* factory,
 }
 
 static player_type getDefaultPlayerType() {
-	char value[PROPERTY_VALUE_MAX];
-	if (property_get("cts_gts.status", value, NULL)
-		&& (!strcmp("1", value) || !strcasecmp("true", value))) {
-		return NU_PLAYER;
-	}
+    if(!strcmp(MediaPlayerFactory::sCallingProcessName.c_str(),"android.media.cts") ||
+           !strcmp(MediaPlayerFactory::sCallingProcessName.c_str(),"android.mediastress.cts") ||
+           !strcmp(MediaPlayerFactory::sCallingProcessName.c_str(),"android.security.cts"))
+        return NU_PLAYER;
 
 #ifndef  USE_FFPLAYER
     return NU_PLAYER;
@@ -160,16 +161,23 @@ void MediaPlayerFactory::unregisterFactory(player_type type) {
 
 player_type MediaPlayerFactory::getPlayerType(const sp<IMediaPlayer>& client,
                                               const char* url) {
-	char value[PROPERTY_VALUE_MAX];
-	if (property_get("cts_gts.status", value, NULL)
-		&& (!strcmp("1", value) || !strcasecmp("true", value))) {
-		return NU_PLAYER;
-	}
+    if(!strcmp(sCallingProcessName.c_str(),"android.media.cts") ||
+           !strcmp(sCallingProcessName.c_str(),"android.mediastress.cts") ||
+           !strcmp(sCallingProcessName.c_str(),"android.security.cts"))
+        return NU_PLAYER;
 
 #ifdef USE_FFPLAYER
     if(!strncasecmp("http://localhost:", url, 17)) {
         return NU_PLAYER;
     }
+
+    if(!strncasecmp("http://", url, 7)){
+        char value[PROPERTY_VALUE_MAX];
+        property_get("ro.target.product",value, NULL);
+        if(!strcasecmp("tablet", value))
+            return NU_PLAYER;
+    }
+
     if (!strncasecmp("iptv://", url, 7)) {
         return NU_PLAYER;
     }

@@ -443,6 +443,9 @@ status_t CameraClient::startRecordingMode() {
     enableMsgType(CAMERA_MSG_VIDEO_FRAME);
     if (mPlayShutterSound)
         mCameraService->playSound(CameraService::SOUND_RECORDING_START);
+	#if defined(TARGET_RK312X)
+	usleep(500000);
+	#endif
     result = mHardware->startRecording();
     if (result != NO_ERROR) {
         ALOGE("mHardware->startRecording() failed with status %d", result);

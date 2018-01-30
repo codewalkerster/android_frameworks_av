@@ -20,6 +20,7 @@
 //#define LOG_NDEBUG 0
 #define LOG_TAG "MediaPlayerService"
 #include <utils/Log.h>
+#include <fcntl.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -339,6 +340,22 @@ sp<IMediaPlayer> MediaPlayerService::create(const sp<IMediaPlayerClient>& client
     ALOGV("Create new client(%d) from pid %d, uid %d, ", connId, pid,
          IPCThreadState::self()->getCallingUid());
 
+    char processName[255];
+    int fd;
+    snprintf(processName,sizeof(processName),"/proc/%d/cmdline",pid);
+    ALOGI("processName cmdline:%s",processName);
+    fd = open(processName, O_RDONLY);
+    if (fd < 0) {
+        ALOGE("Obtain calling ProcessName failed");
+    } else {
+        memset(processName,0x0,sizeof(processName));
+        int length = read(fd, processName, sizeof(processName) - 1);
+        processName[length] = 0;
+        MediaPlayerFactory::sCallingProcessName = processName;
+        ALOGV("calling ProcessName:%s",MediaPlayerFactory::sCallingProcessName.c_str());
+        close(fd);
+    }
+
     wp<Client> w = c;
     {
         Mutex::Autolock lock(mLock);
@@ -363,7 +380,11 @@ sp<IOMX> MediaPlayerService::getOMX() {
 }
 
 sp<IHDCP> MediaPlayerService::makeHDCP(bool createEncryptionModule) {
-    return new HDCP(createEncryptionModule);
+    //return new HDCP(createEncryptionModule);
+    Mutex::Autolock autoLock(mLock);
+    if (mHDCP.get() == NULL)
+        mHDCP = new HDCP(createEncryptionModule);
+    return mHDCP;
 }
 
 sp<IRemoteDisplay> MediaPlayerService::listenForRemoteDisplay(
