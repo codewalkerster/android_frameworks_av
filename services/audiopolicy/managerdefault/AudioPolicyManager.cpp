@@ -3975,7 +3975,7 @@ void AudioPolicyManager::loadConfig() {
 status_t AudioPolicyManager::initialize() {
     mVolumeCurves->initializeVolumeCurves(getConfig().isSpeakerDrcEnabled());
 
-    mIsPlatformTelevision = property_get_bool("ro.vendor.platform.is.tv", false /* default_value */);
+    mIsPlatformTelevision = property_get_bool("ro.platform.is.tv", false /* default_value */);
 
     // Once policy config has been parsed, retrieve an instance of the engine and initialize it.
     audio_policy::EngineInstance *engineInstance = audio_policy::EngineInstance::getInstance();
