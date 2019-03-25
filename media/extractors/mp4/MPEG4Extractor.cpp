@@ -4744,8 +4744,14 @@ status_t MPEG4Source::read(
 
             uint32_t syncSampleIndex;
             if (err == OK) {
+                const char *mime;
+                bool is_video = false;
+                CHECK(mFormat.findCString(kKeyMIMEType, &mime));
+                if (!strncasecmp("video/", mime, 6)) {
+                    is_video = true;
+                }
                 err = mSampleTable->findSyncSampleNear(
-                        sampleIndex, &syncSampleIndex, findFlags);
+                        sampleIndex, &syncSampleIndex, findFlags,is_video);
             }
 
             uint32_t sampleTime;
