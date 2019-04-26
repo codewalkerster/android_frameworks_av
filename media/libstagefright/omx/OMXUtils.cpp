@@ -383,4 +383,3 @@ bool IsFlexibleColorFormat(
 }
 
 }  // namespace android
-
