@@ -61,6 +61,10 @@ struct AVUtils {
 
     virtual int setAudioExtendParameter(const char *,const sp<IOMXNode> &OMXNode,const sp<AMessage> &notify);
 
+    virtual bool isExtendFormat(const char *);
+
+    virtual int handleExtendParameter(const char *,const sp<IOMXNode> &OMXNode,const sp<AMessage> &notify);
+
     virtual void addExtendXML(MediaCodecsXmlParser*);
 
     virtual bool isExtendPlayer(player_type);

@@ -55,6 +55,11 @@ bool AVUtils::isVendorSoftDecoder(const char *) {
 bool AVUtils::isAudioExtendFormat(const char *) {
     return false;
 }
+
+bool AVUtils::isExtendFormat(const char *) {
+    return false;
+}
+
 bool AVUtils::isAudioExtendCoding(int) {
     return false;
 }
@@ -66,6 +71,12 @@ int AVUtils::getAudioExtendParameter(int, uint32_t ,const sp<IOMXNode> &OMXNode,
 int AVUtils::setAudioExtendParameter(const char *,const sp<IOMXNode> &OMXNode, const sp<AMessage> &notify) {
     if (OMXNode == NULL ||notify == NULL)
         ALOGI("AVUtils::setAudioExtendParameter err");
+    return -1;
+}
+
+int AVUtils::handleExtendParameter(const char *,const sp<IOMXNode> &OMXNode, const sp<AMessage> &notify) {
+    if (OMXNode == NULL ||notify == NULL)
+        ALOGI("AVUtils::setVideoExtendParameter err");
     return -1;
 }
 

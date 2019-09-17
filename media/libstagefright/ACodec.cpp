@@ -2241,6 +2241,10 @@ status_t ACodec::configureCodec(
     if ( AVUtils::get()->isAudioExtendFormat(mime))
         err = AVUtils::get()->setAudioExtendParameter(mime ,mOMXNode, msg);
 
+    /*add by amlogic for video/other convert format support*/
+    if ( AVUtils::get()->isExtendFormat(mime))
+        err = AVUtils::get()->handleExtendParameter(mime ,mOMXNode, msg);
+
     if (err != OK) {
         return err;
     }
