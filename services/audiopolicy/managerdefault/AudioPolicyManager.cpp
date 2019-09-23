@@ -3900,7 +3900,16 @@ static status_t deserializeAudioPolicyXmlConfig(AudioPolicyConfig &config) {
         // A2DP offload supported but disabled: try to use special XML file
         fileNames.push_back(AUDIO_POLICY_A2DP_OFFLOAD_DISABLED_XML_CONFIG_FILE_NAME);
     }
-    fileNames.push_back(AUDIO_POLICY_XML_CONFIG_FILE_NAME);
+
+    if (access("/vendor/etc/audio_policy_configuration_dolby_ms12.xml", R_OK) == 0 &&
+        (access("/vendor/lib/libdolbyms12.so", R_OK) == 0 ||
+        access("/system/lib/libdolbyms12.so", R_OK) == 0)) {
+        fileNames.push_back("audio_policy_configuration_dolby_ms12.xml");
+        ALOGI("loading audio_policy_configuration_dolby_ms12.xml");
+    } else {
+        fileNames.push_back(AUDIO_POLICY_XML_CONFIG_FILE_NAME);
+        ALOGI("loading %s", AUDIO_POLICY_XML_CONFIG_FILE_NAME);
+    }
 
     for (const char* fileName : fileNames) {
         for (int i = 0; i < kConfigLocationListSize; i++) {
