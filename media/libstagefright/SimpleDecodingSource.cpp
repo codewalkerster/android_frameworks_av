@@ -35,8 +35,8 @@
 
 using namespace android;
 
-const int64_t kTimeoutWaitForOutputUs = 500000; // 0.5 seconds
-const int64_t kTimeoutWaitForInputUs = 5000; // 5 milliseconds
+const int64_t kTimeoutWaitForOutputUs = 100000; // 0.1 seconds
+const int64_t kTimeoutWaitForInputUs = 1000; // 1 milliseconds
 
 //static
 sp<SimpleDecodingSource> SimpleDecodingSource::Create(
@@ -219,7 +219,7 @@ status_t SimpleDecodingSource::read(
 
     return res;
 }
-
+int is_full = 0;
 status_t SimpleDecodingSource::doRead(
         Mutexed<ProtectedState>::Locked &me, MediaBufferBase **buffer, const ReadOptions *options) {
     // |me| is always locked on entry, but is allowed to be unlocked on exit
@@ -335,6 +335,8 @@ status_t SimpleDecodingSource::doRead(
                     me->mState = ERROR;
                 }
                 in_buf->release();
+                if (is_full == 1)
+                  break;
             }
         }
 
@@ -396,6 +398,7 @@ status_t SimpleDecodingSource::doRead(
             (*buffer)->meta_data().setInt64(kKeyTime, out_pts);
             mCodec->releaseOutputBuffer(out_ix);
         }
+        is_full = 1;
         return OK;
     }
 

@@ -755,6 +755,11 @@ status_t convertMetaDataToMessage(
         if (meta->findInt32(kKeyPcmEncoding, &pcmEncoding)) {
             msg->setInt32("pcm-encoding", pcmEncoding);
         }
+        int32_t isPassthroughEnable;
+        if (meta->findInt32(kKeyIsPtenable, &isPassthroughEnable)) {
+           ALOGI("isPassthroughEnable %d",isPassthroughEnable);
+           msg->setInt32("is_passthrough_enable", isPassthroughEnable); 
+        }
     }
 
     int32_t maxInputSize;
