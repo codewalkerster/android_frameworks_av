@@ -1113,7 +1113,15 @@ bool AudioSystem::isPassthroughSupported(const audio_format_t audioFormat)
     } else {
       hdmi_format = 0;
     }
-    if (!property_get_bool("ro.vendor.platform.is.tv", false /* default_value */)) {
+
+    if (hdmi_format == 4) {
+       if (audioFormat == AUDIO_FORMAT_AC3 || audioFormat == AUDIO_FORMAT_DTS)
+           return true;
+       else
+           return false;
+    }
+    if (!property_get_bool("ro.vendor.platform.is.tv", false /* default_value */) 
+        || property_get_bool("ro.vendor.platform.is.stb", false)) {
        hdmi_format = 5;
     }
     if (hdmi_format == 0) {
@@ -1125,7 +1133,7 @@ bool AudioSystem::isPassthroughSupported(const audio_format_t audioFormat)
         } else {
             unsigned int numSurroundFormats;
             bool surroundFormatsEnabled[10];
-            bool reported = true;
+            bool reported = false;
             audio_format_t surroundFormats[10];
             if (NO_ERROR == aps->getSurroundFormats(
                   &numSurroundFormats, surroundFormats, surroundFormatsEnabled, reported)) {
