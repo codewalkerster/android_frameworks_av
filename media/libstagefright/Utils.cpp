@@ -56,6 +56,7 @@
 #include <media/stagefright/foundation/AMessage.h>
 #include <media/stagefright/foundation/ByteUtils.h>
 #include <media/stagefright/MetaData.h>
+#include <media/stagefright/MediaCodecConstants.h>
 #include <media/stagefright/MediaDefs.h>
 #include <media/AudioSystem.h>
 #include <media/MediaPlayerInterface.h>
@@ -659,6 +660,68 @@ static void parseVp9ProfileLevelFromCsd(const sp<ABuffer> &csd, sp<AMessage> &fo
     }
 }
 
+static void parseAV1ProfileLevelFromCsd(const sp<ABuffer> &csd, sp<AMessage> &format) {
+    // Parse CSD structure to extract profile level information
+    // https://aomediacodec.github.io/av1-isobmff/#av1codecconfigurationbox
+    const uint8_t *data = csd->data();
+    size_t remaining = csd->size();
+    if (remaining < 4 || data[0] != 0x81) {  // configurationVersion == 1
+        return;
+    }
+    uint8_t profileData = (data[1] & 0xE0) >> 5;
+    uint8_t levelData = data[1] & 0x1F;
+    uint8_t highBitDepth = (data[2] & 0x40) >> 6;
+
+    const static ALookup<std::pair<uint8_t, uint8_t>, int32_t> profiles {
+        { { 0, 0 }, AV1ProfileMain8 },
+        { { 1, 0 }, AV1ProfileMain10 },
+    };
+
+    int32_t profile;
+    if (profiles.map(std::make_pair(highBitDepth, profileData), &profile)) {
+        // bump to HDR profile
+        if (isHdr(format) && profile == AV1ProfileMain10) {
+            if (format->contains("hdr10-plus-info")) {
+                profile = AV1ProfileMain10HDR10Plus;
+            } else {
+                profile = AV1ProfileMain10HDR10;
+            }
+        }
+        format->setInt32("profile", profile);
+    }
+    const static ALookup<uint8_t, int32_t> levels {
+        { 0, AV1Level2   },
+        { 1, AV1Level21  },
+        { 2, AV1Level22  },
+        { 3, AV1Level23  },
+        { 4, AV1Level3   },
+        { 5, AV1Level31  },
+        { 6, AV1Level32  },
+        { 7, AV1Level33  },
+        { 8, AV1Level4   },
+        { 9, AV1Level41  },
+        { 10, AV1Level42  },
+        { 11, AV1Level43  },
+        { 12, AV1Level5   },
+        { 13, AV1Level51  },
+        { 14, AV1Level52  },
+        { 15, AV1Level53  },
+        { 16, AV1Level6   },
+        { 17, AV1Level61  },
+        { 18, AV1Level62  },
+        { 19, AV1Level63  },
+        { 20, AV1Level7   },
+        { 21, AV1Level71  },
+        { 22, AV1Level72  },
+        { 23, AV1Level73  },
+    };
+
+    int32_t level;
+    if (levels.map(levelData, &level)) {
+        format->setInt32("level", level);
+    }
+}
+
 status_t convertMetaDataToMessage(
         const sp<MetaData> &meta, sp<AMessage> *format) {
 
@@ -1047,6 +1110,17 @@ status_t convertMetaDataToMessage(
         }
 
         parseHevcProfileLevelFromHvcc((const uint8_t *)data, dataSize, msg);
+    }else if (meta->findData(kKeyAV1C, &type, &data, &size)) {
+        sp<ABuffer> buffer = new (std::nothrow) ABuffer(size);
+        if (buffer.get() == NULL || buffer->base() == NULL) {
+            return NO_MEMORY;
+        }
+        memcpy(buffer->data(), data, size);
+
+        buffer->meta()->setInt32("csd", true);
+        buffer->meta()->setInt64("timeUs", 0);
+        msg->setBuffer("csd-0", buffer);
+        parseAV1ProfileLevelFromCsd(buffer, msg);
     } else if (meta->findData(kKeyESDS, &type, &data, &size)) {
         ESDS esds((const char *)data, size);
         if (esds.InitCheck() != (status_t)OK) {
@@ -1586,6 +1660,8 @@ void convertMessageToMetaData(const sp<AMessage> &msg, sp<MetaData> &meta) {
             std::vector<uint8_t> hvcc(csd0size + 1024);
             size_t outsize = reassembleHVCC(csd0, hvcc.data(), hvcc.size(), 4);
             meta->setData(kKeyHVCC, kKeyHVCC, hvcc.data(), outsize);
+        } else if (mime == MEDIA_MIMETYPE_VIDEO_AV1) {
+            meta->setData(kKeyAV1C, 0, csd0->data(), csd0->size());
 #ifdef DLB_VISION
         } else if (mime ==  MEDIA_MIMETYPE_VIDEO_DOLBY_VISION) {
             uint8_t dvcc[1024];

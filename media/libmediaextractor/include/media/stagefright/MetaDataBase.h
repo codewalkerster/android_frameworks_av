@@ -74,9 +74,11 @@ enum {
     kKeyAVCC              = 'avcc',  // raw data
     kKeyHVCC              = 'hvcc',  // raw data
     kKeyThumbnailHVCC     = 'thvc',  // raw data
+    kKeyAV1C              = 'av1c',  // raw data
 #ifdef DLB_VISION
     kKeyDVCC              = 'dvcc',  // raw data
 #endif
+
     kKeyD263              = 'd263',  // raw data
     kKeyVorbisInfo        = 'vinf',  // raw data
     kKeyVorbisBooks       = 'vboo',  // raw data
@@ -250,6 +252,7 @@ enum {
     kTypeESDS        = 'esds',
     kTypeAVCC        = 'avcc',
     kTypeHVCC        = 'hvcc',
+    kTypeAV1C        = 'av1c',
 #ifdef DLB_VISION
     kTypeDVCC        = 'dvcc',
 #endif

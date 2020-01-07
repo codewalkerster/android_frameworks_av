@@ -349,6 +349,8 @@ static const char *FourCC2MIME(uint32_t fourcc) {
         case FOURCC('d', 'v', 'h', '1'):
             return MEDIA_MIMETYPE_VIDEO_DOLBY_VISION;
 #endif
+        case FOURCC('a', 'v', '0', '1'):
+            return MEDIA_MIMETYPE_VIDEO_AV1;
 
         default:
             ALOGW("Unknown fourcc: %c%c%c%c",
@@ -1604,6 +1606,8 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
         case FOURCC('d', 'v', 'h', 'e'):
         case FOURCC('d', 'v', 'h', '1'):
 #endif
+        case FOURCC('a', 'v', '0', '1'):
+
         {
             uint8_t buffer[78];
             if (chunk_data_size < (ssize_t)sizeof(buffer)) {
@@ -2046,6 +2050,29 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
             *offset += chunk_size;
             break;
         }
+        case FOURCC('a', 'v', '1', 'C'):
+        {
+                auto buffer = heapbuffer<uint8_t>(chunk_data_size);
+
+                if (buffer.get() == NULL) {
+                    ALOGE("b/28471206");
+                    return NO_MEMORY;
+                }
+
+                if (mDataSource->readAt(
+                            data_offset, buffer.get(), chunk_data_size) < chunk_data_size) {
+                    return ERROR_IO;
+                }
+
+                if (mLastTrack == NULL)
+                    return ERROR_MALFORMED;
+
+                mLastTrack->meta.setData(
+                        kKeyAV1C, kTypeAV1C, buffer.get(), chunk_data_size);
+
+                *offset += chunk_size;
+                break;
+        }
 
 #ifdef DLB_VISION
         case FOURCC('d', 'v', 'c', 'C'):
@@ -2074,7 +2101,6 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
             break;
         }
 #endif
-
         case FOURCC('d', '2', '6', '3'):
         {
             *offset += chunk_size;
@@ -3496,6 +3522,19 @@ MediaTrack *MPEG4Extractor::getTrack(size_t index) {
         if (!strcasecmp(mime, MEDIA_MIMETYPE_IMAGE_ANDROID_HEIC)) {
             itemTable = mItemTable;
         }
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_VIDEO_AV1)) {
+        uint32_t type;
+        const void *data;
+        size_t size;
+        if (!track->meta.findData(kKeyAV1C, &type, &data, &size)) {
+            return NULL;
+        }
+
+        const uint8_t *ptr = (const uint8_t *)data;
+
+        if (size < 5 || ptr[0] != 0x81) {  // configurationVersion == 1
+            return NULL;
+        }
     }
 #ifdef DLB_VISION
       else if (!strcasecmp(mime, MEDIA_MIMETYPE_VIDEO_DOLBY_VISION)) {
@@ -3540,6 +3579,11 @@ status_t MPEG4Extractor::verifyTrack(Track *track) {
     } else if (!strcasecmp(mime, MEDIA_MIMETYPE_VIDEO_HEVC)) {
         if (!track->meta.findData(kKeyHVCC, &type, &data, &size)
                     || type != kTypeHVCC) {
+            return ERROR_MALFORMED;
+        }
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_VIDEO_AV1)) {
+        if (!track->meta.findData(kKeyAV1C, &type, &data, &size)
+                    || type != kTypeAV1C) {
             return ERROR_MALFORMED;
         }
 #ifdef DLB_VISION
@@ -5562,6 +5606,7 @@ static bool isCompatibleBrand(uint32_t fourcc) {
         FOURCC('a', 'v', 'c', '1'),
         FOURCC('h', 'v', 'c', '1'),
         FOURCC('h', 'e', 'v', '1'),
+        FOURCC('a', 'v', '0', '1'),
         FOURCC('3', 'g', 'p', '4'),
         FOURCC('m', 'p', '4', '1'),
         FOURCC('m', 'p', '4', '2'),
